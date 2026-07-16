@@ -4,6 +4,8 @@ import { useRoute } from "vue-router";
 import GitStatusCard from "@/components/git/GitStatusCard.vue";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
 import ProjectMetaForm from "@/components/project/ProjectMetaForm.vue";
+import CustomCommands from "@/components/scripts/CustomCommands.vue";
+import PackageScripts from "@/components/scripts/PackageScripts.vue";
 import { useProjectsStore } from "@/stores/projects";
 
 const route = useRoute();
@@ -38,6 +40,10 @@ watch(
       <div class="grid items-start gap-4 xl:grid-cols-2">
         <ProjectMetaForm :project="project" />
         <GitStatusCard :project="project" />
+      </div>
+      <div class="grid items-start gap-4 xl:grid-cols-2">
+        <PackageScripts :project="project" />
+        <CustomCommands :project="project" />
       </div>
     </div>
   </div>
