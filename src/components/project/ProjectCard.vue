@@ -2,7 +2,7 @@
 import { computed } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { X } from "@lucide/vue";
+import { GitBranch, X } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useProjectsStore } from "@/stores/projects";
@@ -53,6 +53,27 @@ async function remove() {
     <p class="truncate text-xs text-muted-foreground" :title="project.path">
       {{ project.path }}
     </p>
+    <div
+      v-if="project.git?.is_repo"
+      class="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground"
+    >
+      <span class="flex min-w-0 items-center gap-1">
+        <GitBranch class="h-3 w-3 shrink-0" />
+        <span class="truncate">{{ project.git.branch ?? "未知" }}</span>
+      </span>
+      <span v-if="project.git.staged" class="text-emerald-600">
+        +{{ project.git.staged }}
+      </span>
+      <span v-if="project.git.modified" class="text-amber-600">
+        ~{{ project.git.modified }}
+      </span>
+      <span v-if="project.git.untracked" class="text-sky-600">
+        ?{{ project.git.untracked }}
+      </span>
+      <span v-if="project.git.remote_ahead" class="text-amber-600" title="远端领先">
+        ↓{{ project.git.remote_ahead }}
+      </span>
+    </div>
     <div v-if="project.tags.length" class="mt-1.5 flex flex-wrap gap-1">
       <Badge
         v-for="tag in project.tags"
@@ -66,4 +87,3 @@ async function remove() {
     </div>
   </div>
 </template>
-

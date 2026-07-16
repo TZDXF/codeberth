@@ -26,6 +26,8 @@ pub fn run() {
             commands::project::get_project,
             commands::project::update_project,
             commands::project::delete_project,
+            commands::git::get_git_status,
+            commands::git::fetch_git_remote_async,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

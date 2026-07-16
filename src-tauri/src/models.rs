@@ -7,7 +7,7 @@ pub struct Tag {
     pub color: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GitStatus {
     pub is_repo: bool,
     pub branch: Option<String>,
@@ -55,4 +55,3 @@ pub enum EditorKind {
     Explorer,
     Terminal,
 }
-

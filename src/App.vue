@@ -2,11 +2,18 @@
 import { onMounted } from "vue";
 import { Toaster } from "@/components/ui/sonner";
 import Sidebar from "@/components/layout/Sidebar.vue";
+import { onListen } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
+import type { GitUpdatedPayload } from "@/types";
 
 const store = useProjectsStore();
 
-onMounted(() => store.fetchProjects());
+onMounted(() => {
+  store.fetchProjects();
+  onListen<GitUpdatedPayload>("git://updated", (payload) => {
+    store.updateGitRemote(payload.project_id, payload);
+  });
+});
 </script>
 
 <template>
@@ -18,4 +25,3 @@ onMounted(() => store.fetchProjects());
     <Toaster />
   </div>
 </template>
-

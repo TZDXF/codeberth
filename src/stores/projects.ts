@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 import { cmd } from "@/lib/tauri";
-import type { GitUpdatedPayload, Project } from "@/types";
+import type { GitStatus, GitUpdatedPayload, Project } from "@/types";
 
 export const useProjectsStore = defineStore("projects", () => {
   const projects = ref<Project[]>([]);
@@ -14,9 +14,36 @@ export const useProjectsStore = defineStore("projects", () => {
         query: query?.trim() ? query.trim() : null,
         tagIds: tagIds?.length ? tagIds : null,
       });
+      // Git 状态后台补齐,不阻塞列表渲染
+      refreshAllGitStatus().then(triggerAllRemoteFetches);
     } finally {
       loading.value = false;
     }
+  }
+
+  async function refreshGitStatus(project: Project) {
+    try {
+      project.git = await cmd<GitStatus>("get_git_status", { path: project.path });
+    } catch {
+      project.git = null;
+    }
+  }
+
+  function refreshAllGitStatus() {
+    return Promise.all(projects.value.map((p) => refreshGitStatus(p)));
+  }
+
+  /** 触发单个项目的后台远端 fetch(后端限流,结果走 git://updated 事件) */
+  function triggerRemoteFetch(project: Project) {
+    if (project.git?.is_repo) {
+      cmd("fetch_git_remote_async", { projectId: project.id, path: project.path }).catch(
+        () => {},
+      );
+    }
+  }
+
+  function triggerAllRemoteFetches() {
+    projects.value.forEach(triggerRemoteFetch);
   }
 
   async function addProject(path: string, name: string) {
@@ -57,8 +84,9 @@ export const useProjectsStore = defineStore("projects", () => {
     addProject,
     updateProject,
     deleteProject,
+    refreshGitStatus,
+    triggerRemoteFetch,
     updateGitRemote,
     byId,
   };
 });
-

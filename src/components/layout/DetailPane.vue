@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { useRoute } from "vue-router";
+import GitStatusCard from "@/components/git/GitStatusCard.vue";
 import { useProjectsStore } from "@/stores/projects";
 
 const route = useRoute();
@@ -10,6 +11,15 @@ const project = computed(() => {
   const id = Number(route.params.id);
   return Number.isFinite(id) ? store.projects.find((p) => p.id === id) : undefined;
 });
+
+// 选中项目进入详情页时优先触发一次远端 fetch
+watch(
+  () => project.value?.id,
+  () => {
+    if (project.value) store.triggerRemoteFetch(project.value);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -19,6 +29,9 @@ const project = computed(() => {
       <p class="text-sm text-muted-foreground">{{ project.path }}</p>
       <p v-if="project.description" class="mt-1 text-sm">{{ project.description }}</p>
     </header>
+    <div class="flex flex-col gap-4 p-6">
+      <GitStatusCard :project="project" />
+    </div>
   </div>
   <div
     v-else
@@ -27,4 +40,3 @@ const project = computed(() => {
     选择左侧项目查看详情,或点击「添加」创建新项目
   </div>
 </template>
-
