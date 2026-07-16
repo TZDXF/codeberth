@@ -2,6 +2,7 @@
 import { computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import GitStatusCard from "@/components/git/GitStatusCard.vue";
+import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
 import { useProjectsStore } from "@/stores/projects";
 
 const route = useRoute();
@@ -25,7 +26,10 @@ watch(
 <template>
   <div v-if="project" class="flex h-full flex-col overflow-y-auto">
     <header class="border-b px-6 py-4">
-      <h1 class="text-lg font-semibold">{{ project.name }}</h1>
+      <div class="flex items-start justify-between gap-4">
+        <h1 class="text-lg font-semibold">{{ project.name }}</h1>
+        <OpenWithMenu :project="project" />
+      </div>
       <p class="text-sm text-muted-foreground">{{ project.path }}</p>
       <p v-if="project.description" class="mt-1 text-sm">{{ project.description }}</p>
     </header>

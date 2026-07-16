@@ -28,6 +28,25 @@ pub fn init(conn: &Connection) -> AppResult<()> {
     Ok(())
 }
 
+pub fn get_setting(conn: &Connection, key: &str) -> AppResult<Option<String>> {
+    use rusqlite::OptionalExtension;
+    let value = conn
+        .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
+            r.get(0)
+        })
+        .optional()?;
+    Ok(value)
+}
+
+pub fn set_setting(conn: &Connection, key: &str, value: &str) -> AppResult<()> {
+    conn.execute(
+        "INSERT INTO settings (key, value) VALUES (?1, ?2)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        [key, value],
+    )?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -62,4 +81,3 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
     }
 }
-

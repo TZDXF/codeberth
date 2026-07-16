@@ -28,6 +28,8 @@ pub fn run() {
             commands::project::delete_project,
             commands::git::get_git_status,
             commands::git::fetch_git_remote_async,
+            commands::open::open_with,
+            commands::open::detect_vscode,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

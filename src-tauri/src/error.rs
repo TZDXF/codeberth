@@ -12,6 +12,8 @@ pub enum AppError {
     Conflict(String),
     #[error("无效输入: {0}")]
     Invalid(String),
+    // Windows 上不会触发(仅非 Win/Mac 平台兜底使用)
+    #[allow(dead_code)]
     #[error("外部命令失败: {0}")]
     External(String),
 }
@@ -27,4 +29,3 @@ impl Serialize for AppError {
 }
 
 pub type AppResult<T> = Result<T, AppError>;
-
