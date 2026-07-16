@@ -113,11 +113,7 @@ pub fn delete_tag(db: State<'_, Db>, id: i64) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn set_project_tags(
-    db: State<'_, Db>,
-    project_id: i64,
-    tag_ids: Vec<i64>,
-) -> AppResult<()> {
+pub fn set_project_tags(db: State<'_, Db>, project_id: i64, tag_ids: Vec<i64>) -> AppResult<()> {
     let conn = db.0.lock().unwrap();
     apply_project_tags(&conn, project_id, &tag_ids)
 }

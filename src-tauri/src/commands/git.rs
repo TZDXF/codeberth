@@ -133,7 +133,10 @@ mod tests {
     }
 
     fn git(dir: &PathBuf, args: &[&str]) {
-        let out = git_command(dir.to_str().unwrap()).args(args).output().unwrap();
+        let out = git_command(dir.to_str().unwrap())
+            .args(args)
+            .output()
+            .unwrap();
         assert!(
             out.status.success(),
             "git {:?} 失败: {}",
@@ -212,4 +215,3 @@ mod tests {
         let _ = fs::remove_dir_all(&clone_b);
     }
 }
-

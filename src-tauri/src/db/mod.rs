@@ -63,7 +63,13 @@ mod tests {
         assert!(db_path.exists(), "DB 文件应被创建");
 
         let conn = db.0.lock().unwrap();
-        for table in ["projects", "tags", "project_tags", "custom_commands", "settings"] {
+        for table in [
+            "projects",
+            "tags",
+            "project_tags",
+            "custom_commands",
+            "settings",
+        ] {
             let count: i64 = conn
                 .query_row(
                     "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",

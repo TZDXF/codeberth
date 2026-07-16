@@ -36,7 +36,11 @@ pub fn spawn_terminal(path: &str, title: &str, command: Option<&str>) -> AppResu
 #[cfg(target_os = "macos")]
 pub fn spawn_terminal(path: &str, _title: &str, command: Option<&str>) -> AppResult<()> {
     let inner = match command {
-        Some(c) => format!("cd '{}' && {}", path.replace('\'', "'\\''"), c.replace('"', "\\\"")),
+        Some(c) => format!(
+            "cd '{}' && {}",
+            path.replace('\'', "'\\''"),
+            c.replace('"', "\\\"")
+        ),
         None => format!("cd '{}'", path.replace('\'', "'\\''")),
     };
     let script = format!("tell application \"Terminal\" to do script \"{inner}\"");
@@ -51,7 +55,9 @@ pub fn spawn_terminal(_path: &str, _title: &str, _command: Option<&str>) -> AppR
 
 fn open_vscode(path: &str) -> AppResult<()> {
     #[cfg(windows)]
-    hidden(Command::new("cmd")).args(["/C", "code", path]).spawn()?;
+    hidden(Command::new("cmd"))
+        .args(["/C", "code", path])
+        .spawn()?;
     #[cfg(not(windows))]
     Command::new("code").arg(path).spawn()?;
     Ok(())

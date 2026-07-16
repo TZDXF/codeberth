@@ -103,7 +103,13 @@ pub fn create_command(
     conn.execute(
         "INSERT INTO custom_commands (project_id, name, command, description, sort_order)
          VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![project_id, name.trim(), command.trim(), description.trim(), next_order],
+        params![
+            project_id,
+            name.trim(),
+            command.trim(),
+            description.trim(),
+            next_order
+        ],
     )
     .map_err(|e| to_conflict(e, name))?;
     get_command(conn, conn.last_insert_rowid())
@@ -227,7 +233,9 @@ mod tests {
         .unwrap();
         let scripts = package_scripts(dir.to_str().unwrap()).unwrap();
         assert_eq!(scripts.len(), 2);
-        assert!(scripts.iter().any(|s| s.name == "dev" && s.command == "vite"));
+        assert!(scripts
+            .iter()
+            .any(|s| s.name == "dev" && s.command == "vite"));
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -281,4 +289,3 @@ mod tests {
         assert!(list_commands(&conn, pid).unwrap().is_empty());
     }
 }
-

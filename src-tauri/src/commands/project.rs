@@ -236,10 +236,7 @@ mod tests {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
         add(&conn, &dir, "a").unwrap();
-        assert!(matches!(
-            add(&conn, &dir, "b"),
-            Err(AppError::Conflict(_))
-        ));
+        assert!(matches!(add(&conn, &dir, "b"), Err(AppError::Conflict(_))));
     }
 
     #[test]
@@ -250,10 +247,7 @@ mod tests {
             Err(AppError::Invalid(_))
         ));
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        assert!(matches!(
-            add(&conn, &dir, "   "),
-            Err(AppError::Invalid(_))
-        ));
+        assert!(matches!(add(&conn, &dir, "   "), Err(AppError::Invalid(_))));
     }
 
     #[test]
