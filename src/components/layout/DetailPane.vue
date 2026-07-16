@@ -3,6 +3,7 @@ import { computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import GitStatusCard from "@/components/git/GitStatusCard.vue";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
+import ProjectMetaForm from "@/components/project/ProjectMetaForm.vue";
 import { useProjectsStore } from "@/stores/projects";
 
 const route = useRoute();
@@ -34,7 +35,10 @@ watch(
       <p v-if="project.description" class="mt-1 text-sm">{{ project.description }}</p>
     </header>
     <div class="flex flex-col gap-4 p-6">
-      <GitStatusCard :project="project" />
+      <div class="grid items-start gap-4 xl:grid-cols-2">
+        <ProjectMetaForm :project="project" />
+        <GitStatusCard :project="project" />
+      </div>
     </div>
   </div>
   <div

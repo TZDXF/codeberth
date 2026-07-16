@@ -1,0 +1,205 @@
+use rusqlite::{params, Connection};
+use tauri::State;
+
+use crate::db::Db;
+use crate::error::{AppError, AppResult};
+use crate::models::Tag;
+
+const DEFAULT_COLOR: &str = "#3b82f6";
+
+fn validate_color(color: &str) -> AppResult<String> {
+    let color = color.trim();
+    if color.is_empty() {
+        return Ok(DEFAULT_COLOR.to_string());
+    }
+    let valid = color.starts_with('#')
+        && (4..=9).contains(&color.len())
+        && color[1..].chars().all(|c| c.is_ascii_hexdigit());
+    if valid {
+        Ok(color.to_string())
+    } else {
+        Err(AppError::Invalid(format!("颜色格式不正确: {color}")))
+    }
+}
+
+pub fn all(conn: &Connection) -> AppResult<Vec<Tag>> {
+    let mut stmt = conn.prepare("SELECT id, name, color FROM tags ORDER BY name COLLATE NOCASE")?;
+    let rows = stmt.query_map([], |r| {
+        Ok(Tag {
+            id: r.get(0)?,
+            name: r.get(1)?,
+            color: r.get(2)?,
+        })
+    })?;
+    Ok(rows.collect::<Result<Vec<_>, _>>()?)
+}
+
+pub fn create(conn: &Connection, name: &str, color: &str) -> AppResult<Tag> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::Invalid("标签名不能为空".into()));
+    }
+    let color = validate_color(color)?;
+    conn.execute(
+        "INSERT INTO tags (name, color) VALUES (?1, ?2)",
+        params![name, color],
+    )
+    .map_err(|e| match e {
+        rusqlite::Error::SqliteFailure(err, _)
+            if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+        {
+            AppError::Conflict(format!("标签已存在: {name}"))
+        }
+        other => AppError::Db(other),
+    })?;
+    Ok(Tag {
+        id: conn.last_insert_rowid(),
+        name: name.to_string(),
+        color,
+    })
+}
+
+pub fn remove(conn: &Connection, id: i64) -> AppResult<()> {
+    let changed = conn.execute("DELETE FROM tags WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("tag {id}")));
+    }
+    Ok(())
+}
+
+pub fn apply_project_tags(conn: &Connection, project_id: i64, tag_ids: &[i64]) -> AppResult<()> {
+    let exists: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM projects WHERE id = ?1",
+        params![project_id],
+        |r| r.get(0),
+    )?;
+    if !exists {
+        return Err(AppError::NotFound(format!("project {project_id}")));
+    }
+    let tx = conn.unchecked_transaction()?;
+    tx.execute(
+        "DELETE FROM project_tags WHERE project_id = ?1",
+        params![project_id],
+    )?;
+    for tag_id in tag_ids {
+        // 外键校验 tag 存在;重复 id 忽略
+        tx.execute(
+            "INSERT OR IGNORE INTO project_tags (project_id, tag_id) VALUES (?1, ?2)",
+            params![project_id, tag_id],
+        )?;
+    }
+    tx.commit()?;
+    Ok(())
+}
+
+// ---- Tauri 命令包装 ----
+
+#[tauri::command]
+pub fn list_tags(db: State<'_, Db>) -> AppResult<Vec<Tag>> {
+    let conn = db.0.lock().unwrap();
+    all(&conn)
+}
+
+#[tauri::command]
+pub fn create_tag(db: State<'_, Db>, name: String, color: String) -> AppResult<Tag> {
+    let conn = db.0.lock().unwrap();
+    create(&conn, &name, &color)
+}
+
+#[tauri::command]
+pub fn delete_tag(db: State<'_, Db>, id: i64) -> AppResult<()> {
+    let conn = db.0.lock().unwrap();
+    remove(&conn, id)
+}
+
+#[tauri::command]
+pub fn set_project_tags(
+    db: State<'_, Db>,
+    project_id: i64,
+    tag_ids: Vec<i64>,
+) -> AppResult<()> {
+    let conn = db.0.lock().unwrap();
+    apply_project_tags(&conn, project_id, &tag_ids)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::commands::project;
+    use crate::db;
+
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        conn
+    }
+
+    #[test]
+    fn create_list_delete() {
+        let conn = test_conn();
+        let t = create(&conn, "work", "").unwrap();
+        assert_eq!(t.color, DEFAULT_COLOR);
+        let t2 = create(&conn, "oss", "#22c55e").unwrap();
+
+        let tags = all(&conn).unwrap();
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[1].name, "work"); // name 排序: oss < work
+
+        remove(&conn, t2.id).unwrap();
+        assert_eq!(all(&conn).unwrap().len(), 1);
+        assert!(matches!(remove(&conn, t2.id), Err(AppError::NotFound(_))));
+        let _ = t;
+    }
+
+    #[test]
+    fn duplicate_name_conflicts() {
+        let conn = test_conn();
+        create(&conn, "work", "").unwrap();
+        assert!(matches!(
+            create(&conn, "work", "#fff"),
+            Err(AppError::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_bad_input() {
+        let conn = test_conn();
+        assert!(matches!(create(&conn, " ", ""), Err(AppError::Invalid(_))));
+        assert!(matches!(
+            create(&conn, "x", "not-a-color"),
+            Err(AppError::Invalid(_))
+        ));
+        assert!(create(&conn, "x", "#a1b2").is_ok());
+    }
+
+    #[test]
+    fn set_project_tags_replaces_and_cascades() {
+        let conn = test_conn();
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
+        let p = project::add(&conn, &dir, "demo").unwrap();
+        let t1 = create(&conn, "a", "").unwrap();
+        let t2 = create(&conn, "b", "").unwrap();
+
+        apply_project_tags(&conn, p.id, &[t1.id, t2.id]).unwrap();
+        assert_eq!(project::load_tags(&conn, p.id).unwrap().len(), 2);
+
+        // 覆盖式设置
+        apply_project_tags(&conn, p.id, &[t2.id]).unwrap();
+        let tags = project::load_tags(&conn, p.id).unwrap();
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].name, "b");
+
+        // 不存在的 tag 违反外键
+        assert!(apply_project_tags(&conn, p.id, &[9999]).is_err());
+        // 项目不存在
+        assert!(matches!(
+            apply_project_tags(&conn, 9999, &[]),
+            Err(AppError::NotFound(_))
+        ));
+
+        // 删除 tag 级联清理关联
+        apply_project_tags(&conn, p.id, &[t1.id]).unwrap();
+        remove(&conn, t1.id).unwrap();
+        assert!(project::load_tags(&conn, p.id).unwrap().is_empty());
+    }
+}

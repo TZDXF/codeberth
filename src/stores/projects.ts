@@ -6,19 +6,44 @@ import type { GitStatus, GitUpdatedPayload, Project } from "@/types";
 export const useProjectsStore = defineStore("projects", () => {
   const projects = ref<Project[]>([]);
   const loading = ref(false);
+  const query = ref("");
+  const selectedTagIds = ref<number[]>([]);
 
-  async function fetchProjects(query?: string, tagIds?: number[]) {
+  async function fetchProjects() {
     loading.value = true;
     try {
       projects.value = await cmd<Project[]>("list_projects", {
-        query: query?.trim() ? query.trim() : null,
-        tagIds: tagIds?.length ? tagIds : null,
+        query: query.value.trim() ? query.value.trim() : null,
+        tagIds: selectedTagIds.value.length ? selectedTagIds.value : null,
       });
       // Git 状态后台补齐,不阻塞列表渲染
       refreshAllGitStatus().then(triggerAllRemoteFetches);
     } finally {
       loading.value = false;
     }
+  }
+
+  function setQuery(value: string) {
+    query.value = value;
+    fetchProjects();
+  }
+
+  function toggleTagFilter(tagId: number) {
+    selectedTagIds.value = selectedTagIds.value.includes(tagId)
+      ? selectedTagIds.value.filter((id) => id !== tagId)
+      : [...selectedTagIds.value, tagId];
+    fetchProjects();
+  }
+
+  /** 重新拉取单个项目(保留已有的 git 状态,后端不返回) */
+  async function refreshProject(id: number) {
+    const fresh = await cmd<Project>("get_project", { id });
+    const idx = projects.value.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      fresh.git = projects.value[idx].git;
+      projects.value[idx] = fresh;
+    }
+    return fresh;
   }
 
   async function refreshGitStatus(project: Project) {
@@ -80,7 +105,12 @@ export const useProjectsStore = defineStore("projects", () => {
   return {
     projects,
     loading,
+    query,
+    selectedTagIds,
     fetchProjects,
+    setQuery,
+    toggleTagFilter,
+    refreshProject,
     addProject,
     updateProject,
     deleteProject,

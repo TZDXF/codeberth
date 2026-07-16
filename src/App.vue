@@ -4,12 +4,15 @@ import { Toaster } from "@/components/ui/sonner";
 import Sidebar from "@/components/layout/Sidebar.vue";
 import { onListen } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
+import { useTagsStore } from "@/stores/tags";
 import type { GitUpdatedPayload } from "@/types";
 
 const store = useProjectsStore();
+const tagsStore = useTagsStore();
 
 onMounted(() => {
   store.fetchProjects();
+  tagsStore.fetchTags();
   onListen<GitUpdatedPayload>("git://updated", (payload) => {
     store.updateGitRemote(payload.project_id, payload);
   });

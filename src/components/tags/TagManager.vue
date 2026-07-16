@@ -1,0 +1,132 @@
+<script setup lang="ts">
+import { ref } from "vue";
+import { toast } from "vue-sonner";
+import { Plus, Trash2 } from "@lucide/vue";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { useTagsStore } from "@/stores/tags";
+
+const emit = defineEmits<{ refreshProjects: [] }>();
+
+const store = useTagsStore();
+
+const visible = ref(false);
+const newName = ref("");
+const newColor = ref("#3b82f6");
+const submitting = ref(false);
+
+const PRESET_COLORS = [
+  "#3b82f6",
+  "#22c55e",
+  "#eab308",
+  "#ef4444",
+  "#a855f7",
+  "#ec4899",
+  "#14b8a6",
+  "#f97316",
+];
+
+async function create() {
+  if (!newName.value.trim() || submitting.value) return;
+  submitting.value = true;
+  try {
+    await store.createTag(newName.value.trim(), newColor.value);
+    newName.value = "";
+    toast.success("标签已创建");
+  } catch (e) {
+    toast.error(String(e));
+  } finally {
+    submitting.value = false;
+  }
+}
+
+async function remove(id: number, name: string) {
+  if (!window.confirm(`确定删除标签「${name}」吗?所有项目上的该标签会被移除。`)) return;
+  try {
+    await store.deleteTag(id);
+    emit("refreshProjects");
+    toast.success("标签已删除");
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+</script>
+
+<template>
+  <Dialog v-model:open="visible">
+    <DialogTrigger as-child>
+      <slot />
+    </DialogTrigger>
+    <DialogContent>
+      <DialogHeader>
+        <DialogTitle>标签管理</DialogTitle>
+        <DialogDescription>创建或删除全局标签</DialogDescription>
+      </DialogHeader>
+      <form class="flex flex-col gap-2" @submit.prevent="create">
+        <div class="flex gap-2">
+          <Input v-model="newName" placeholder="新标签名称" class="flex-1" />
+          <Button type="submit" size="sm" :disabled="!newName.trim() || submitting">
+            <Plus class="h-4 w-4" />
+            创建
+          </Button>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <button
+            v-for="color in PRESET_COLORS"
+            :key="color"
+            type="button"
+            class="h-6 w-6 rounded-full border-2 transition-transform hover:scale-110"
+            :class="newColor === color ? 'border-foreground' : 'border-transparent'"
+            :style="{ backgroundColor: color }"
+            :title="color"
+            @click="newColor = color"
+          />
+        </div>
+      </form>
+      <Separator />
+      <ScrollArea class="max-h-64">
+        <div class="flex flex-col gap-1">
+          <div
+            v-for="tag in store.tags"
+            :key="tag.id"
+            class="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-accent"
+          >
+            <span class="flex items-center gap-2 text-sm">
+              <span
+                class="h-3 w-3 rounded-full"
+                :style="{ backgroundColor: tag.color }"
+              />
+              {{ tag.name }}
+            </span>
+            <Button
+              variant="ghost"
+              size="icon"
+              class="h-7 w-7"
+              title="删除标签"
+              @click="remove(tag.id, tag.name)"
+            >
+              <Trash2 class="h-3.5 w-3.5" />
+            </Button>
+          </div>
+          <p
+            v-if="!store.tags.length"
+            class="py-6 text-center text-xs text-muted-foreground"
+          >
+            还没有标签
+          </p>
+        </div>
+      </ScrollArea>
+    </DialogContent>
+  </Dialog>
+</template>
+

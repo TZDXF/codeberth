@@ -30,6 +30,10 @@ pub fn run() {
             commands::git::fetch_git_remote_async,
             commands::open::open_with,
             commands::open::detect_vscode,
+            commands::tag::list_tags,
+            commands::tag::create_tag,
+            commands::tag::delete_tag,
+            commands::tag::set_project_tags,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
