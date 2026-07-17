@@ -25,6 +25,6 @@ onMounted(() => {
     <main class="min-w-0 flex-1 overflow-hidden">
       <router-view />
     </main>
-    <Toaster />
   </div>
+  <Toaster position="bottom-right" />
 </template>
