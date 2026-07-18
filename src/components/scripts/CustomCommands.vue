@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { toast } from "vue-sonner";
-import { Plus, TerminalSquare } from "@lucide/vue";
+import { Ban, Plus, TerminalSquare } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ScriptItem from "@/components/scripts/ScriptItem.vue";
+import { COMMAND_ICONS } from "@/lib/command-icons";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { CustomCommand, Project } from "@/types";
 
@@ -26,6 +27,7 @@ const editingId = ref<number | null>(null);
 const formName = ref("");
 const formCommand = ref("");
 const formDescription = ref("");
+const formIcon = ref("");
 const submitting = ref(false);
 
 async function load() {
@@ -45,6 +47,7 @@ function openCreate() {
   formName.value = "";
   formCommand.value = "";
   formDescription.value = "";
+  formIcon.value = "";
   dialogOpen.value = true;
 }
 
@@ -53,6 +56,7 @@ function openEdit(c: CustomCommand) {
   formName.value = c.name;
   formCommand.value = c.command;
   formDescription.value = c.description;
+  formIcon.value = c.icon;
   dialogOpen.value = true;
 }
 
@@ -64,6 +68,7 @@ async function submit() {
       name: formName.value.trim(),
       command: formCommand.value.trim(),
       description: formDescription.value.trim(),
+      icon: formIcon.value,
     };
     if (editingId.value == null) {
       await cmd("create_custom_command", { projectId: props.project.id, ...args });
@@ -126,6 +131,7 @@ async function run(c: CustomCommand) {
             :name="c.name"
             :command="c.command"
             :description="c.description"
+            :icon="c.icon"
             editable
             @run="run(c)"
             @edit="openEdit(c)"
@@ -153,6 +159,39 @@ async function run(c: CustomCommand) {
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">描述(可选)</label>
           <Input v-model="formDescription" placeholder="命令用途说明" />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label class="text-sm font-medium">图标(可选)</label>
+          <div class="grid grid-cols-8 gap-1">
+            <button
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-accent"
+              :class="
+                formIcon === ''
+                  ? 'border-primary bg-accent text-foreground'
+                  : 'border-transparent'
+              "
+              title="无图标"
+              @click="formIcon = ''"
+            >
+              <Ban class="h-4 w-4" />
+            </button>
+            <button
+              v-for="i in COMMAND_ICONS"
+              :key="i.name"
+              type="button"
+              class="flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-accent"
+              :class="
+                formIcon === i.name
+                  ? 'border-primary bg-accent text-foreground'
+                  : 'border-transparent'
+              "
+              :title="i.name"
+              @click="formIcon = i.name"
+            >
+              <component :is="i.component" class="h-4 w-4" />
+            </button>
+          </div>
         </div>
         <DialogFooter>
           <Button

@@ -45,6 +45,8 @@ pub fn run() {
             commands::script::update_custom_command,
             commands::script::delete_custom_command,
             commands::script::run_in_terminal,
+            commands::files::read_readme,
+            commands::files::detect_compose_file,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

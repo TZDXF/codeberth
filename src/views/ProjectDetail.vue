@@ -6,6 +6,8 @@ import { ArrowLeft, Pencil } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import GitStatusBar from "@/components/git/GitStatusBar.vue";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
+import DockerCompose from "@/components/project/DockerCompose.vue";
+import ReadmePreview from "@/components/project/ReadmePreview.vue";
 import CustomCommands from "@/components/scripts/CustomCommands.vue";
 import PackageScripts from "@/components/scripts/PackageScripts.vue";
 import TagPicker from "@/components/tags/TagPicker.vue";
@@ -167,7 +169,9 @@ async function saveDesc() {
       class="grid items-start gap-4 p-6 [grid-template-columns:repeat(auto-fill,minmax(360px,1fr))]"
     >
       <PackageScripts :project="project" />
+      <DockerCompose :project="project" />
       <CustomCommands :project="project" />
+      <ReadmePreview :project="project" />
     </div>
   </div>
 

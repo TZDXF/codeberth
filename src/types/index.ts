@@ -39,7 +39,17 @@ export interface CustomCommand {
   name: string;
   command: string;
   description: string;
+  icon: string;
   sort_order: number;
+}
+
+export interface ReadmeContent {
+  file_name: string;
+  content: string;
+}
+
+export interface ComposeFile {
+  file_name: string;
 }
 
 export type EditorKind = "vscode" | "explorer" | "terminal";

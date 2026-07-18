@@ -1,13 +1,18 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { Pencil, Play, Trash2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
+import { commandIcon } from "@/lib/command-icons";
 
-defineProps<{
+const props = defineProps<{
   name: string;
   command: string;
   description?: string;
+  icon?: string;
   editable?: boolean;
 }>();
+
+const iconComponent = computed(() => (props.icon ? commandIcon(props.icon) : undefined));
 
 const emit = defineEmits<{
   run: [];
@@ -27,6 +32,11 @@ const emit = defineEmits<{
     >
       <Play class="h-3.5 w-3.5" />
     </Button>
+    <component
+      :is="iconComponent"
+      v-if="iconComponent"
+      class="h-4 w-4 shrink-0 text-muted-foreground"
+    />
     <span class="w-32 shrink-0 truncate text-sm font-medium" :title="description || name">
       {{ name }}
     </span>

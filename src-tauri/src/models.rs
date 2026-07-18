@@ -46,7 +46,20 @@ pub struct CustomCommand {
     pub name: String,
     pub command: String,
     pub description: String,
+    pub icon: String,
     pub sort_order: i64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ReadmeContent {
+    pub file_name: String,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ComposeFile {
+    pub file_name: String,
+    pub services: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]

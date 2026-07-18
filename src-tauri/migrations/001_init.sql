@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS custom_commands (
     name        TEXT NOT NULL,
     command     TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    icon        TEXT NOT NULL DEFAULT '',
     sort_order  INTEGER NOT NULL DEFAULT 0,
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     UNIQUE (project_id, name)

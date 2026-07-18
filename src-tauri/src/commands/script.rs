@@ -36,11 +36,12 @@ fn map_command_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CustomCommand> {
         name: r.get(2)?,
         command: r.get(3)?,
         description: r.get(4)?,
-        sort_order: r.get(5)?,
+        icon: r.get(5)?,
+        sort_order: r.get(6)?,
     })
 }
 
-const COMMAND_COLS: &str = "id, project_id, name, command, description, sort_order";
+const COMMAND_COLS: &str = "id, project_id, name, command, description, icon, sort_order";
 
 pub fn list_commands(conn: &Connection, project_id: i64) -> AppResult<Vec<CustomCommand>> {
     let sql = format!(
@@ -85,6 +86,7 @@ pub fn create_command(
     name: &str,
     command: &str,
     description: &str,
+    icon: &str,
 ) -> AppResult<CustomCommand> {
     validate_command(name, command)?;
     let exists: bool = conn.query_row(
@@ -101,13 +103,14 @@ pub fn create_command(
         |r| r.get(0),
     )?;
     conn.execute(
-        "INSERT INTO custom_commands (project_id, name, command, description, sort_order)
-         VALUES (?1, ?2, ?3, ?4, ?5)",
+        "INSERT INTO custom_commands (project_id, name, command, description, icon, sort_order)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             project_id,
             name.trim(),
             command.trim(),
             description.trim(),
+            icon.trim(),
             next_order
         ],
     )
@@ -121,12 +124,13 @@ pub fn update_command(
     name: &str,
     command: &str,
     description: &str,
+    icon: &str,
 ) -> AppResult<CustomCommand> {
     validate_command(name, command)?;
     let changed = conn
         .execute(
-            "UPDATE custom_commands SET name = ?1, command = ?2, description = ?3 WHERE id = ?4",
-            params![name.trim(), command.trim(), description.trim(), id],
+            "UPDATE custom_commands SET name = ?1, command = ?2, description = ?3, icon = ?4 WHERE id = ?5",
+            params![name.trim(), command.trim(), description.trim(), icon.trim(), id],
         )
         .map_err(|e| to_conflict(e, name))?;
     if changed == 0 {
@@ -163,9 +167,10 @@ pub fn create_custom_command(
     name: String,
     command: String,
     description: String,
+    icon: String,
 ) -> AppResult<CustomCommand> {
     let conn = db.0.lock().unwrap();
-    create_command(&conn, project_id, &name, &command, &description)
+    create_command(&conn, project_id, &name, &command, &description, &icon)
 }
 
 #[tauri::command]
@@ -175,9 +180,10 @@ pub fn update_custom_command(
     name: String,
     command: String,
     description: String,
+    icon: String,
 ) -> AppResult<CustomCommand> {
     let conn = db.0.lock().unwrap();
-    update_command(&conn, id, &name, &command, &description)
+    update_command(&conn, id, &name, &command, &description, &icon)
 }
 
 #[tauri::command]
@@ -245,21 +251,23 @@ mod tests {
         let conn = test_conn();
         let pid = add_project(&conn);
 
-        let c = create_command(&conn, pid, "clean", "rm -rf dist", "清理产物").unwrap();
+        let c = create_command(&conn, pid, "clean", "rm -rf dist", "清理产物", "rocket").unwrap();
         assert_eq!(c.sort_order, 0);
-        let c2 = create_command(&conn, pid, "logs", "tail -f app.log", "").unwrap();
+        assert_eq!(c.icon, "rocket");
+        let c2 = create_command(&conn, pid, "logs", "tail -f app.log", "", "").unwrap();
         assert_eq!(c2.sort_order, 1);
 
         let list = list_commands(&conn, pid).unwrap();
         assert_eq!(list.len(), 2);
 
-        let updated = update_command(&conn, c.id, "clean2", "rm -rf build", "改后").unwrap();
+        let updated = update_command(&conn, c.id, "clean2", "rm -rf build", "改后", "wrench").unwrap();
         assert_eq!(updated.name, "clean2");
         assert_eq!(updated.description, "改后");
+        assert_eq!(updated.icon, "wrench");
 
         // 重名冲突
         assert!(matches!(
-            update_command(&conn, c.id, "logs", "x", ""),
+            update_command(&conn, c.id, "logs", "x", "", ""),
             Err(AppError::Conflict(_))
         ));
 
@@ -276,15 +284,15 @@ mod tests {
         let conn = test_conn();
         let pid = add_project(&conn);
         assert!(matches!(
-            create_command(&conn, pid, "", "x", ""),
+            create_command(&conn, pid, "", "x", "", ""),
             Err(AppError::Invalid(_))
         ));
         assert!(matches!(
-            create_command(&conn, 9999, "a", "b", ""),
+            create_command(&conn, 9999, "a", "b", "", ""),
             Err(AppError::NotFound(_))
         ));
 
-        create_command(&conn, pid, "a", "b", "").unwrap();
+        create_command(&conn, pid, "a", "b", "", "").unwrap();
         // 项目已无删除入口(仅归档),这里用原生 SQL 验证 schema 的外键级联仍然有效
         conn.execute("DELETE FROM projects WHERE id = ?1", [pid])
             .unwrap();

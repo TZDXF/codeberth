@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted } from "vue";
 import { Toaster } from "@/components/ui/sonner";
+import TitleBar from "@/components/TitleBar.vue";
 import { onListen } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
@@ -22,8 +23,11 @@ onMounted(() => {
 </script>
 
 <template>
-  <main class="h-screen overflow-hidden bg-background text-foreground">
-    <router-view />
+  <main class="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+    <TitleBar />
+    <div class="min-h-0 flex-1">
+      <router-view />
+    </div>
   </main>
   <Toaster position="bottom-right" />
 </template>
