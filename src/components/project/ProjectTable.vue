@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import ProjectActionsMenu from "@/components/project/ProjectActionsMenu.vue";
 import type { Project } from "@/types";
 
+const { t } = useI18n();
 defineProps<{ projects: Project[] }>();
 
 const router = useRouter();
@@ -18,12 +20,12 @@ function open(id: number) {
   <table class="w-full text-sm">
     <thead>
       <tr class="border-b text-left text-xs text-muted-foreground">
-        <th class="px-4 py-2 font-medium">名称</th>
-        <th class="px-3 py-2 font-medium">路径</th>
-        <th class="px-3 py-2 font-medium">分支</th>
-        <th class="px-3 py-2 font-medium">工作区</th>
-        <th class="px-3 py-2 font-medium">标签</th>
-        <th class="w-14 px-3 py-2 text-right font-medium">操作</th>
+        <th class="px-4 py-2 font-medium">{{ t("projects.table.name") }}</th>
+        <th class="px-3 py-2 font-medium">{{ t("projects.table.path") }}</th>
+        <th class="px-3 py-2 font-medium">{{ t("projects.table.branch") }}</th>
+        <th class="px-3 py-2 font-medium">{{ t("projects.table.workspace") }}</th>
+        <th class="px-3 py-2 font-medium">{{ t("projects.table.tags") }}</th>
+        <th class="w-14 px-3 py-2 text-right font-medium">{{ t("projects.table.actions") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -55,7 +57,7 @@ function open(id: number) {
           >
             <GitBranch class="h-3 w-3 shrink-0 text-muted-foreground" />
             <span class="max-w-28 truncate" :title="p.git.branch ?? ''">
-              {{ p.git.branch ?? "未知" }}
+              {{ p.git.branch ?? t("common.unknown") }}
             </span>
           </span>
           <span v-else class="text-xs text-muted-foreground">-</span>
@@ -65,14 +67,14 @@ function open(id: number) {
             <span v-if="p.git.staged" class="text-emerald-600">+{{ p.git.staged }}</span>
             <span v-if="p.git.modified" class="text-amber-600">~{{ p.git.modified }}</span>
             <span v-if="p.git.untracked" class="text-sky-600">?{{ p.git.untracked }}</span>
-            <span v-if="p.git.remote_ahead" class="text-amber-600" title="远端领先">
+            <span v-if="p.git.remote_ahead" class="text-amber-600" :title="t('projects.table.remoteAhead')">
               ↓{{ p.git.remote_ahead }}
             </span>
             <span
               v-if="!p.git.staged && !p.git.modified && !p.git.untracked && !p.git.remote_ahead"
               class="text-muted-foreground"
             >
-              干净
+              {{ t("projects.table.clean") }}
             </span>
           </span>
           <span v-else class="text-xs text-muted-foreground">-</span>

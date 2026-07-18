@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Archive, Code, FolderOpen, MoreHorizontal, Terminal } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { cmd } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import type { EditorKind, Project } from "@/types";
 
+const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 
 const store = useProjectsStore();
@@ -40,13 +42,11 @@ async function openWith(kind: EditorKind) {
 }
 
 async function archive() {
-  const ok = window.confirm(
-    `确定归档项目「${props.project.name}」吗?\n归档后将不再显示,历史数据会保留。`,
-  );
+  const ok = window.confirm(t("projects.actions.archiveConfirm", { name: props.project.name }));
   if (!ok) return;
   try {
     await store.archiveProject(props.project.id);
-    toast.success(`已归档项目「${props.project.name}」`);
+    toast.success(t("projects.actions.archiveSuccess", { name: props.project.name }));
   } catch (e) {
     toast.error(String(e));
   }
@@ -56,7 +56,7 @@ async function archive() {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" size="icon" class="h-7 w-7" title="更多操作" @click.stop>
+      <Button variant="ghost" size="icon" class="h-7 w-7" :title="t('projects.actions.more')" @click.stop>
         <MoreHorizontal class="h-3.5 w-3.5" />
       </Button>
     </DropdownMenuTrigger>
@@ -67,20 +67,20 @@ async function archive() {
         @click="openWith('vscode')"
       >
         <Code class="h-3.5 w-3.5" />
-        在 VSCode 中打开
+        {{ t("projects.actions.openInVscode") }}
       </DropdownMenuItem>
       <DropdownMenuItem class="gap-2 text-xs" @click="openWith('explorer')">
         <FolderOpen class="h-3.5 w-3.5" />
-        在资源管理器中打开
+        {{ t("projects.actions.openInExplorer") }}
       </DropdownMenuItem>
       <DropdownMenuItem class="gap-2 text-xs" @click="openWith('terminal')">
         <Terminal class="h-3.5 w-3.5" />
-        在终端中打开
+        {{ t("projects.actions.openInTerminal") }}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem variant="destructive" class="gap-2 text-xs" @click="archive">
         <Archive class="h-3.5 w-3.5" />
-        归档项目
+        {{ t("projects.actions.archive") }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>

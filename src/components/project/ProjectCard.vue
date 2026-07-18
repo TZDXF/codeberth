@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import ProjectActionsMenu from "@/components/project/ProjectActionsMenu.vue";
 import type { Project } from "@/types";
 
+const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 
 const router = useRouter();
@@ -43,7 +45,7 @@ function open() {
     >
       <span class="flex min-w-0 items-center gap-1">
         <GitBranch class="h-3 w-3 shrink-0" />
-        <span class="truncate">{{ project.git.branch ?? "未知" }}</span>
+        <span class="truncate">{{ project.git.branch ?? t("common.unknown") }}</span>
       </span>
       <span v-if="project.git.staged" class="text-emerald-600">
         +{{ project.git.staged }}
@@ -54,7 +56,7 @@ function open() {
       <span v-if="project.git.untracked" class="text-sky-600">
         ?{{ project.git.untracked }}
       </span>
-      <span v-if="project.git.remote_ahead" class="text-amber-600" title="远端领先">
+      <span v-if="project.git.remote_ahead" class="text-amber-600" :title="t('projects.card.remoteAhead')">
         ↓{{ project.git.remote_ahead }}
       </span>
     </div>

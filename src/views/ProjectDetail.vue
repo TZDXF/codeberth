@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import { ArrowLeft, BookOpen, Pencil } from "@lucide/vue";
@@ -13,6 +14,7 @@ import PackageScripts from "@/components/scripts/PackageScripts.vue";
 import TagPicker from "@/components/tags/TagPicker.vue";
 import { useProjectsStore } from "@/stores/projects";
 
+const { t } = useI18n();
 const route = useRoute();
 const router = useRouter();
 const store = useProjectsStore();
@@ -63,7 +65,7 @@ async function saveName() {
   if (!name || name === project.value.name) return;
   try {
     await store.updateProject(project.value.id, name, project.value.description);
-    toast.success("项目信息已保存");
+    toast.success(t("projects.detail.saved"));
   } catch (e) {
     toast.error(String(e));
   }
@@ -88,7 +90,7 @@ async function saveDesc() {
   if (description === project.value.description) return;
   try {
     await store.updateProject(project.value.id, project.value.name, description);
-    toast.success("项目信息已保存");
+    toast.success(t("projects.detail.saved"));
   } catch (e) {
     toast.error(String(e));
   }
@@ -104,7 +106,7 @@ async function saveDesc() {
             variant="ghost"
             size="icon"
             class="h-8 w-8 shrink-0"
-            title="返回项目列表"
+            :title="t('projects.detail.backToList')"
             @click="router.push('/')"
           >
             <ArrowLeft class="h-4 w-4" />
@@ -121,7 +123,7 @@ async function saveDesc() {
           <h1
             v-else
             class="group flex min-w-0 cursor-pointer items-center gap-1.5 text-lg font-semibold"
-            title="点击编辑名称"
+            :title="t('projects.detail.editName')"
             @click="startEditName"
           >
             <span class="truncate">{{ project.name }}</span>
@@ -133,7 +135,7 @@ async function saveDesc() {
         <div class="flex shrink-0 items-center gap-2">
           <Button variant="outline" size="sm" @click="readmeOpen = true">
             <BookOpen class="h-4 w-4" />
-            README
+            {{ t("readme.title") }}
           </Button>
           <OpenWithMenu :project="project" />
         </div>
@@ -149,7 +151,7 @@ async function saveDesc() {
           ref="descInput"
           v-model="draftDesc"
           rows="2"
-          placeholder="项目描述(可选)"
+          :placeholder="t('projects.detail.descPlaceholder')"
           class="w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
           @keydown.esc="editingDesc = false"
           @keydown.enter.ctrl.prevent="saveDesc"
@@ -159,10 +161,10 @@ async function saveDesc() {
           v-else
           class="group flex w-fit cursor-pointer items-center gap-1.5 text-sm"
           :class="project.description ? '' : 'text-muted-foreground'"
-          title="点击编辑描述"
+          :title="t('projects.detail.editDesc')"
           @click="startEditDesc"
         >
-          {{ project.description || "添加描述..." }}
+          {{ project.description || t("projects.detail.addDesc") }}
           <Pencil
             class="h-3 w-3 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
           />
@@ -190,7 +192,7 @@ async function saveDesc() {
     v-else
     class="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground"
   >
-    <p>项目不存在或已被删除</p>
-    <Button variant="outline" size="sm" @click="router.push('/')">返回项目列表</Button>
+    <p>{{ t("projects.detail.notFound") }}</p>
+    <Button variant="outline" size="sm" @click="router.push('/')">{{ t("projects.detail.backToListShort") }}</Button>
   </div>
 </template>

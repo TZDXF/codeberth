@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { marked } from "marked";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
@@ -9,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cmd } from "@/lib/tauri";
 import type { Project, ReadmeContent } from "@/types";
 
+const { t } = useI18n();
 marked.use({ gfm: true, breaks: true });
 
 const props = defineProps<{ project: Project }>();
@@ -121,7 +123,7 @@ async function onBodyClick(e: MouseEvent) {
         <header class="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3">
           <div class="flex min-w-0 items-center gap-2 text-sm font-semibold">
             <BookOpen class="h-4 w-4 shrink-0" />
-            README
+            {{ t("readme.title") }}
             <span v-if="readme" class="truncate text-xs font-normal text-muted-foreground">
               {{ readme.file_name }}
             </span>
@@ -131,7 +133,7 @@ async function onBodyClick(e: MouseEvent) {
               size="icon"
               variant="ghost"
               class="h-8 w-8"
-              title="关闭 (Esc)"
+              :title="t('readme.closeEsc')"
               @click="open = false"
             >
               <X class="h-4 w-4" />
@@ -140,9 +142,9 @@ async function onBodyClick(e: MouseEvent) {
         </header>
 
         <ScrollArea class="min-h-0 flex-1">
-          <p v-if="loading" class="p-6 text-sm text-muted-foreground">加载中...</p>
+          <p v-if="loading" class="p-6 text-sm text-muted-foreground">{{ t("readme.loading") }}</p>
           <p v-else-if="!readme" class="p-6 text-sm text-muted-foreground">
-            项目中未找到 README 文件
+            {{ t("readme.notFound") }}
           </p>
           <!-- README 来自本地项目目录,内容由用户自己控制 -->
           <div

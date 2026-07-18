@@ -1,19 +1,21 @@
 <script setup lang="ts">
 import { Check } from "@lucide/vue";
+import { useI18n } from "vue-i18n";
 import { useSettingsStore, type Language } from "@/stores/settings";
 
+const { t } = useI18n();
 const store = useSettingsStore();
 
-const OPTIONS: { value: Language; label: string; nativeLabel: string }[] = [
-  { value: "zh-CN", label: "简体中文", nativeLabel: "简体中文" },
-  { value: "en-US", label: "English", nativeLabel: "English (US)" },
+const OPTIONS: { value: Language; labelKey: string; nativeLabelKey: string }[] = [
+  { value: "zh-CN", labelKey: "settings.language.zhCN", nativeLabelKey: "settings.language.zhCNNative" },
+  { value: "en-US", labelKey: "settings.language.enUS", nativeLabelKey: "settings.language.enUSNative" },
 ];
 </script>
 
 <template>
   <section>
-    <h2 class="text-base font-semibold">语言</h2>
-    <p class="mt-1 text-sm text-muted-foreground">选择界面显示语言</p>
+    <h2 class="text-base font-semibold">{{ t("settings.general.language") }}</h2>
+    <p class="mt-1 text-sm text-muted-foreground">{{ t("settings.general.languageDescription") }}</p>
     <div class="mt-4 flex flex-col gap-2">
       <button
         v-for="opt in OPTIONS"
@@ -23,12 +25,12 @@ const OPTIONS: { value: Language; label: string; nativeLabel: string }[] = [
         :class="store.language === opt.value && 'border-primary'"
         @click="store.setLanguage(opt.value)"
       >
-        <span class="flex-1 text-sm font-medium">{{ opt.nativeLabel }}</span>
+        <span class="flex-1 text-sm font-medium">{{ t(opt.nativeLabelKey) }}</span>
         <Check v-if="store.language === opt.value" class="h-4 w-4 shrink-0 text-primary" />
       </button>
     </div>
     <p class="mt-3 text-xs text-muted-foreground">
-      界面翻译将在后续版本生效,当前仅保存偏好设置。
+      {{ t("settings.general.languageNote") }}
     </p>
   </section>
 </template>

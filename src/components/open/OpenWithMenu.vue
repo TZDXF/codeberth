@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Code, FolderOpen, Terminal } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import {
 import { cmd } from "@/lib/tauri";
 import type { EditorKind, Project } from "@/types";
 
+const { t } = useI18n();
 const props = withDefaults(defineProps<{ project: Project; compact?: boolean }>(), {
   compact: false,
 });
@@ -54,7 +56,7 @@ async function openWith(kind: EditorKind) {
           </span>
         </TooltipTrigger>
         <TooltipContent>
-          {{ vscodeAvailable === false ? "未检测到 VSCode(code 命令不可用)" : "在 VSCode 中打开" }}
+          {{ vscodeAvailable === false ? t("openWith.vscodeUnavailable") : t("openWith.openInVscode") }}
         </TooltipContent>
       </Tooltip>
       <Tooltip>
@@ -66,10 +68,10 @@ async function openWith(kind: EditorKind) {
             @click.stop="openWith('explorer')"
           >
             <FolderOpen :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
-            <template v-if="!compact">资源管理器</template>
+            <template v-if="!compact">{{ t("openWith.explorer") }}</template>
           </Button>
         </TooltipTrigger>
-        <TooltipContent>在系统文件管理器中打开</TooltipContent>
+        <TooltipContent>{{ t("openWith.openInExplorer") }}</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger as-child>
@@ -80,10 +82,10 @@ async function openWith(kind: EditorKind) {
             @click.stop="openWith('terminal')"
           >
             <Terminal :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
-            <template v-if="!compact">终端</template>
+            <template v-if="!compact">{{ t("openWith.terminal") }}</template>
           </Button>
         </TooltipTrigger>
-        <TooltipContent>在系统终端中打开该目录</TooltipContent>
+        <TooltipContent>{{ t("openWith.openInTerminal") }}</TooltipContent>
       </Tooltip>
     </div>
   </TooltipProvider>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Plus, Trash2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -16,6 +17,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useTagsStore } from "@/stores/tags";
 
+const { t } = useI18n();
 const emit = defineEmits<{ refreshProjects: [] }>();
 
 const store = useTagsStore();
@@ -42,7 +44,7 @@ async function create() {
   try {
     await store.createTag(newName.value.trim(), newColor.value);
     newName.value = "";
-    toast.success("标签已创建");
+    toast.success(t("tags.manager.created"));
   } catch (e) {
     toast.error(String(e));
   } finally {
@@ -51,11 +53,11 @@ async function create() {
 }
 
 async function remove(id: number, name: string) {
-  if (!window.confirm(`确定删除标签「${name}」吗?所有项目上的该标签会被移除。`)) return;
+  if (!window.confirm(t("tags.manager.deleteConfirm", { name }))) return;
   try {
     await store.deleteTag(id);
     emit("refreshProjects");
-    toast.success("标签已删除");
+    toast.success(t("tags.manager.deleted"));
   } catch (e) {
     toast.error(String(e));
   }
@@ -69,15 +71,15 @@ async function remove(id: number, name: string) {
     </DialogTrigger>
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>标签管理</DialogTitle>
-        <DialogDescription>创建或删除全局标签</DialogDescription>
+        <DialogTitle>{{ t("tags.manager.title") }}</DialogTitle>
+        <DialogDescription>{{ t("tags.manager.description") }}</DialogDescription>
       </DialogHeader>
       <form class="flex flex-col gap-2" @submit.prevent="create">
         <div class="flex gap-2">
-          <Input v-model="newName" placeholder="新标签名称" class="flex-1" />
+          <Input v-model="newName" :placeholder="t('tags.manager.newPlaceholder')" class="flex-1" />
           <Button type="submit" size="sm" :disabled="!newName.trim() || submitting">
             <Plus class="h-4 w-4" />
-            创建
+            {{ t("tags.manager.create") }}
           </Button>
         </div>
         <div class="flex items-center gap-1.5">
@@ -112,7 +114,7 @@ async function remove(id: number, name: string) {
               variant="ghost"
               size="icon"
               class="h-7 w-7"
-              title="删除标签"
+              :title="t('tags.manager.delete')"
               @click="remove(tag.id, tag.name)"
             >
               <Trash2 class="h-3.5 w-3.5" />
@@ -122,11 +124,10 @@ async function remove(id: number, name: string) {
             v-if="!store.tags.length"
             class="py-6 text-center text-xs text-muted-foreground"
           >
-            还没有标签
+            {{ t("tags.manager.empty") }}
           </p>
         </div>
       </ScrollArea>
     </DialogContent>
   </Dialog>
 </template>
-

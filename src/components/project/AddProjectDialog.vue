@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "vue-sonner";
@@ -17,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useProjectsStore } from "@/stores/projects";
 
+const { t } = useI18n();
 const store = useProjectsStore();
 const router = useRouter();
 
@@ -29,7 +31,7 @@ async function pickFolder() {
   const selected = await open({
     directory: true,
     multiple: false,
-    title: "选择项目文件夹",
+    title: t("projects.add.dialogTitle"),
   });
   if (typeof selected === "string") {
     path.value = selected;
@@ -44,7 +46,7 @@ async function submit() {
   submitting.value = true;
   try {
     const project = await store.addProject(path.value, name.value.trim());
-    toast.success(`已添加项目「${project.name}」`);
+    toast.success(t("projects.add.added", { name: project.name }));
     visible.value = false;
     path.value = "";
     name.value = "";
@@ -64,31 +66,30 @@ async function submit() {
     </DialogTrigger>
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>添加项目</DialogTitle>
-        <DialogDescription>选择一个文件夹作为项目进行管理</DialogDescription>
+        <DialogTitle>{{ t("projects.add.title") }}</DialogTitle>
+        <DialogDescription>{{ t("projects.add.description") }}</DialogDescription>
       </DialogHeader>
       <form class="flex flex-col gap-4" @submit.prevent="submit">
         <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">项目路径</label>
+          <label class="text-sm font-medium">{{ t("projects.add.pathLabel") }}</label>
           <div class="flex gap-2">
-            <Input v-model="path" placeholder="选择文件夹..." readonly class="flex-1" />
+            <Input v-model="path" :placeholder="t('projects.add.pathPlaceholder')" readonly class="flex-1" />
             <Button type="button" variant="outline" @click="pickFolder">
               <FolderOpen class="h-4 w-4" />
-              浏览
+              {{ t("projects.add.browse") }}
             </Button>
           </div>
         </div>
         <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">项目名称</label>
-          <Input v-model="name" placeholder="输入项目名称" autofocus />
+          <label class="text-sm font-medium">{{ t("projects.add.nameLabel") }}</label>
+          <Input v-model="name" :placeholder="t('projects.add.namePlaceholder')" autofocus />
         </div>
         <DialogFooter>
           <Button type="submit" :disabled="!path || !name.trim() || submitting">
-            {{ submitting ? "添加中..." : "添加" }}
+            {{ submitting ? t("common.adding") : t("common.add") }}
           </Button>
         </DialogFooter>
       </form>
     </DialogContent>
   </Dialog>
 </template>
-

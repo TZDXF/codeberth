@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Container, Play, RotateCw, Square } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { ComposeFile, Project } from "@/types";
 
+const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 
 const compose = ref<ComposeFile | null>(null);
@@ -35,7 +37,7 @@ async function run(action: "up -d" | "restart" | "down" | "stop", service?: stri
   const args = service ? `${action} ${service}` : action;
   try {
     await runInTerminal(props.project, `docker compose ${args}`);
-    toast.success(`已在终端启动 docker compose ${args}`);
+    toast.success(t("docker.started", { args }));
   } catch (e) {
     toast.error(String(e));
   }
@@ -47,23 +49,23 @@ async function run(action: "up -d" | "restart" | "down" | "stop", service?: stri
     <CardHeader class="flex-row items-center justify-between pb-3">
       <CardTitle class="flex items-center gap-2 text-sm font-semibold">
         <Container class="h-4 w-4" />
-        Docker Compose
+        {{ t("docker.title") }}
         <span class="text-xs font-normal text-muted-foreground">
           {{ compose.file_name }}
         </span>
       </CardTitle>
       <div class="flex gap-1.5">
-        <Button size="sm" variant="outline" title="启动全部服务" @click="run('up -d')">
+        <Button size="sm" variant="outline" :title="t('docker.upAll')" @click="run('up -d')">
           <Play class="h-3.5 w-3.5 text-emerald-600" />
-          启动
+          {{ t("docker.up") }}
         </Button>
-        <Button size="sm" variant="outline" title="重启全部服务" @click="run('restart')">
+        <Button size="sm" variant="outline" :title="t('docker.restartAll')" @click="run('restart')">
           <RotateCw class="h-3.5 w-3.5 text-amber-600" />
-          重启
+          {{ t("docker.restart") }}
         </Button>
-        <Button size="sm" variant="outline" title="停止并移除全部容器" @click="run('down')">
+        <Button size="sm" variant="outline" :title="t('docker.stopAll')" @click="run('down')">
           <Square class="h-3.5 w-3.5 text-red-600" />
-          停止
+          {{ t("docker.stop") }}
         </Button>
       </div>
     </CardHeader>
@@ -83,7 +85,7 @@ async function run(action: "up -d" | "restart" | "down" | "stop", service?: stri
               variant="ghost"
               size="icon"
               class="h-7 w-7 shrink-0 text-emerald-600 opacity-0 transition-opacity group-hover:opacity-100"
-              :title="`启动服务: docker compose up -d ${s}`"
+              :title="t('docker.upService', { service: s })"
               @click="run('up -d', s)"
             >
               <Play class="h-3.5 w-3.5" />
@@ -92,7 +94,7 @@ async function run(action: "up -d" | "restart" | "down" | "stop", service?: stri
               variant="ghost"
               size="icon"
               class="h-7 w-7 shrink-0 text-amber-600 opacity-0 transition-opacity group-hover:opacity-100"
-              :title="`重启服务: docker compose restart ${s}`"
+              :title="t('docker.restartService', { service: s })"
               @click="run('restart', s)"
             >
               <RotateCw class="h-3.5 w-3.5" />
@@ -101,7 +103,7 @@ async function run(action: "up -d" | "restart" | "down" | "stop", service?: stri
               variant="ghost"
               size="icon"
               class="h-7 w-7 shrink-0 text-red-600 opacity-0 transition-opacity group-hover:opacity-100"
-              :title="`停止服务: docker compose stop ${s}`"
+              :title="t('docker.stopService', { service: s })"
               @click="run('stop', s)"
             >
               <Square class="h-3.5 w-3.5" />

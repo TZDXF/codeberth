@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { Archive, ArrowLeft, SlidersHorizontal, Tags } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -8,17 +9,18 @@ import GeneralSettings from "@/components/settings/GeneralSettings.vue";
 import TagSettings from "@/components/settings/TagSettings.vue";
 import ArchiveSettings from "@/components/settings/ArchiveSettings.vue";
 
+const { t } = useI18n();
 interface Category {
   id: string;
-  label: string;
+  labelKey: string;
   icon: Component;
   component: Component;
 }
 
 const categories: Category[] = [
-  { id: "general", label: "通用", icon: SlidersHorizontal, component: GeneralSettings },
-  { id: "tags", label: "标签管理", icon: Tags, component: TagSettings },
-  { id: "archive", label: "归档项目", icon: Archive, component: ArchiveSettings },
+  { id: "general", labelKey: "settings.categories.general", icon: SlidersHorizontal, component: GeneralSettings },
+  { id: "tags", labelKey: "settings.categories.tags", icon: Tags, component: TagSettings },
+  { id: "archive", labelKey: "settings.categories.archive", icon: Archive, component: ArchiveSettings },
 ];
 
 const router = useRouter();
@@ -33,12 +35,12 @@ const active = computed(() => categories.find((c) => c.id === activeId.value) ??
         variant="ghost"
         size="icon"
         class="h-8 w-8"
-        title="返回项目列表"
+        :title="t('settings.back')"
         @click="router.push('/')"
       >
         <ArrowLeft class="h-4 w-4" />
       </Button>
-      <h1 class="text-sm font-semibold">设置</h1>
+      <h1 class="text-sm font-semibold">{{ t("settings.title") }}</h1>
     </header>
 
     <div class="flex flex-1 overflow-hidden">
@@ -52,7 +54,7 @@ const active = computed(() => categories.find((c) => c.id === activeId.value) ??
           @click="activeId = c.id"
         >
           <component :is="c.icon" class="h-3.5 w-3.5" />
-          {{ c.label }}
+          {{ t(c.labelKey) }}
         </button>
       </nav>
 

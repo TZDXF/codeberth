@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Settings2, Tags, X } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +16,7 @@ import { useProjectsStore } from "@/stores/projects";
 import { useTagsStore } from "@/stores/tags";
 import type { Project } from "@/types";
 
+const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 
 const tagsStore = useTagsStore();
@@ -58,7 +60,7 @@ async function removeTag(tagId: number) {
       <button
         type="button"
         class="rounded-full p-0.5 hover:bg-black/10"
-        title="移除标签"
+        :title="t('tags.picker.remove')"
         @click="removeTag(tag.id)"
       >
         <X class="h-3 w-3" />
@@ -68,7 +70,7 @@ async function removeTag(tagId: number) {
       <DropdownMenuTrigger as-child>
         <Button variant="outline" size="sm" class="h-6 gap-1 px-2 text-xs">
           <Tags class="h-3 w-3" />
-          编辑标签
+          {{ t("tags.picker.edit") }}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" class="w-52">
@@ -81,11 +83,10 @@ async function removeTag(tagId: number) {
         <TagManager @refresh-projects="projectsStore.fetchProjects()">
           <Button variant="ghost" size="sm" class="h-7 w-full justify-start gap-2 px-2 text-xs">
             <Settings2 class="h-3.5 w-3.5" />
-            管理标签...
+            {{ t("tags.picker.manage") }}
           </Button>
         </TagManager>
       </DropdownMenuContent>
     </DropdownMenu>
   </div>
 </template>
-

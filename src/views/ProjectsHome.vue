@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { ArrowDownUp, LayoutGrid, List, Plus, Search, Settings, Settings2, Tags, X } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { useTagsStore } from "@/stores/tags";
 type ViewMode = "grid" | "table";
 type SortKey = "name" | "updated" | "created";
 
+const { t } = useI18n();
 const store = useProjectsStore();
 const tagsStore = useTagsStore();
 const router = useRouter();
@@ -48,9 +50,9 @@ const sortKey = ref<SortKey>(
 watch(sortKey, (v) => localStorage.setItem("project-dev:sort", v));
 
 const SORT_LABELS: Record<SortKey, string> = {
-  name: "按名称",
-  updated: "最近更新",
-  created: "最近创建",
+  name: t("projects.home.sortByName"),
+  updated: t("projects.home.sortByUpdated"),
+  created: t("projects.home.sortByCreated"),
 };
 
 const selectedTags = computed(() =>
@@ -77,14 +79,14 @@ const sortedProjects = computed(() => {
         <Search
           class="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
         />
-        <Input v-model="searchInput" placeholder="搜索项目..." class="h-8 pl-8 text-sm" />
+        <Input v-model="searchInput" :placeholder="t('projects.home.searchPlaceholder')" class="h-8 pl-8 text-sm" />
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
         <DropdownMenu>
           <DropdownMenuTrigger as-child>
             <Button variant="outline" size="sm" class="h-8 gap-1.5">
               <Tags class="h-3.5 w-3.5" />
-              筛选标签
+              {{ t("projects.home.filterTags") }}
               <span
                 v-if="store.selectedTagIds.length"
                 class="rounded-full bg-primary px-1.5 text-[11px] leading-4 text-primary-foreground"
@@ -103,7 +105,7 @@ const sortedProjects = computed(() => {
               <DropdownMenuSeparator />
               <DropdownMenuItem class="gap-2 text-xs" @click="store.clearTagFilters()">
                 <X class="h-3.5 w-3.5" />
-                清除筛选
+                {{ t("projects.home.clearFilter") }}
               </DropdownMenuItem>
             </template>
             <DropdownMenuSeparator />
@@ -114,7 +116,7 @@ const sortedProjects = computed(() => {
                 class="h-7 w-full justify-start gap-2 px-2 text-xs"
               >
                 <Settings2 class="h-3.5 w-3.5" />
-                管理标签...
+                {{ t("tags.picker.manage") }}
               </Button>
             </TagManager>
           </DropdownMenuContent>
@@ -125,7 +127,7 @@ const sortedProjects = computed(() => {
           type="button"
           class="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-opacity hover:opacity-80"
           :style="{ backgroundColor: tag.color, borderColor: tag.color, color: '#fff' }"
-          :title="`移除筛选: ${tag.name}`"
+          :title="t('projects.home.removeFilterTag', { name: tag.name })"
           @click="store.toggleTagFilter(tag.id)"
         >
           {{ tag.name }}
@@ -142,9 +144,9 @@ const sortedProjects = computed(() => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuRadioGroup v-model="sortKey">
-              <DropdownMenuRadioItem value="name">按名称</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="updated">最近更新</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="created">最近创建</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="name">{{ t("projects.home.sortByName") }}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="updated">{{ t("projects.home.sortByUpdated") }}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="created">{{ t("projects.home.sortByCreated") }}</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -154,7 +156,7 @@ const sortedProjects = computed(() => {
             size="icon"
             class="h-7 w-7"
             :class="viewMode === 'grid' && 'bg-accent'"
-            title="网格视图"
+            :title="t('projects.home.viewGrid')"
             @click="viewMode = 'grid'"
           >
             <LayoutGrid class="h-3.5 w-3.5" />
@@ -164,7 +166,7 @@ const sortedProjects = computed(() => {
             size="icon"
             class="h-7 w-7"
             :class="viewMode === 'table' && 'bg-accent'"
-            title="表格视图"
+            :title="t('projects.home.viewTable')"
             @click="viewMode = 'table'"
           >
             <List class="h-3.5 w-3.5" />
@@ -173,14 +175,14 @@ const sortedProjects = computed(() => {
         <AddProjectDialog>
           <Button size="sm" class="h-8 gap-1.5">
             <Plus class="h-4 w-4" />
-            添加项目
+            {{ t("projects.home.addProject") }}
           </Button>
         </AddProjectDialog>
         <Button
           variant="outline"
           size="icon"
           class="h-8 w-8"
-          title="设置"
+          :title="t('projects.home.settings')"
           @click="router.push('/settings')"
         >
           <Settings class="h-3.5 w-3.5" />
@@ -202,8 +204,8 @@ const sortedProjects = computed(() => {
       >
         {{
           store.query || store.selectedTagIds.length
-            ? "没有匹配的项目"
-            : "还没有项目,点击右上角「添加项目」"
+            ? t("projects.home.emptyFiltered")
+            : t("projects.home.emptyAll")
         }}
       </p>
     </div>

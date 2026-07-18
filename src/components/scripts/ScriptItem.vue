@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { Pencil, Play, Trash2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { commandIcon } from "@/lib/command-icons";
 
+const { t } = useI18n();
 const props = defineProps<{
   name: string;
   command: string;
@@ -27,7 +29,7 @@ const emit = defineEmits<{
       variant="ghost"
       size="icon"
       class="h-7 w-7 shrink-0 text-emerald-600"
-      :title="`在终端运行: ${command}`"
+      :title="t('scripts.item.runTitle', { command })"
       @click="emit('run')"
     >
       <Play class="h-3.5 w-3.5" />
@@ -48,7 +50,7 @@ const emit = defineEmits<{
         variant="ghost"
         size="icon"
         class="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-        title="编辑"
+        :title="t('scripts.item.edit')"
         @click="emit('edit')"
       >
         <Pencil class="h-3.5 w-3.5" />
@@ -57,7 +59,7 @@ const emit = defineEmits<{
         variant="ghost"
         size="icon"
         class="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
-        title="删除"
+        :title="t('scripts.item.delete')"
         @click="emit('delete')"
       >
         <Trash2 class="h-3.5 w-3.5" />
@@ -65,4 +67,3 @@ const emit = defineEmits<{
     </template>
   </div>
 </template>
-

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { Search } from "@lucide/vue";
 import { DropdownMenuCheckboxItem } from "@/components/ui/dropdown-menu";
 import type { Tag } from "@/types";
 
+const { t } = useI18n();
 const props = defineProps<{ tags: Tag[]; checkedIds: number[] }>();
 const emit = defineEmits<{ toggle: [tagId: number] }>();
 
@@ -35,7 +37,7 @@ onMounted(() => {
       <input
         ref="searchInput"
         v-model="keyword"
-        placeholder="搜索标签..."
+        :placeholder="t('tags.checkList.searchPlaceholder')"
         class="h-7 w-full rounded-md border border-input bg-transparent pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
         @keydown="onSearchKeydown"
       />
@@ -56,13 +58,13 @@ onMounted(() => {
       {{ tag.name }}
     </DropdownMenuCheckboxItem>
     <p v-if="!tags.length" class="px-2 py-1.5 text-xs text-muted-foreground">
-      还没有标签,先创建一个
+      {{ t("tags.checkList.empty") }}
     </p>
     <p
       v-else-if="!filtered.length"
       class="px-2 py-1.5 text-xs text-muted-foreground"
     >
-      没有匹配的标签
+      {{ t("tags.checkList.noMatch") }}
     </p>
   </div>
 </template>

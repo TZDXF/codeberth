@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Ban, Plus, TerminalSquare } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
@@ -18,6 +19,7 @@ import { COMMAND_ICONS } from "@/lib/command-icons";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { CustomCommand, Project } from "@/types";
 
+const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 
 const commands = ref<CustomCommand[]>([]);
@@ -72,10 +74,10 @@ async function submit() {
     };
     if (editingId.value == null) {
       await cmd("create_custom_command", { projectId: props.project.id, ...args });
-      toast.success("命令已创建");
+      toast.success(t("scripts.custom.created"));
     } else {
       await cmd("update_custom_command", { id: editingId.value, ...args });
-      toast.success("命令已更新");
+      toast.success(t("scripts.custom.updated"));
     }
     dialogOpen.value = false;
     await load();
@@ -87,11 +89,11 @@ async function submit() {
 }
 
 async function remove(c: CustomCommand) {
-  if (!window.confirm(`确定删除命令「${c.name}」吗?`)) return;
+  if (!window.confirm(t("scripts.custom.deleteConfirm", { name: c.name }))) return;
   try {
     await cmd("delete_custom_command", { id: c.id });
     await load();
-    toast.success("命令已删除");
+    toast.success(t("scripts.custom.deleted"));
   } catch (e) {
     toast.error(String(e));
   }
@@ -100,7 +102,7 @@ async function remove(c: CustomCommand) {
 async function run(c: CustomCommand) {
   try {
     await runInTerminal(props.project, c.command);
-    toast.success(`已在终端启动「${c.name}」`);
+    toast.success(t("scripts.custom.started", { name: c.name }));
   } catch (e) {
     toast.error(String(e));
   }
@@ -112,16 +114,16 @@ async function run(c: CustomCommand) {
     <CardHeader class="flex-row items-center justify-between pb-3">
       <CardTitle class="flex items-center gap-2 text-sm font-semibold">
         <TerminalSquare class="h-4 w-4" />
-        自定义命令
+        {{ t("scripts.custom.title") }}
       </CardTitle>
       <Button size="sm" variant="outline" @click="openCreate">
         <Plus class="h-4 w-4" />
-        新建
+        {{ t("scripts.custom.new") }}
       </Button>
     </CardHeader>
     <CardContent>
       <p v-if="!commands.length" class="text-sm text-muted-foreground">
-        还没有自定义命令
+        {{ t("scripts.custom.empty") }}
       </p>
       <ScrollArea v-else class="max-h-[420px]">
         <div class="flex flex-col">
@@ -145,23 +147,23 @@ async function run(c: CustomCommand) {
   <Dialog v-model:open="dialogOpen">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>{{ editingId == null ? "新建命令" : "编辑命令" }}</DialogTitle>
+        <DialogTitle>{{ editingId == null ? t("scripts.custom.dialogNew") : t("scripts.custom.dialogEdit") }}</DialogTitle>
       </DialogHeader>
       <form class="flex flex-col gap-3" @submit.prevent="submit">
         <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">名称</label>
-          <Input v-model="formName" placeholder="例如: 启动后端" />
+          <label class="text-sm font-medium">{{ t("scripts.custom.nameLabel") }}</label>
+          <Input v-model="formName" :placeholder="t('scripts.custom.namePlaceholder')" />
         </div>
         <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">命令</label>
-          <Input v-model="formCommand" placeholder="例如: cargo run" class="font-mono" />
+          <label class="text-sm font-medium">{{ t("scripts.custom.commandLabel") }}</label>
+          <Input v-model="formCommand" :placeholder="t('scripts.custom.commandPlaceholder')" class="font-mono" />
         </div>
         <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">描述(可选)</label>
-          <Input v-model="formDescription" placeholder="命令用途说明" />
+          <label class="text-sm font-medium">{{ t("scripts.custom.descriptionLabel") }}</label>
+          <Input v-model="formDescription" :placeholder="t('scripts.custom.descriptionPlaceholder')" />
         </div>
         <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">图标(可选)</label>
+          <label class="text-sm font-medium">{{ t("scripts.custom.iconLabel") }}</label>
           <div class="grid grid-cols-8 gap-1">
             <button
               type="button"
@@ -171,7 +173,7 @@ async function run(c: CustomCommand) {
                   ? 'border-primary bg-accent text-foreground'
                   : 'border-transparent'
               "
-              title="无图标"
+              :title="t('scripts.custom.noIcon')"
               @click="formIcon = ''"
             >
               <Ban class="h-4 w-4" />
@@ -198,11 +200,10 @@ async function run(c: CustomCommand) {
             type="submit"
             :disabled="!formName.trim() || !formCommand.trim() || submitting"
           >
-            {{ submitting ? "保存中..." : "保存" }}
+            {{ submitting ? t("common.saving") : t("common.save") }}
           </Button>
         </DialogFooter>
       </form>
     </DialogContent>
   </Dialog>
 </template>
-

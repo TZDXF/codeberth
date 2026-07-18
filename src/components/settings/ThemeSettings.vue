@@ -1,21 +1,23 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import type { Component } from "vue";
 import { Check, Monitor, Moon, Sun } from "@lucide/vue";
 import { useSettingsStore, type ThemeMode } from "@/stores/settings";
 
+const { t } = useI18n();
 const store = useSettingsStore();
 
-const OPTIONS: { value: ThemeMode; label: string; description: string; icon: Component }[] = [
-  { value: "system", label: "跟随系统", description: "根据系统外观自动切换", icon: Monitor },
-  { value: "light", label: "亮色", description: "始终使用亮色主题", icon: Sun },
-  { value: "dark", label: "暗色", description: "始终使用暗色主题", icon: Moon },
+const OPTIONS: { value: ThemeMode; labelKey: string; descriptionKey: string; icon: Component }[] = [
+  { value: "system", labelKey: "settings.theme.system", descriptionKey: "settings.theme.systemDesc", icon: Monitor },
+  { value: "light", labelKey: "settings.theme.light", descriptionKey: "settings.theme.lightDesc", icon: Sun },
+  { value: "dark", labelKey: "settings.theme.dark", descriptionKey: "settings.theme.darkDesc", icon: Moon },
 ];
 </script>
 
 <template>
   <section>
-    <h2 class="text-base font-semibold">主题</h2>
-    <p class="mt-1 text-sm text-muted-foreground">选择应用的外观</p>
+    <h2 class="text-base font-semibold">{{ t("settings.general.theme") }}</h2>
+    <p class="mt-1 text-sm text-muted-foreground">{{ t("settings.general.themeDescription") }}</p>
     <div class="mt-4 flex flex-col gap-2">
       <button
         v-for="opt in OPTIONS"
@@ -27,8 +29,8 @@ const OPTIONS: { value: ThemeMode; label: string; description: string; icon: Com
       >
         <component :is="opt.icon" class="h-4 w-4 shrink-0 text-muted-foreground" />
         <span class="flex-1">
-          <span class="block text-sm font-medium">{{ opt.label }}</span>
-          <span class="block text-xs text-muted-foreground">{{ opt.description }}</span>
+          <span class="block text-sm font-medium">{{ t(opt.labelKey) }}</span>
+          <span class="block text-xs text-muted-foreground">{{ t(opt.descriptionKey) }}</span>
         </span>
         <Check v-if="store.theme === opt.value" class="h-4 w-4 shrink-0 text-primary" />
       </button>

@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { Copy, Minus, Square, X } from "@lucide/vue";
 
+const { t } = useI18n();
 const appWindow = getCurrentWindow();
 const isMaximized = ref(false);
 let unlistenResize: UnlistenFn | undefined;
@@ -37,19 +39,19 @@ function onDragRegionDblClick(event: MouseEvent) {
       data-tauri-drag-region
       class="flex flex-1 items-center gap-2 text-xs font-medium text-muted-foreground"
     >
-      <span class="pointer-events-none">ProjectDev</span>
+      <span class="pointer-events-none">{{ t("app.title") }}</span>
     </div>
     <div class="flex h-full items-stretch">
       <button
         class="flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        title="最小化"
+        :title="t('titleBar.minimize')"
         @click="appWindow.minimize()"
       >
         <Minus class="h-4 w-4" />
       </button>
       <button
         class="flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        :title="isMaximized ? '还原' : '最大化'"
+        :title="isMaximized ? t('titleBar.restore') : t('titleBar.maximize')"
         @click="appWindow.toggleMaximize()"
       >
         <Copy v-if="isMaximized" class="h-3.5 w-3.5" />
@@ -57,7 +59,7 @@ function onDragRegionDblClick(event: MouseEvent) {
       </button>
       <button
         class="flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-destructive hover:text-white"
-        title="关闭"
+        :title="t('titleBar.close')"
         @click="appWindow.close()"
       >
         <X class="h-4 w-4" />
