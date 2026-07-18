@@ -75,8 +75,8 @@ async function removeTag(tagId: number) {
         <DropdownMenuCheckboxItem
           v-for="tag in tagsStore.tags"
           :key="tag.id"
-          :checked="hasTag(tag.id)"
-          @update:checked="toggleTag(tag.id)"
+          :model-value="hasTag(tag.id)"
+          @update:model-value="toggleTag(tag.id)"
           @select.prevent
         >
           <span

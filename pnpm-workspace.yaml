@@ -1,4 +1,5 @@
+allowBuilds:
+  vue-demi: true
 ignoredBuiltDependencies:
   - esbuild
   - vue-demi
-
