@@ -1,11 +1,11 @@
 import { createRouter, createWebHashHistory } from "vue-router";
-import DetailPane from "@/components/layout/DetailPane.vue";
+import ProjectsHome from "@/views/ProjectsHome.vue";
+import ProjectDetail from "@/views/ProjectDetail.vue";
 
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: "/", name: "home", component: DetailPane },
-    { path: "/projects/:id", name: "project", component: DetailPane },
+    { path: "/", name: "home", component: ProjectsHome },
+    { path: "/projects/:id", name: "project", component: ProjectDetail },
   ],
 });
-

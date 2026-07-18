@@ -21,16 +21,53 @@ fn hidden(#[allow(unused_mut)] mut cmd: Command) -> Command {
 /// 在系统终端打开目录,可选执行命令(跑完不关窗口)
 #[cfg(windows)]
 pub fn spawn_terminal(path: &str, title: &str, command: Option<&str>) -> AppResult<()> {
+    // Windows `start` 命令的精确语法:`start ["<title>"] <command> [<args>...]`
+    // - start 后只能接一个可选的引号包裹的 title,不能加空标题占位;
+    //   否则 start 会把下一个 token 当成程序名去找,触发"找不到文件"。
+    // - title 之后必须紧跟真正的程序名(我们这里是 `cmd`)。
+    // - 必须用 raw_arg 直接控制命令行,因为 cmd.exe 不遵循 C runtime 转义规则,
+    //   Rust 的 CommandLineToArgvW 自动加引号/转义会破坏 start 的解析。
+    //   (见 Rust std::process::CommandExt::raw_arg 文档示例)
+    // - cmd /C 的命令行外面还要再包一层引号,这是 cmd.exe /C /K 的特殊要求。
+    //
+    // cmd 实际收到的命令行形如:
+    //   cmd /C "start "Terminal" cmd /K cd /d "D:\path" && npm run dev""
+    //
+    // CREATE_NEW_CONSOLE(0x00000010):Tauri 主进程是 GUI subsystem,没有自己的控制台。
+    // 默认情况下 CreateProcess 给子进程不分配新控制台,导致 cmd 进程"无窗口运行"。
+    // 加 CREATE_NEW_CONSOLE 强制给 cmd 分配一个全新控制台,start 弹出的窗口才会真正可见。
+    let inner_cmdline = build_windows_cmdline(path, title, command);
+    let cmdline = format!("\"{inner_cmdline}\"");
+    use std::os::windows::process::CommandExt;
+    Command::new("cmd")
+        .creation_flags(CREATE_NEW_CONSOLE)
+        .raw_arg(&cmdline)
+        .spawn()?;
+    Ok(())
+}
+
+/// 给 cmd.exe 用的 CREATE_NEW_CONSOLE 标志常量
+/// (不放在 hidden() 里,因为 open_vscode / probe_vscode 不需要新控制台)
+#[cfg(windows)]
+const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+
+/// 构造 `start "<title>" cmd /K <inner>` 这一段命令行
+/// (注意:不含外层 cmd.exe 包装,因为外层包装在 spawn_terminal 中用 raw_arg 完成)
+#[cfg(windows)]
+fn build_windows_cmdline(path: &str, title: &str, command: Option<&str>) -> String {
+    // 剥掉 title / path 中的双引号,避免出现奇数个引号打乱 cmd 解析
     let title = title.replace('"', "");
+    let path = path.replace('"', "");
     let inner = match command {
         Some(c) => format!("cd /d \"{path}\" && {c}"),
         None => format!("cd /d \"{path}\""),
     };
-    // 新 cmd 读注册表用户 PATH,覆盖 nvm 等场景
-    hidden(Command::new("cmd"))
-        .args(["/C", "start", &title, "cmd", "/K", &inner])
-        .spawn()?;
-    Ok(())
+    // start 的语法:`start "<title>" cmd /K <inner>`
+    // - title 用引号包裹,start 把它当作新窗口的标题栏字符串;
+    // - 紧跟的 `cmd` 才是 start 要执行的真正程序;
+    // - 注意不要加空标题占位(`start ""`),那会让 start 把第二个 token
+    //   `"<title>"` 当成程序名去找,触发"找不到文件 <title>"。
+    format!("start \"{title}\" cmd /K {inner}")
 }
 
 #[cfg(target_os = "macos")]
@@ -136,5 +173,41 @@ mod tests {
     #[test]
     fn probe_vscode_does_not_panic() {
         let _available = probe_vscode();
+    }
+
+    /// 回归测试:确保 Windows 下 `start` 命令行使用 `start "<title>" cmd /K <inner>`
+    /// 这种精确形式——start 后面只能接一个可选的引号包裹的 title,紧跟真正的程序名 cmd。
+    /// 否则 start 会把 `<title>` 当成可执行文件名去找,触发
+    /// "Windows 找不到文件 'Terminal'" / Microsoft Store 提示。
+    #[cfg(windows)]
+    #[test]
+    fn windows_cmdline_quote_title() {
+        let s = build_windows_cmdline(r"D:\code\foo bar", "Terminal", None);
+        // 关键结构:start "<title>" cmd /K <inner>(中间不能有空标题占位)
+        assert_eq!(s, "start \"Terminal\" cmd /K cd /d \"D:\\code\\foo bar\"");
+        // 严禁空标题占位:这会让 start 把 "Terminal" 当成程序名去找
+        assert!(!s.contains("start \"\""));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_cmdline_with_command() {
+        let s = build_windows_cmdline(
+            r"D:\code\foo",
+            "Project: my-app",
+            Some("npm run dev"),
+        );
+        assert_eq!(
+            s,
+            "start \"Project: my-app\" cmd /K cd /d \"D:\\code\\foo\" && npm run dev"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_cmdline_strip_inner_quotes() {
+        // path 含双引号时,必须被剥掉,否则外层 cd /d 会出现奇数个引号
+        let s = build_windows_cmdline(r#"D:\weird"path"#, "Terminal", None);
+        assert_eq!(s, "start \"Terminal\" cmd /K cd /d \"D:\\weirdpath\"");
     }
 }

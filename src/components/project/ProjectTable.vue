@@ -1,0 +1,124 @@
+<script setup lang="ts">
+import { useRouter } from "vue-router";
+import { toast } from "vue-sonner";
+import { GitBranch, X } from "@lucide/vue";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
+import { useProjectsStore } from "@/stores/projects";
+import type { Project } from "@/types";
+
+defineProps<{ projects: Project[] }>();
+
+const router = useRouter();
+const store = useProjectsStore();
+
+function open(id: number) {
+  router.push(`/projects/${id}`);
+}
+
+async function remove(project: Project) {
+  if (!window.confirm(`确定删除项目「${project.name}」吗?(不会删除磁盘文件)`)) return;
+  try {
+    await store.deleteProject(project.id);
+    toast.success(`已删除项目「${project.name}」`);
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+</script>
+
+<template>
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b text-left text-xs text-muted-foreground">
+        <th class="px-4 py-2 font-medium">名称</th>
+        <th class="px-3 py-2 font-medium">路径</th>
+        <th class="px-3 py-2 font-medium">分支</th>
+        <th class="px-3 py-2 font-medium">工作区</th>
+        <th class="px-3 py-2 font-medium">标签</th>
+        <th class="w-36 px-3 py-2 text-right font-medium">操作</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr
+        v-for="p in projects"
+        :key="p.id"
+        class="group cursor-pointer border-b transition-colors last:border-0 hover:bg-accent/60"
+        @click="open(p.id)"
+      >
+        <td class="max-w-48 px-4 py-2">
+          <span class="block truncate font-medium" :title="p.name">{{ p.name }}</span>
+          <span
+            v-if="p.description"
+            class="block truncate text-xs text-muted-foreground"
+            :title="p.description"
+          >
+            {{ p.description }}
+          </span>
+        </td>
+        <td class="max-w-64 px-3 py-2">
+          <span class="block truncate font-mono text-xs text-muted-foreground" :title="p.path">
+            {{ p.path }}
+          </span>
+        </td>
+        <td class="px-3 py-2">
+          <span
+            v-if="p.git?.is_repo"
+            class="flex items-center gap-1 whitespace-nowrap text-xs"
+          >
+            <GitBranch class="h-3 w-3 shrink-0 text-muted-foreground" />
+            <span class="max-w-28 truncate" :title="p.git.branch ?? ''">
+              {{ p.git.branch ?? "未知" }}
+            </span>
+          </span>
+          <span v-else class="text-xs text-muted-foreground">-</span>
+        </td>
+        <td class="px-3 py-2">
+          <span v-if="p.git?.is_repo" class="flex items-center gap-2 text-xs whitespace-nowrap">
+            <span v-if="p.git.staged" class="text-emerald-600">+{{ p.git.staged }}</span>
+            <span v-if="p.git.modified" class="text-amber-600">~{{ p.git.modified }}</span>
+            <span v-if="p.git.untracked" class="text-sky-600">?{{ p.git.untracked }}</span>
+            <span v-if="p.git.remote_ahead" class="text-amber-600" title="远端领先">
+              ↓{{ p.git.remote_ahead }}
+            </span>
+            <span
+              v-if="!p.git.staged && !p.git.modified && !p.git.untracked && !p.git.remote_ahead"
+              class="text-muted-foreground"
+            >
+              干净
+            </span>
+          </span>
+          <span v-else class="text-xs text-muted-foreground">-</span>
+        </td>
+        <td class="max-w-48 px-3 py-2">
+          <div v-if="p.tags.length" class="flex flex-wrap gap-1">
+            <Badge
+              v-for="tag in p.tags"
+              :key="tag.id"
+              variant="secondary"
+              class="px-1.5 py-0 text-[11px]"
+              :style="{ backgroundColor: tag.color + '22', color: tag.color }"
+            >
+              {{ tag.name }}
+            </Badge>
+          </div>
+        </td>
+        <td class="px-3 py-1.5" @click.stop>
+          <div class="flex items-center justify-end">
+            <OpenWithMenu :project="p" compact />
+            <Button
+              variant="ghost"
+              size="icon"
+              class="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
+              title="删除项目"
+              @click="remove(p)"
+            >
+              <X class="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</template>

@@ -5,11 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
-  DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import TagCheckList from "@/components/tags/TagCheckList.vue";
 import TagManager from "@/components/tags/TagManager.vue";
 import { useProjectsStore } from "@/stores/projects";
 import { useTagsStore } from "@/stores/tags";
@@ -71,26 +71,12 @@ async function removeTag(tagId: number) {
           编辑标签
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start">
-        <DropdownMenuCheckboxItem
-          v-for="tag in tagsStore.tags"
-          :key="tag.id"
-          :model-value="hasTag(tag.id)"
-          @update:model-value="toggleTag(tag.id)"
-          @select.prevent
-        >
-          <span
-            class="mr-1 h-2.5 w-2.5 rounded-full"
-            :style="{ backgroundColor: tag.color }"
-          />
-          {{ tag.name }}
-        </DropdownMenuCheckboxItem>
-        <p
-          v-if="!tagsStore.tags.length"
-          class="px-2 py-1.5 text-xs text-muted-foreground"
-        >
-          还没有标签,先创建一个
-        </p>
+      <DropdownMenuContent align="start" class="w-52">
+        <TagCheckList
+          :tags="tagsStore.tags"
+          :checked-ids="project.tags.map((t) => t.id)"
+          @toggle="toggleTag"
+        />
         <DropdownMenuSeparator />
         <TagManager @refresh-projects="projectsStore.fetchProjects()">
           <Button variant="ghost" size="sm" class="h-7 w-full justify-start gap-2 px-2 text-xs">

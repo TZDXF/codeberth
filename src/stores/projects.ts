@@ -35,6 +35,12 @@ export const useProjectsStore = defineStore("projects", () => {
     fetchProjects();
   }
 
+  function clearTagFilters() {
+    if (!selectedTagIds.value.length) return;
+    selectedTagIds.value = [];
+    fetchProjects();
+  }
+
   /** 重新拉取单个项目(保留已有的 git 状态,后端不返回) */
   async function refreshProject(id: number) {
     const fresh = await cmd<Project>("get_project", { id });
@@ -110,6 +116,7 @@ export const useProjectsStore = defineStore("projects", () => {
     fetchProjects,
     setQuery,
     toggleTagFilter,
+    clearTagFilters,
     refreshProject,
     addProject,
     updateProject,

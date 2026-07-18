@@ -12,7 +12,9 @@ import {
 import { cmd } from "@/lib/tauri";
 import type { EditorKind, Project } from "@/types";
 
-const props = defineProps<{ project: Project }>();
+const props = withDefaults(defineProps<{ project: Project; compact?: boolean }>(), {
+  compact: false,
+});
 
 const vscodeAvailable = ref<boolean | null>(null);
 
@@ -35,39 +37,50 @@ async function openWith(kind: EditorKind) {
 
 <template>
   <TooltipProvider :delay-duration="300">
-    <div class="flex items-center gap-2">
+    <div class="flex items-center" :class="compact ? 'gap-1' : 'gap-2'">
       <Tooltip>
         <TooltipTrigger as-child>
-          <span>
+          <span class="inline-flex">
             <Button
-              variant="outline"
-              size="sm"
+              :variant="compact ? 'ghost' : 'outline'"
+              :size="compact ? 'icon' : 'sm'"
+              :class="compact && 'h-7 w-7'"
               :disabled="vscodeAvailable === false"
-              @click="openWith('vscode')"
+              @click.stop="openWith('vscode')"
             >
-              <Code class="h-4 w-4" />
-              VSCode
+              <Code :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
+              <template v-if="!compact">VSCode</template>
             </Button>
           </span>
         </TooltipTrigger>
-        <TooltipContent v-if="vscodeAvailable === false">
-          未检测到 VSCode(code 命令不可用)
+        <TooltipContent>
+          {{ vscodeAvailable === false ? "未检测到 VSCode(code 命令不可用)" : "在 VSCode 中打开" }}
         </TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger as-child>
-          <Button variant="outline" size="sm" @click="openWith('explorer')">
-            <FolderOpen class="h-4 w-4" />
-            资源管理器
+          <Button
+            :variant="compact ? 'ghost' : 'outline'"
+            :size="compact ? 'icon' : 'sm'"
+            :class="compact && 'h-7 w-7'"
+            @click.stop="openWith('explorer')"
+          >
+            <FolderOpen :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
+            <template v-if="!compact">资源管理器</template>
           </Button>
         </TooltipTrigger>
         <TooltipContent>在系统文件管理器中打开</TooltipContent>
       </Tooltip>
       <Tooltip>
         <TooltipTrigger as-child>
-          <Button variant="outline" size="sm" @click="openWith('terminal')">
-            <Terminal class="h-4 w-4" />
-            终端
+          <Button
+            :variant="compact ? 'ghost' : 'outline'"
+            :size="compact ? 'icon' : 'sm'"
+            :class="compact && 'h-7 w-7'"
+            @click.stop="openWith('terminal')"
+          >
+            <Terminal :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
+            <template v-if="!compact">终端</template>
           </Button>
         </TooltipTrigger>
         <TooltipContent>在系统终端中打开该目录</TooltipContent>
@@ -75,4 +88,3 @@ async function openWith(kind: EditorKind) {
     </div>
   </TooltipProvider>
 </template>
-

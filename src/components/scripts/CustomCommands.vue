@@ -12,6 +12,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import ScriptItem from "@/components/scripts/ScriptItem.vue";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { CustomCommand, Project } from "@/types";
@@ -117,19 +118,21 @@ async function run(c: CustomCommand) {
       <p v-if="!commands.length" class="text-sm text-muted-foreground">
         还没有自定义命令
       </p>
-      <div v-else class="flex flex-col">
-        <ScriptItem
-          v-for="c in commands"
-          :key="c.id"
-          :name="c.name"
-          :command="c.command"
-          :description="c.description"
-          editable
-          @run="run(c)"
-          @edit="openEdit(c)"
-          @delete="remove(c)"
-        />
-      </div>
+      <ScrollArea v-else class="max-h-[420px]">
+        <div class="flex flex-col">
+          <ScriptItem
+            v-for="c in commands"
+            :key="c.id"
+            :name="c.name"
+            :command="c.command"
+            :description="c.description"
+            editable
+            @run="run(c)"
+            @edit="openEdit(c)"
+            @delete="remove(c)"
+          />
+        </div>
+      </ScrollArea>
     </CardContent>
   </Card>
 

@@ -3,6 +3,7 @@ import { ref, watch } from "vue";
 import { toast } from "vue-sonner";
 import { Package } from "@lucide/vue";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import ScriptItem from "@/components/scripts/ScriptItem.vue";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { PackageScript, Project } from "@/types";
@@ -52,15 +53,17 @@ async function run(script: PackageScript) {
       <p v-else-if="!scripts.length" class="text-sm text-muted-foreground">
         未找到 package.json 或没有 scripts
       </p>
-      <div v-else class="flex flex-col">
-        <ScriptItem
-          v-for="s in scripts"
-          :key="s.name"
-          :name="s.name"
-          :command="s.command"
-          @run="run(s)"
-        />
-      </div>
+      <ScrollArea v-else class="max-h-[420px]">
+        <div class="flex flex-col">
+          <ScriptItem
+            v-for="s in scripts"
+            :key="s.name"
+            :name="s.name"
+            :command="s.command"
+            @run="run(s)"
+          />
+        </div>
+      </ScrollArea>
     </CardContent>
   </Card>
 </template>
