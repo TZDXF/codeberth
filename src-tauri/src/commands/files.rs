@@ -73,12 +73,34 @@ pub fn read_readme(path: String) -> AppResult<Option<ReadmeContent>> {
     Ok(Some(ReadmeContent { file_name, content }))
 }
 
+/// 解析 compose 文件中的 services 列表;解析失败或没有 services 返回空列表
+fn parse_services(content: &str) -> Vec<String> {
+    let Ok(yaml) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(content) else {
+        return vec![];
+    };
+    yaml.get("services")
+        .and_then(|s| s.as_mapping())
+        .map(|m| {
+            m.keys()
+                .filter_map(|k| k.as_str().map(String::from))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 /// 检测项目内 Docker Compose 文件;不存在时返回 None
 #[tauri::command]
 pub fn detect_compose_file(path: String) -> AppResult<Option<ComposeFile>> {
     ensure_dir(&path)?;
     let dir = Path::new(&path);
-    Ok(find_file(dir, COMPOSE_CANDIDATES).map(|file_name| ComposeFile { file_name }))
+    let Some(file_name) = find_file(dir, COMPOSE_CANDIDATES) else {
+        return Ok(None);
+    };
+    // 读失败(编码问题等)不阻塞检测,只是没有服务列表
+    let services = std::fs::read_to_string(dir.join(&file_name))
+        .map(|c| parse_services(&c))
+        .unwrap_or_default();
+    Ok(Some(ComposeFile { file_name, services }))
 }
 
 #[cfg(test)]
@@ -148,6 +170,41 @@ mod tests {
             detect_compose_file(dir.clone()).unwrap().unwrap().file_name,
             "compose.yaml"
         );
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn compose_parses_services() {
+        let dir = temp_project_dir("services");
+        let p = Path::new(&dir);
+
+        fs::write(
+            p.join("docker-compose.yml"),
+            r#"
+version: "3"
+services:
+  web:
+    build: .
+    ports: ["8080:80"]
+  db:
+    image: postgres:16
+  cache:
+    image: redis:7
+"#,
+        )
+        .unwrap();
+        let c = detect_compose_file(dir.clone()).unwrap().unwrap();
+        assert_eq!(c.services, vec!["web", "db", "cache"]);
+
+        // 无 services 字段 / 非法 YAML -> 空列表,不影响检测
+        fs::write(p.join("docker-compose.yml"), "name: demo\n").unwrap();
+        let c = detect_compose_file(dir.clone()).unwrap().unwrap();
+        assert!(c.services.is_empty());
+
+        fs::write(p.join("docker-compose.yml"), "services: [not a map").unwrap();
+        let c = detect_compose_file(dir.clone()).unwrap().unwrap();
+        assert!(c.services.is_empty());
 
         let _ = fs::remove_dir_all(&dir);
     }

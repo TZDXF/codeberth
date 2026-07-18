@@ -50,6 +50,7 @@ export interface ReadmeContent {
 
 export interface ComposeFile {
   file_name: string;
+  services: string[];
 }
 
 export type EditorKind = "vscode" | "explorer" | "terminal";
