@@ -23,6 +23,7 @@ export interface Project {
   description: string;
   tags: Tag[];
   git: GitStatus | null;
+  archived_at: number | null;
   created_at: number;
   updated_at: number;
 }

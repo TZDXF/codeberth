@@ -16,6 +16,12 @@ export const useTagsStore = defineStore("tags", () => {
     return tag;
   }
 
+  async function updateTag(id: number, name: string, color: string) {
+    const tag = await cmd<Tag>("update_tag", { id, name, color });
+    await fetchTags();
+    return tag;
+  }
+
   async function deleteTag(id: number) {
     await cmd("delete_tag", { id });
     await fetchTags();
@@ -25,6 +31,6 @@ export const useTagsStore = defineStore("tags", () => {
     await cmd("set_project_tags", { projectId, tagIds });
   }
 
-  return { tags, fetchTags, createTag, deleteTag, setProjectTags };
+  return { tags, fetchTags, createTag, updateTag, deleteTag, setProjectTags };
 });
 

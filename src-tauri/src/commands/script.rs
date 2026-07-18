@@ -285,7 +285,9 @@ mod tests {
         ));
 
         create_command(&conn, pid, "a", "b", "").unwrap();
-        project::delete(&conn, pid).unwrap();
+        // 项目已无删除入口(仅归档),这里用原生 SQL 验证 schema 的外键级联仍然有效
+        conn.execute("DELETE FROM projects WHERE id = ?1", [pid])
+            .unwrap();
         assert!(list_commands(&conn, pid).unwrap().is_empty());
     }
 }

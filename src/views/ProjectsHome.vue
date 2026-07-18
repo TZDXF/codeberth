@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ArrowDownUp, LayoutGrid, List, Plus, Search, Settings2, Tags, X } from "@lucide/vue";
+import { useRouter } from "vue-router";
+import { ArrowDownUp, LayoutGrid, List, Plus, Search, Settings, Settings2, Tags, X } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -25,6 +26,7 @@ type SortKey = "name" | "updated" | "created";
 
 const store = useProjectsStore();
 const tagsStore = useTagsStore();
+const router = useRouter();
 
 // 搜索(防抖,逻辑同原 Sidebar)
 const searchInput = ref(store.query);
@@ -174,6 +176,15 @@ const sortedProjects = computed(() => {
             添加项目
           </Button>
         </AddProjectDialog>
+        <Button
+          variant="outline"
+          size="icon"
+          class="h-8 w-8"
+          title="设置"
+          @click="router.push('/settings')"
+        >
+          <Settings class="h-3.5 w-3.5" />
+        </Button>
       </div>
     </header>
 

@@ -105,8 +105,9 @@ export const useProjectsStore = defineStore("projects", () => {
     return project;
   }
 
-  async function deleteProject(id: number) {
-    await cmd("delete_project", { id });
+  /** 归档项目:软删除,历史数据保留;归档后不再展示、不再获取 git 状态 */
+  async function archiveProject(id: number) {
+    await cmd("archive_project", { id });
     projects.value = projects.value.filter((p) => p.id !== id);
   }
 
@@ -135,7 +136,7 @@ export const useProjectsStore = defineStore("projects", () => {
     refreshProject,
     addProject,
     updateProject,
-    deleteProject,
+    archiveProject,
     refreshGitStatus,
     triggerRemoteFetch,
     updateGitRemote,

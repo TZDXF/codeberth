@@ -12,6 +12,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_store::Builder::new().build())
         .setup(|app| {
             // 数据库文件: %APPDATA%/com.projectdev.app/projects.db
             // (Mac: ~/Library/Application Support/com.projectdev.app/projects.db)
@@ -25,13 +26,14 @@ pub fn run() {
             commands::project::list_projects,
             commands::project::get_project,
             commands::project::update_project,
-            commands::project::delete_project,
+            commands::project::archive_project,
             commands::git::get_git_status,
             commands::git::fetch_git_remote_async,
             commands::open::open_with,
             commands::open::detect_vscode,
             commands::tag::list_tags,
             commands::tag::create_tag,
+            commands::tag::update_tag,
             commands::tag::delete_tag,
             commands::tag::set_project_tags,
             commands::script::list_package_scripts,

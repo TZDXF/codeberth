@@ -3,13 +3,16 @@ import { onMounted } from "vue";
 import { Toaster } from "@/components/ui/sonner";
 import { onListen } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
+import { useSettingsStore } from "@/stores/settings";
 import { useTagsStore } from "@/stores/tags";
 import type { GitUpdatedPayload } from "@/types";
 
 const store = useProjectsStore();
 const tagsStore = useTagsStore();
+const settingsStore = useSettingsStore();
 
 onMounted(() => {
+  settingsStore.init();
   store.fetchProjects();
   tagsStore.fetchTags();
   onListen<GitUpdatedPayload>("git://updated", (payload) => {

@@ -1,30 +1,16 @@
 <script setup lang="ts">
 import { useRouter } from "vue-router";
-import { toast } from "vue-sonner";
-import { GitBranch, X } from "@lucide/vue";
+import { GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
-import { useProjectsStore } from "@/stores/projects";
+import ProjectActionsMenu from "@/components/project/ProjectActionsMenu.vue";
 import type { Project } from "@/types";
 
 defineProps<{ projects: Project[] }>();
 
 const router = useRouter();
-const store = useProjectsStore();
 
 function open(id: number) {
   router.push(`/projects/${id}`);
-}
-
-async function remove(project: Project) {
-  if (!window.confirm(`确定删除项目「${project.name}」吗?(不会删除磁盘文件)`)) return;
-  try {
-    await store.deleteProject(project.id);
-    toast.success(`已删除项目「${project.name}」`);
-  } catch (e) {
-    toast.error(String(e));
-  }
 }
 </script>
 
@@ -37,7 +23,7 @@ async function remove(project: Project) {
         <th class="px-3 py-2 font-medium">分支</th>
         <th class="px-3 py-2 font-medium">工作区</th>
         <th class="px-3 py-2 font-medium">标签</th>
-        <th class="w-36 px-3 py-2 text-right font-medium">操作</th>
+        <th class="w-14 px-3 py-2 text-right font-medium">操作</th>
       </tr>
     </thead>
     <tbody>
@@ -106,16 +92,7 @@ async function remove(project: Project) {
         </td>
         <td class="px-3 py-1.5" @click.stop>
           <div class="flex items-center justify-end">
-            <OpenWithMenu :project="p" compact />
-            <Button
-              variant="ghost"
-              size="icon"
-              class="h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
-              title="删除项目"
-              @click="remove(p)"
-            >
-              <X class="h-3.5 w-3.5" />
-            </Button>
+            <ProjectActionsMenu :project="p" />
           </div>
         </td>
       </tr>

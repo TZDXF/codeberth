@@ -28,6 +28,7 @@ pub struct Project {
     pub description: String,
     pub tags: Vec<Tag>,
     pub git: Option<GitStatus>,
+    pub archived_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }

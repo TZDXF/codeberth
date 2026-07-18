@@ -14,11 +14,12 @@ struct ProjectRow {
     path: String,
     name: String,
     description: String,
+    archived_at: Option<i64>,
     created_at: i64,
     updated_at: i64,
 }
 
-const PROJECT_COLS: &str = "id, path, name, description, created_at, updated_at";
+const PROJECT_COLS: &str = "id, path, name, description, archived_at, created_at, updated_at";
 
 fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRow> {
     Ok(ProjectRow {
@@ -26,8 +27,9 @@ fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRow> {
         path: r.get(1)?,
         name: r.get(2)?,
         description: r.get(3)?,
-        created_at: r.get(4)?,
-        updated_at: r.get(5)?,
+        archived_at: r.get(4)?,
+        created_at: r.get(5)?,
+        updated_at: r.get(6)?,
     })
 }
 
@@ -58,6 +60,7 @@ fn with_tags(conn: &Connection, row: ProjectRow) -> AppResult<Project> {
         description: row.description,
         tags,
         git: None,
+        archived_at: row.archived_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
     })
@@ -103,7 +106,8 @@ pub fn list(
     tag_ids: Option<Vec<i64>>,
 ) -> AppResult<Vec<Project>> {
     let mut sql = format!("SELECT {PROJECT_COLS} FROM projects");
-    let mut conditions: Vec<String> = Vec::new();
+    // 归档项目不出现在列表中(数据保留,但不展示、不获取 git 状态)
+    let mut conditions: Vec<String> = vec!["archived_at IS NULL".to_string()];
     let mut binds: Vec<Box<dyn ToSql>> = Vec::new();
 
     if let Some(q) = query.filter(|q| !q.trim().is_empty()) {
@@ -149,8 +153,12 @@ pub fn update(conn: &Connection, id: i64, name: &str, description: &str) -> AppR
     get(conn, id)
 }
 
-pub fn delete(conn: &Connection, id: i64) -> AppResult<()> {
-    let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+/// 归档项目:软删除,保留历史数据(标签、自定义命令等关联数据不动)
+pub fn archive(conn: &Connection, id: i64) -> AppResult<()> {
+    let changed = conn.execute(
+        "UPDATE projects SET archived_at = ?1 WHERE id = ?2",
+        params![now(), id],
+    )?;
     if changed == 0 {
         return Err(AppError::NotFound(format!("project {id}")));
     }
@@ -194,9 +202,9 @@ pub fn update_project(
 }
 
 #[tauri::command]
-pub fn delete_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
+pub fn archive_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
     let conn = db.0.lock().unwrap();
-    delete(&conn, id)
+    archive(&conn, id)
 }
 
 #[cfg(test)]
@@ -211,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn add_get_list_delete_roundtrip() {
+    fn archive_hides_from_list_but_keeps_data() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
 
@@ -219,6 +227,7 @@ mod tests {
         assert_eq!(p.name, "demo");
         assert!(p.tags.is_empty());
         assert!(p.git.is_none());
+        assert!(p.archived_at.is_none());
 
         let fetched = get(&conn, p.id).unwrap();
         assert_eq!(fetched.path, p.path);
@@ -226,9 +235,13 @@ mod tests {
         let all = list(&conn, None, None).unwrap();
         assert_eq!(all.len(), 1);
 
-        delete(&conn, p.id).unwrap();
-        assert!(matches!(get(&conn, p.id), Err(AppError::NotFound(_))));
-        assert!(matches!(delete(&conn, p.id), Err(AppError::NotFound(_))));
+        archive(&conn, p.id).unwrap();
+        // 归档后不再出现在列表中,但数据保留(get 仍可取到)
+        assert!(list(&conn, None, None).unwrap().is_empty());
+        let archived = get(&conn, p.id).unwrap();
+        assert!(archived.archived_at.is_some());
+
+        assert!(matches!(archive(&conn, 9999), Err(AppError::NotFound(_))));
     }
 
     #[test]

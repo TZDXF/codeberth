@@ -67,6 +67,35 @@ pub fn remove(conn: &Connection, id: i64) -> AppResult<()> {
     Ok(())
 }
 
+pub fn update(conn: &Connection, id: i64, name: &str, color: &str) -> AppResult<Tag> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(AppError::Invalid("标签名不能为空".into()));
+    }
+    let color = validate_color(color)?;
+    let changed = conn
+        .execute(
+            "UPDATE tags SET name = ?1, color = ?2 WHERE id = ?3",
+            params![name, color, id],
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::SqliteFailure(err, _)
+                if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                AppError::Conflict(format!("标签已存在: {name}"))
+            }
+            other => AppError::Db(other),
+        })?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("tag {id}")));
+    }
+    Ok(Tag {
+        id,
+        name: name.to_string(),
+        color,
+    })
+}
+
 pub fn apply_project_tags(conn: &Connection, project_id: i64, tag_ids: &[i64]) -> AppResult<()> {
     let exists: bool = conn.query_row(
         "SELECT COUNT(*) > 0 FROM projects WHERE id = ?1",
@@ -113,6 +142,12 @@ pub fn delete_tag(db: State<'_, Db>, id: i64) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub fn update_tag(db: State<'_, Db>, id: i64, name: String, color: String) -> AppResult<Tag> {
+    let conn = db.0.lock().unwrap();
+    update(&conn, id, &name, &color)
+}
+
+#[tauri::command]
 pub fn set_project_tags(db: State<'_, Db>, project_id: i64, tag_ids: Vec<i64>) -> AppResult<()> {
     let conn = db.0.lock().unwrap();
     apply_project_tags(&conn, project_id, &tag_ids)
@@ -153,6 +188,39 @@ mod tests {
         create(&conn, "work", "").unwrap();
         assert!(matches!(
             create(&conn, "work", "#fff"),
+            Err(AppError::Conflict(_))
+        ));
+    }
+
+    #[test]
+    fn update_renames_and_recolors() {
+        let conn = test_conn();
+        let t = create(&conn, "work", "").unwrap();
+
+        let t2 = update(&conn, t.id, "job", "#22c55e").unwrap();
+        assert_eq!(t2.id, t.id);
+        assert_eq!(t2.name, "job");
+        assert_eq!(t2.color, "#22c55e");
+        assert_eq!(all(&conn).unwrap()[0].name, "job");
+
+        // 不存在的 tag
+        assert!(matches!(
+            update(&conn, 9999, "x", ""),
+            Err(AppError::NotFound(_))
+        ));
+        // 空名称 / 非法颜色
+        assert!(matches!(
+            update(&conn, t.id, " ", ""),
+            Err(AppError::Invalid(_))
+        ));
+        assert!(matches!(
+            update(&conn, t.id, "x", "red"),
+            Err(AppError::Invalid(_))
+        ));
+        // 重名冲突
+        create(&conn, "other", "").unwrap();
+        assert!(matches!(
+            update(&conn, t.id, "other", ""),
             Err(AppError::Conflict(_))
         ));
     }

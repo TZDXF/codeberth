@@ -3,6 +3,7 @@ CREATE TABLE IF NOT EXISTS projects (
     path        TEXT NOT NULL UNIQUE,
     name        TEXT NOT NULL,
     description TEXT NOT NULL DEFAULT '',
+    archived_at INTEGER,
     created_at  INTEGER NOT NULL,
     updated_at  INTEGER NOT NULL
 );

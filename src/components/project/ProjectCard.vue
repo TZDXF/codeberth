@@ -1,30 +1,16 @@
 <script setup lang="ts">
 import { useRouter } from "vue-router";
-import { toast } from "vue-sonner";
-import { GitBranch, X } from "@lucide/vue";
+import { GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
-import { useProjectsStore } from "@/stores/projects";
+import ProjectActionsMenu from "@/components/project/ProjectActionsMenu.vue";
 import type { Project } from "@/types";
 
 const props = defineProps<{ project: Project }>();
 
 const router = useRouter();
-const store = useProjectsStore();
 
 function open() {
   router.push(`/projects/${props.project.id}`);
-}
-
-async function remove() {
-  if (!window.confirm(`确定删除项目「${props.project.name}」吗?(不会删除磁盘文件)`)) return;
-  try {
-    await store.deleteProject(props.project.id);
-    toast.success(`已删除项目「${props.project.name}」`);
-  } catch (e) {
-    toast.error(String(e));
-  }
 }
 </script>
 
@@ -38,16 +24,7 @@ async function remove() {
       <div
         class="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
       >
-        <OpenWithMenu :project="project" compact />
-        <Button
-          variant="ghost"
-          size="icon"
-          class="h-7 w-7"
-          title="删除项目"
-          @click.stop="remove"
-        >
-          <X class="h-3.5 w-3.5" />
-        </Button>
+        <ProjectActionsMenu :project="project" />
       </div>
     </div>
     <p
