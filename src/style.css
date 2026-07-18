@@ -8,7 +8,7 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    --font-sans: var(--font-app);
     --font-heading: var(--font-sans);
     --color-sidebar-ring: var(--sidebar-ring);
     --color-sidebar-border: var(--sidebar-border);
@@ -48,6 +48,7 @@
 }
 
 :root {
+    --font-app: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
     --background: oklch(1 0 0);
     --foreground: oklch(0.145 0 0);
     --card: oklch(1 0 0);
@@ -116,6 +117,74 @@
     --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* ===== Animal Island skin（动森小岛）===== */
+/* 参考 animal-island 设计令牌：奶油底、暖棕字、青绿主色、大圆角 */
+[data-theme="island"] {
+    --font-app: "Nunito", "Zen Maru Gothic", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --background: #f8f8f0;
+    --foreground: #794f27;
+    --card: #f7f3df;
+    --card-foreground: #794f27;
+    --popover: #fdfaf0;
+    --popover-foreground: #794f27;
+    --primary: #19c8b9;
+    --primary-foreground: #ffffff;
+    --secondary: #f0e8d8;
+    --secondary-foreground: #794f27;
+    --muted: #f0e8d8;
+    --muted-foreground: #9f927d;
+    --accent: #e6f9f6;
+    --accent-foreground: #12695f;
+    --destructive: #e05a5a;
+    --border: #e8e2d6;
+    --input: #e0d8c4;
+    --ring: #19c8b9;
+    --chart-1: #19c8b9;
+    --chart-2: #6fba2c;
+    --chart-3: #f5c31c;
+    --chart-4: #f8a6b2;
+    --chart-5: #e05a5a;
+    --radius: 1.125rem;
+    --sidebar: #f0e8d8;
+    --sidebar-foreground: #794f27;
+    --sidebar-primary: #19c8b9;
+    --sidebar-primary-foreground: #ffffff;
+    --sidebar-accent: #e6f9f6;
+    --sidebar-accent-foreground: #12695f;
+    --sidebar-border: #e8e2d6;
+    --sidebar-ring: #19c8b9;
+}
+
+/* 动森暗色：原项目无暗色，按保色相、降明度、暖色调原则推导 */
+[data-theme="island"].dark {
+    --background: #2b241b;
+    --foreground: #efe6d2;
+    --card: #362d1f;
+    --card-foreground: #efe6d2;
+    --popover: #33291c;
+    --popover-foreground: #efe6d2;
+    --primary: #22cfc0;
+    --primary-foreground: #08332e;
+    --secondary: #40362a;
+    --secondary-foreground: #efe6d2;
+    --muted: #40362a;
+    --muted-foreground: #a89878;
+    --accent: #1d4a44;
+    --accent-foreground: #7fe8dc;
+    --destructive: #e87878;
+    --border: #4d4130;
+    --input: #554834;
+    --ring: #22cfc0;
+    --sidebar: #241e15;
+    --sidebar-foreground: #efe6d2;
+    --sidebar-primary: #22cfc0;
+    --sidebar-primary-foreground: #08332e;
+    --sidebar-accent: #1d4a44;
+    --sidebar-accent-foreground: #7fe8dc;
+    --sidebar-border: #4d4130;
+    --sidebar-ring: #22cfc0;
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -123,5 +192,57 @@
   body {
     @apply bg-background text-foreground;
     @apply font-sans;
+    }
+
+  /* ===== Animal Island 风味细节 ===== */
+  /* 奶油底上的圆点阵纹理（动森标志性 polka dot） */
+  [data-theme="island"] body {
+    background-image: radial-gradient(circle, rgba(196, 184, 158, 0.18) 1.5px, transparent 1.5px);
+    background-size: 28px 28px;
+    }
+  [data-theme="island"].dark body {
+    background-image: radial-gradient(circle, rgba(239, 230, 210, 0.05) 1.5px, transparent 1.5px);
+    }
+
+  /* 胶囊按钮 */
+  [data-theme="island"] [data-slot="button"] {
+    border-radius: 9999px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+  /* primary 按钮：3D 实体按压感（底部暖棕硬影） */
+  [data-theme="island"] [data-slot="button"][data-variant="default"]:not(:disabled) {
+    box-shadow: 0 4px 0 0 #bdaea0;
+    }
+  [data-theme="island"] [data-slot="button"][data-variant="default"]:not(:disabled):hover {
+    transform: translateY(-1px);
+    box-shadow: 0 5px 0 0 #bdaea0;
+    }
+  [data-theme="island"] [data-slot="button"][data-variant="default"]:not(:disabled):active {
+    transform: translateY(2px);
+    box-shadow: 0 1px 0 0 #bdaea0;
+    }
+  [data-theme="island"].dark [data-slot="button"][data-variant="default"]:not(:disabled) {
+    box-shadow: 0 4px 0 0 rgba(0, 0, 0, 0.45);
+    }
+  [data-theme="island"].dark [data-slot="button"][data-variant="default"]:not(:disabled):hover {
+    box-shadow: 0 5px 0 0 rgba(0, 0, 0, 0.45);
+    }
+  [data-theme="island"].dark [data-slot="button"][data-variant="default"]:not(:disabled):active {
+    box-shadow: 0 1px 0 0 rgba(0, 0, 0, 0.45);
+    }
+
+  /* 输入框与描边控件：2px 粗描边 */
+  [data-theme="island"] [data-slot="input"],
+  [data-theme="island"] [data-slot="button"][data-variant="outline"] {
+    border-width: 2px;
+    }
+
+  /* 卡片：暖色软阴影 */
+  [data-theme="island"] [data-slot="card"] {
+    box-shadow: 0 3px 10px 0 rgba(61, 52, 40, 0.08);
+    }
+  [data-theme="island"].dark [data-slot="card"] {
+    box-shadow: 0 3px 10px 0 rgba(0, 0, 0, 0.3);
     }
 }
