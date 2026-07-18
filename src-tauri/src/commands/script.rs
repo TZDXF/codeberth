@@ -260,7 +260,8 @@ mod tests {
         let list = list_commands(&conn, pid).unwrap();
         assert_eq!(list.len(), 2);
 
-        let updated = update_command(&conn, c.id, "clean2", "rm -rf build", "改后", "wrench").unwrap();
+        let updated =
+            update_command(&conn, c.id, "clean2", "rm -rf build", "改后", "wrench").unwrap();
         assert_eq!(updated.name, "clean2");
         assert_eq!(updated.description, "改后");
         assert_eq!(updated.icon, "wrench");

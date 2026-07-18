@@ -205,6 +205,14 @@ export default {
       dark: "Dark",
       darkDesc: "Always use the dark theme",
     },
+    skin: {
+      title: "Theme style",
+      description: "Pick a visual style, freely combined with light/dark mode",
+      default: "Default",
+      defaultDesc: "Clean and neutral look",
+      island: "Animal Island",
+      islandDesc: "Creamy picture-book style with teal accents",
+    },
     language: {
       zhCN: "Simplified Chinese",
       zhCNNative: "简体中文",

@@ -204,6 +204,14 @@ export default {
       dark: "暗色",
       darkDesc: "始终使用暗色主题",
     },
+    skin: {
+      title: "主题风格",
+      description: "选择界面的视觉风格,可与亮暗模式自由组合",
+      default: "默认",
+      defaultDesc: "简洁中性的默认外观",
+      island: "动森小岛",
+      islandDesc: "奶油底色、青绿点缀的绘本风",
+    },
     language: {
       zhCN: "简体中文",
       zhCNNative: "简体中文",

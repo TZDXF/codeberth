@@ -100,7 +100,10 @@ pub fn detect_compose_file(path: String) -> AppResult<Option<ComposeFile>> {
     let services = std::fs::read_to_string(dir.join(&file_name))
         .map(|c| parse_services(&c))
         .unwrap_or_default();
-    Ok(Some(ComposeFile { file_name, services }))
+    Ok(Some(ComposeFile {
+        file_name,
+        services,
+    }))
 }
 
 #[cfg(test)]
