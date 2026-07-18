@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from "vue";
 import { useRouter } from "vue-router";
-import { ArrowLeft, Languages, Palette, Tags } from "@lucide/vue";
+import { Archive, ArrowLeft, SlidersHorizontal, Tags } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import ThemeSettings from "@/components/settings/ThemeSettings.vue";
-import LanguageSettings from "@/components/settings/LanguageSettings.vue";
+import GeneralSettings from "@/components/settings/GeneralSettings.vue";
 import TagSettings from "@/components/settings/TagSettings.vue";
+import ArchiveSettings from "@/components/settings/ArchiveSettings.vue";
 
 interface Category {
   id: string;
@@ -15,11 +15,10 @@ interface Category {
   component: Component;
 }
 
-// 归档功能就绪后追加: { id: "archive", label: "归档项目", icon: Archive, component: ArchiveSettings }
 const categories: Category[] = [
-  { id: "theme", label: "主题", icon: Palette, component: ThemeSettings },
-  { id: "language", label: "语言", icon: Languages, component: LanguageSettings },
+  { id: "general", label: "通用", icon: SlidersHorizontal, component: GeneralSettings },
   { id: "tags", label: "标签管理", icon: Tags, component: TagSettings },
+  { id: "archive", label: "归档项目", icon: Archive, component: ArchiveSettings },
 ];
 
 const router = useRouter();

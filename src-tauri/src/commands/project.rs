@@ -165,6 +165,41 @@ pub fn archive(conn: &Connection, id: i64) -> AppResult<()> {
     Ok(())
 }
 
+/// 列出已归档项目(按归档时间倒序,设置页归档管理用)
+pub fn list_archived(conn: &Connection) -> AppResult<Vec<Project>> {
+    let sql = format!(
+        "SELECT {PROJECT_COLS} FROM projects WHERE archived_at IS NOT NULL ORDER BY archived_at DESC"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map([], map_row)?;
+    let mut projects = Vec::new();
+    for row in rows {
+        projects.push(with_tags(conn, row?)?);
+    }
+    Ok(projects)
+}
+
+/// 取消归档:恢复到项目列表
+pub fn unarchive(conn: &Connection, id: i64) -> AppResult<()> {
+    let changed = conn.execute(
+        "UPDATE projects SET archived_at = NULL WHERE id = ?1 AND archived_at IS NOT NULL",
+        params![id],
+    )?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("archived project {id}")));
+    }
+    Ok(())
+}
+
+/// 彻底删除项目(关联的标签指派、自定义命令随外键级联清理;不动磁盘文件)
+pub fn remove(conn: &Connection, id: i64) -> AppResult<()> {
+    let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
+    if changed == 0 {
+        return Err(AppError::NotFound(format!("project {id}")));
+    }
+    Ok(())
+}
+
 // ---- Tauri 命令包装 ----
 
 #[tauri::command]
@@ -207,6 +242,24 @@ pub fn archive_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
     archive(&conn, id)
 }
 
+#[tauri::command]
+pub fn list_archived_projects(db: State<'_, Db>) -> AppResult<Vec<Project>> {
+    let conn = db.0.lock().unwrap();
+    list_archived(&conn)
+}
+
+#[tauri::command]
+pub fn unarchive_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
+    let conn = db.0.lock().unwrap();
+    unarchive(&conn, id)
+}
+
+#[tauri::command]
+pub fn delete_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
+    let conn = db.0.lock().unwrap();
+    remove(&conn, id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,6 +295,42 @@ mod tests {
         assert!(archived.archived_at.is_some());
 
         assert!(matches!(archive(&conn, 9999), Err(AppError::NotFound(_))));
+    }
+
+    #[test]
+    fn unarchive_restores_to_list() {
+        let conn = test_conn();
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
+        let p = add(&conn, &dir, "demo").unwrap();
+        archive(&conn, p.id).unwrap();
+
+        // 归档列表按归档时间倒序返回
+        let archived = list_archived(&conn).unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].id, p.id);
+        assert!(archived[0].archived_at.is_some());
+
+        unarchive(&conn, p.id).unwrap();
+        assert!(list_archived(&conn).unwrap().is_empty());
+        assert_eq!(list(&conn, None, None).unwrap().len(), 1);
+        assert!(get(&conn, p.id).unwrap().archived_at.is_none());
+
+        // 未归档 / 不存在的项目
+        assert!(matches!(unarchive(&conn, p.id), Err(AppError::NotFound(_))));
+        assert!(matches!(unarchive(&conn, 9999), Err(AppError::NotFound(_))));
+    }
+
+    #[test]
+    fn remove_deletes_permanently() {
+        let conn = test_conn();
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
+        let p = add(&conn, &dir, "demo").unwrap();
+        archive(&conn, p.id).unwrap();
+
+        remove(&conn, p.id).unwrap();
+        assert!(matches!(get(&conn, p.id), Err(AppError::NotFound(_))));
+        assert!(list_archived(&conn).unwrap().is_empty());
+        assert!(matches!(remove(&conn, p.id), Err(AppError::NotFound(_))));
     }
 
     #[test]

@@ -5,6 +5,7 @@ import type { GitStatus, GitUpdatedPayload, Project } from "@/types";
 
 export const useProjectsStore = defineStore("projects", () => {
   const projects = ref<Project[]>([]);
+  const archivedProjects = ref<Project[]>([]);
   const loading = ref(false);
   const query = ref("");
   const selectedTagIds = ref<number[]>([]);
@@ -111,6 +112,24 @@ export const useProjectsStore = defineStore("projects", () => {
     projects.value = projects.value.filter((p) => p.id !== id);
   }
 
+  /** 拉取已归档项目列表(设置页归档管理用) */
+  async function fetchArchivedProjects() {
+    archivedProjects.value = await cmd<Project[]>("list_archived_projects");
+  }
+
+  /** 取消归档:恢复到项目列表 */
+  async function unarchiveProject(id: number) {
+    await cmd("unarchive_project", { id });
+    archivedProjects.value = archivedProjects.value.filter((p) => p.id !== id);
+    await fetchProjects();
+  }
+
+  /** 彻底删除项目(不可恢复,历史数据一并删除;不会删除磁盘文件) */
+  async function deleteProject(id: number) {
+    await cmd("delete_project", { id });
+    archivedProjects.value = archivedProjects.value.filter((p) => p.id !== id);
+  }
+
   /** 后台 fetch 完成后由 git://updated 事件调用 */
   function updateGitRemote(projectId: number, payload: GitUpdatedPayload) {
     const p = projects.value.find((x) => x.id === projectId);
@@ -126,6 +145,7 @@ export const useProjectsStore = defineStore("projects", () => {
 
   return {
     projects,
+    archivedProjects,
     loading,
     query,
     selectedTagIds,
@@ -137,6 +157,9 @@ export const useProjectsStore = defineStore("projects", () => {
     addProject,
     updateProject,
     archiveProject,
+    fetchArchivedProjects,
+    unarchiveProject,
+    deleteProject,
     refreshGitStatus,
     triggerRemoteFetch,
     updateGitRemote,
