@@ -3,9 +3,8 @@ import { nextTick, ref, watch } from "vue";
 import { marked } from "marked";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
-import { BookOpen, RefreshCw } from "@lucide/vue";
+import { BookOpen, X } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cmd } from "@/lib/tauri";
 import type { Project, ReadmeContent } from "@/types";
@@ -13,14 +12,15 @@ import type { Project, ReadmeContent } from "@/types";
 marked.use({ gfm: true, breaks: true });
 
 const props = defineProps<{ project: Project }>();
+const open = defineModel<boolean>("open", { default: false });
 
 const readme = ref<ReadmeContent | null>(null);
 const html = ref("");
-const loaded = ref(false);
+const loading = ref(false);
 const bodyRef = ref<HTMLElement | null>(null);
 
 async function load() {
-  loaded.value = false;
+  loading.value = true;
   try {
     readme.value = await cmd<ReadmeContent | null>("read_readme", {
       path: props.project.path,
@@ -32,17 +32,34 @@ async function load() {
     readme.value = null;
     html.value = "";
   } finally {
-    loaded.value = true;
+    loading.value = false;
   }
 }
 
-watch(() => props.project.id, load, { immediate: true });
+// 打开抽屉或切换项目时(重新)加载
+watch(
+  [open, () => props.project.id],
+  ([isOpen]) => {
+    if (isOpen) load();
+  },
+  { immediate: true },
+);
 
 // 渲染完成后把相对路径图片换成本地 asset 协议地址
 watch(html, async () => {
   await nextTick();
   fixRelativeImages();
 });
+
+// Esc 关闭
+watch(open, (isOpen) => {
+  if (isOpen) window.addEventListener("keydown", onEsc);
+  else window.removeEventListener("keydown", onEsc);
+});
+
+function onEsc(e: KeyboardEvent) {
+  if (e.key === "Escape") open.value = false;
+}
 
 /** 带协议头的 URL(http:, data:, asset: 等) */
 function hasScheme(url: string): boolean {
@@ -87,35 +104,78 @@ async function onBodyClick(e: MouseEvent) {
 </script>
 
 <template>
-  <Card v-if="!loaded || readme">
-    <CardHeader class="flex-row items-center justify-between pb-3">
-      <CardTitle class="flex items-center gap-2 text-sm font-semibold">
-        <BookOpen class="h-4 w-4" />
-        README
-        <span v-if="readme" class="text-xs font-normal text-muted-foreground">
-          {{ readme.file_name }}
-        </span>
-      </CardTitle>
-      <Button size="sm" variant="ghost" title="重新加载" @click="load">
-        <RefreshCw class="h-3.5 w-3.5" />
-      </Button>
-    </CardHeader>
-    <CardContent>
-      <p v-if="!loaded" class="text-sm text-muted-foreground">加载中...</p>
-      <ScrollArea v-else class="max-h-[420px]">
-        <!-- README 来自本地项目目录,内容由用户自己控制 -->
-        <div
-          ref="bodyRef"
-          class="markdown-body pr-3 text-sm"
-          @click="onBodyClick"
-          v-html="html"
-        />
-      </ScrollArea>
-    </CardContent>
-  </Card>
+  <Teleport to="body">
+    <Transition name="fade">
+      <div
+        v-if="open"
+        class="fixed inset-0 z-40 bg-black/50"
+        @click="open = false"
+      />
+    </Transition>
+
+    <Transition name="slide">
+      <aside
+        v-if="open"
+        class="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l bg-background shadow-xl"
+      >
+        <header class="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3">
+          <div class="flex min-w-0 items-center gap-2 text-sm font-semibold">
+            <BookOpen class="h-4 w-4 shrink-0" />
+            README
+            <span v-if="readme" class="truncate text-xs font-normal text-muted-foreground">
+              {{ readme.file_name }}
+            </span>
+          </div>
+          <div class="flex shrink-0 items-center gap-1">
+            <Button
+              size="icon"
+              variant="ghost"
+              class="h-8 w-8"
+              title="关闭 (Esc)"
+              @click="open = false"
+            >
+              <X class="h-4 w-4" />
+            </Button>
+          </div>
+        </header>
+
+        <ScrollArea class="min-h-0 flex-1">
+          <p v-if="loading" class="p-6 text-sm text-muted-foreground">加载中...</p>
+          <p v-else-if="!readme" class="p-6 text-sm text-muted-foreground">
+            项目中未找到 README 文件
+          </p>
+          <!-- README 来自本地项目目录,内容由用户自己控制 -->
+          <div
+            v-else
+            ref="bodyRef"
+            class="markdown-body p-6 text-sm"
+            @click="onBodyClick"
+            v-html="html"
+          />
+        </ScrollArea>
+      </aside>
+    </Transition>
+  </Teleport>
 </template>
 
 <style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+.slide-enter-active,
+.slide-leave-active {
+  transition: transform 0.25s ease;
+}
+.slide-enter-from,
+.slide-leave-to {
+  transform: translateX(100%);
+}
+
 .markdown-body {
   line-height: 1.7;
   color: var(--foreground);

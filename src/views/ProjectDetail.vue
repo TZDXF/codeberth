@@ -2,12 +2,12 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { ArrowLeft, Pencil } from "@lucide/vue";
+import { ArrowLeft, BookOpen, Pencil } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import GitStatusBar from "@/components/git/GitStatusBar.vue";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
 import DockerCompose from "@/components/project/DockerCompose.vue";
-import ReadmePreview from "@/components/project/ReadmePreview.vue";
+import ReadmeDrawer from "@/components/project/ReadmeDrawer.vue";
 import CustomCommands from "@/components/scripts/CustomCommands.vue";
 import PackageScripts from "@/components/scripts/PackageScripts.vue";
 import TagPicker from "@/components/tags/TagPicker.vue";
@@ -37,8 +37,12 @@ watch(
   () => {
     editingName.value = false;
     editingDesc.value = false;
+    readmeOpen.value = false;
   },
 );
+
+// --- README 侧边栏 ---
+const readmeOpen = ref(false);
 
 // --- 名称内联编辑 ---
 const editingName = ref(false);
@@ -126,7 +130,13 @@ async function saveDesc() {
             />
           </h1>
         </div>
-        <OpenWithMenu :project="project" class="shrink-0" />
+        <div class="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" @click="readmeOpen = true">
+            <BookOpen class="h-4 w-4" />
+            README
+          </Button>
+          <OpenWithMenu :project="project" />
+        </div>
       </div>
 
       <p class="mt-1 truncate pl-10 text-sm text-muted-foreground" :title="project.path">
@@ -171,8 +181,9 @@ async function saveDesc() {
       <PackageScripts :project="project" />
       <DockerCompose :project="project" />
       <CustomCommands :project="project" />
-      <ReadmePreview :project="project" />
     </div>
+
+    <ReadmeDrawer v-model:open="readmeOpen" :project="project" />
   </div>
 
   <div
