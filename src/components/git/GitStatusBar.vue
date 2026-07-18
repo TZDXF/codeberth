@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { ArrowDown, ArrowUp, CloudDownload, GitBranch } from "@lucide/vue";
+import { ArrowDown, ArrowUp, GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
-import { formatRelativeTime } from "@/lib/format";
 import type { Project } from "@/types";
 
 const props = defineProps<{ project: Project }>();
@@ -12,9 +11,8 @@ const git = computed(() => props.project.git);
 
 <template>
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-    <span v-if="!git">Git 检测中...</span>
-    <span v-else-if="!git.is_repo">非 Git 仓库</span>
-    <template v-else>
+    <span v-if="git && !git.is_repo">非 Git 仓库</span>
+    <template v-else-if="git">
       <Badge variant="secondary" class="gap-1">
         <GitBranch class="h-3 w-3" />
         {{ git.branch ?? "未知分支" }}
@@ -50,10 +48,6 @@ const git = computed(() => props.project.git);
       <span v-if="git.remote_ahead > 0" class="text-amber-600">
         远端领先
         <span class="font-medium">{{ git.remote_ahead }}</span>
-      </span>
-      <span v-if="git.last_fetch_at != null" class="flex items-center gap-1">
-        <CloudDownload class="h-3.5 w-3.5" />
-        fetch {{ formatRelativeTime(git.last_fetch_at) }}
       </span>
     </template>
   </div>

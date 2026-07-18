@@ -9,15 +9,30 @@ export const useProjectsStore = defineStore("projects", () => {
   const query = ref("");
   const selectedTagIds = ref<number[]>([]);
 
-  async function fetchProjects() {
+  /**
+   * 拉取项目列表。
+   * withGit 为 false 时(搜索/筛选等高频操作)不重新拉取 git 状态,
+   * 仅按项目 id 保留已有的 git 信息,避免频繁触发 git 更新。
+   */
+  async function fetchProjects(options: { withGit?: boolean } = {}) {
+    const withGit = options.withGit ?? true;
     loading.value = true;
     try {
-      projects.value = await cmd<Project[]>("list_projects", {
+      const list = await cmd<Project[]>("list_projects", {
         query: query.value.trim() ? query.value.trim() : null,
         tagIds: selectedTagIds.value.length ? selectedTagIds.value : null,
       });
-      // Git 状态后台补齐,不阻塞列表渲染
-      refreshAllGitStatus().then(triggerAllRemoteFetches);
+      if (withGit) {
+        projects.value = list;
+        // Git 状态后台补齐,不阻塞列表渲染
+        refreshAllGitStatus().then(triggerAllRemoteFetches);
+      } else {
+        const prevGit = new Map(projects.value.map((p) => [p.id, p.git]));
+        list.forEach((p) => {
+          p.git = prevGit.get(p.id) ?? p.git;
+        });
+        projects.value = list;
+      }
     } finally {
       loading.value = false;
     }
@@ -25,20 +40,20 @@ export const useProjectsStore = defineStore("projects", () => {
 
   function setQuery(value: string) {
     query.value = value;
-    fetchProjects();
+    fetchProjects({ withGit: false });
   }
 
   function toggleTagFilter(tagId: number) {
     selectedTagIds.value = selectedTagIds.value.includes(tagId)
       ? selectedTagIds.value.filter((id) => id !== tagId)
       : [...selectedTagIds.value, tagId];
-    fetchProjects();
+    fetchProjects({ withGit: false });
   }
 
   function clearTagFilters() {
     if (!selectedTagIds.value.length) return;
     selectedTagIds.value = [];
-    fetchProjects();
+    fetchProjects({ withGit: false });
   }
 
   /** 重新拉取单个项目(保留已有的 git 状态,后端不返回) */
