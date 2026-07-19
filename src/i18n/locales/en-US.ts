@@ -100,11 +100,13 @@ export default {
   },
   openWith: {
     vscodeUnavailable: "VSCode not detected (the code command is unavailable)",
+    vscode: "VSCode",
     openInVscode: "Open in VSCode",
     explorer: "Explorer",
     openInExplorer: "Open in system file explorer",
     terminal: "Terminal",
     openInTerminal: "Open this directory in a system terminal",
+    more: "More ways to open",
   },
   docker: {
     title: "Docker Compose",
@@ -196,6 +198,9 @@ export default {
       languageDescription: "Choose the interface language",
       languageNote:
         "Interface translations will take effect in a future release. Only your preference is saved for now.",
+      openWith: "Default open with",
+      openWithDescription:
+        "The default action of the Open button on the project detail page. You can always pick another one from the dropdown.",
     },
     theme: {
       system: "Follow system",

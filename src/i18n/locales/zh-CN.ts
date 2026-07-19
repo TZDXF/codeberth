@@ -100,11 +100,13 @@ export default {
   },
   openWith: {
     vscodeUnavailable: "未检测到 VSCode(code 命令不可用)",
+    vscode: "VSCode",
     openInVscode: "在 VSCode 中打开",
     explorer: "资源管理器",
     openInExplorer: "在系统文件管理器中打开",
     terminal: "终端",
     openInTerminal: "在系统终端中打开该目录",
+    more: "更多打开方式",
   },
   docker: {
     title: "Docker Compose",
@@ -195,6 +197,8 @@ export default {
       language: "语言",
       languageDescription: "选择界面显示语言",
       languageNote: "界面翻译将在后续版本生效,当前仅保存偏好设置。",
+      openWith: "默认打开方式",
+      openWithDescription: "项目详情页「打开」按钮默认使用的方式,可随时通过下拉菜单选择其他方式",
     },
     theme: {
       system: "跟随系统",

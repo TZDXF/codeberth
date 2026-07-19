@@ -2,6 +2,7 @@ import { ref } from "vue";
 import { defineStore } from "pinia";
 import { load, type Store } from "@tauri-apps/plugin-store";
 import { setI18nLocale, type SupportedLocale } from "@/i18n";
+import type { EditorKind } from "@/types";
 
 export type ThemeMode = "system" | "light" | "dark";
 export type ThemeSkin = "default" | "island";
@@ -13,6 +14,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const theme = ref<ThemeMode>("system");
   const themeSkin = ref<ThemeSkin>("default");
   const language = ref<Language>("zh-CN");
+  const defaultOpenWith = ref<EditorKind>("explorer");
 
   let fileStore: Store | null = null;
   let initialized = false;
@@ -40,7 +42,12 @@ export const useSettingsStore = defineStore("settings", () => {
     initialized = true;
 
     fileStore = await load(STORE_FILE, {
-      defaults: { theme: "system", themeSkin: "default", language: "zh-CN" },
+      defaults: {
+        theme: "system",
+        themeSkin: "default",
+        language: "zh-CN",
+        defaultOpenWith: "explorer",
+      },
     });
     const savedTheme = await fileStore.get<ThemeMode>("theme");
     if (savedTheme === "light" || savedTheme === "dark" || savedTheme === "system") {
@@ -54,6 +61,14 @@ export const useSettingsStore = defineStore("settings", () => {
     if (savedLanguage === "zh-CN" || savedLanguage === "en-US") {
       language.value = savedLanguage;
       setI18nLocale(savedLanguage);
+    }
+    const savedOpenWith = await fileStore.get<EditorKind>("defaultOpenWith");
+    if (
+      savedOpenWith === "vscode" ||
+      savedOpenWith === "explorer" ||
+      savedOpenWith === "terminal"
+    ) {
+      defaultOpenWith.value = savedOpenWith;
     }
     applyTheme();
     systemDark.addEventListener("change", onSystemThemeChange);
@@ -83,5 +98,20 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("language", value);
   }
 
-  return { theme, themeSkin, language, init, setTheme, setThemeSkin, setLanguage };
+  async function setDefaultOpenWith(value: EditorKind) {
+    defaultOpenWith.value = value;
+    await persist("defaultOpenWith", value);
+  }
+
+  return {
+    theme,
+    themeSkin,
+    language,
+    defaultOpenWith,
+    init,
+    setTheme,
+    setThemeSkin,
+    setLanguage,
+    setDefaultOpenWith,
+  };
 });

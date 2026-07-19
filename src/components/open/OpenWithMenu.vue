@@ -1,9 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Code, FolderOpen, Terminal } from "@lucide/vue";
+import { Check, ChevronDown, Code, FolderOpen, Terminal } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   Tooltip,
   TooltipContent,
@@ -11,12 +17,25 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { cmd } from "@/lib/tauri";
+import { useSettingsStore } from "@/stores/settings";
 import type { EditorKind, Project } from "@/types";
 
 const { t } = useI18n();
 const props = withDefaults(defineProps<{ project: Project; compact?: boolean }>(), {
   compact: false,
 });
+
+const settings = useSettingsStore();
+
+const OPTIONS: { kind: EditorKind; icon: Component; labelKey: string; descKey: string }[] = [
+  { kind: "explorer", icon: FolderOpen, labelKey: "openWith.explorer", descKey: "openWith.openInExplorer" },
+  { kind: "vscode", icon: Code, labelKey: "openWith.vscode", descKey: "openWith.openInVscode" },
+  { kind: "terminal", icon: Terminal, labelKey: "openWith.terminal", descKey: "openWith.openInTerminal" },
+];
+
+const current = computed(
+  () => OPTIONS.find((opt) => opt.kind === settings.defaultOpenWith) ?? OPTIONS[0],
+);
 
 const vscodeAvailable = ref<boolean | null>(null);
 
@@ -27,6 +46,16 @@ onMounted(async () => {
     vscodeAvailable.value = false;
   }
 });
+
+function isDisabled(kind: EditorKind) {
+  return kind === "vscode" && vscodeAvailable.value === false;
+}
+
+const primaryTooltip = computed(() =>
+  current.value.kind === "vscode" && vscodeAvailable.value === false
+    ? t("openWith.vscodeUnavailable")
+    : t(current.value.descKey),
+);
 
 async function openWith(kind: EditorKind) {
   try {
@@ -39,54 +68,60 @@ async function openWith(kind: EditorKind) {
 
 <template>
   <TooltipProvider :delay-duration="300">
-    <div class="flex items-center" :class="compact ? 'gap-1' : 'gap-2'">
+    <div class="flex items-center">
       <Tooltip>
         <TooltipTrigger as-child>
           <span class="inline-flex">
             <Button
               :variant="compact ? 'ghost' : 'outline'"
               :size="compact ? 'icon' : 'sm'"
-              :class="compact && 'h-7 w-7'"
-              :disabled="vscodeAvailable === false"
-              @click.stop="openWith('vscode')"
+              :class="[compact ? 'h-7 w-7' : 'rounded-r-none']"
+              :disabled="isDisabled(current.kind)"
+              @click.stop="openWith(current.kind)"
             >
-              <Code :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
-              <template v-if="!compact">VSCode</template>
+              <component
+                :is="current.icon"
+                :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'"
+              />
+              <template v-if="!compact">{{ t(current.labelKey) }}</template>
             </Button>
           </span>
         </TooltipTrigger>
-        <TooltipContent>
-          {{ vscodeAvailable === false ? t("openWith.vscodeUnavailable") : t("openWith.openInVscode") }}
-        </TooltipContent>
+        <TooltipContent>{{ primaryTooltip }}</TooltipContent>
       </Tooltip>
-      <Tooltip>
-        <TooltipTrigger as-child>
-          <Button
-            :variant="compact ? 'ghost' : 'outline'"
-            :size="compact ? 'icon' : 'sm'"
-            :class="compact && 'h-7 w-7'"
-            @click.stop="openWith('explorer')"
+      <DropdownMenu>
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <DropdownMenuTrigger as-child>
+              <Button
+                :variant="compact ? 'ghost' : 'outline'"
+                :size="compact ? 'icon' : 'sm'"
+                :class="[compact ? 'h-7 w-7' : 'rounded-l-none border-l-0 px-2']"
+                @click.stop
+              >
+                <ChevronDown :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
+              </Button>
+            </DropdownMenuTrigger>
+          </TooltipTrigger>
+          <TooltipContent>{{ t("openWith.more") }}</TooltipContent>
+        </Tooltip>
+        <DropdownMenuContent align="end" class="w-52" @click.stop>
+          <DropdownMenuItem
+            v-for="opt in OPTIONS"
+            :key="opt.kind"
+            class="gap-2 text-xs"
+            :disabled="isDisabled(opt.kind)"
+            @click="openWith(opt.kind)"
           >
-            <FolderOpen :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
-            <template v-if="!compact">{{ t("openWith.explorer") }}</template>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{{ t("openWith.openInExplorer") }}</TooltipContent>
-      </Tooltip>
-      <Tooltip>
-        <TooltipTrigger as-child>
-          <Button
-            :variant="compact ? 'ghost' : 'outline'"
-            :size="compact ? 'icon' : 'sm'"
-            :class="compact && 'h-7 w-7'"
-            @click.stop="openWith('terminal')"
-          >
-            <Terminal :class="compact ? 'h-3.5 w-3.5' : 'h-4 w-4'" />
-            <template v-if="!compact">{{ t("openWith.terminal") }}</template>
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent>{{ t("openWith.openInTerminal") }}</TooltipContent>
-      </Tooltip>
+            <component :is="opt.icon" class="h-3.5 w-3.5" />
+            {{ t(opt.descKey) }}
+            <Check
+              v-if="opt.kind === settings.defaultOpenWith"
+              class="ml-auto h-3.5 w-3.5 text-primary"
+            />
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   </TooltipProvider>
 </template>
