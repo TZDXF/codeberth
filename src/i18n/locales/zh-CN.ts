@@ -118,6 +118,7 @@ export default {
     restartService: "重启服务: docker compose restart {service}",
     stopService: "停止服务: docker compose stop {service}",
     started: "已在终端启动 docker compose {args}",
+    fileCount: "{count} 个文件",
   },
   readme: {
     title: "README",
@@ -130,6 +131,7 @@ export default {
       title: "NPM Scripts",
       loading: "加载中...",
       empty: "未找到 package.json 或没有 scripts",
+      rootDir: "根目录",
       started: "已在终端启动 npm run {name}",
     },
     custom: {

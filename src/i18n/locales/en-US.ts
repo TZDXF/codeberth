@@ -118,6 +118,7 @@ export default {
     restartService: "Restart service: docker compose restart {service}",
     stopService: "Stop service: docker compose stop {service}",
     started: "Started docker compose {args} in terminal",
+    fileCount: "1 file | {count} files",
   },
   readme: {
     title: "README",
@@ -130,6 +131,7 @@ export default {
       title: "NPM Scripts",
       loading: "Loading...",
       empty: "No package.json found or no scripts defined",
+      rootDir: "Root",
       started: "Started npm run {name} in terminal",
     },
     custom: {
