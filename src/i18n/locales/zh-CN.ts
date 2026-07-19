@@ -30,7 +30,7 @@ export default {
   },
   projects: {
     home: {
-      searchPlaceholder: "搜索项目...",
+      searchPlaceholder: "搜索名称或描述...",
       filterTags: "筛选标签",
       clearFilter: "清除筛选",
       removeFilterTag: "移除筛选: {name}",

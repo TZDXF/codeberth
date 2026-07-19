@@ -111,8 +111,10 @@ pub fn list(
     let mut binds: Vec<Box<dyn ToSql>> = Vec::new();
 
     if let Some(q) = query.filter(|q| !q.trim().is_empty()) {
-        conditions.push("name LIKE ?".to_string());
-        binds.push(Box::new(format!("%{}%", q.trim())));
+        conditions.push("(name LIKE ? OR description LIKE ?)".to_string());
+        let pattern = format!("%{}%", q.trim());
+        binds.push(Box::new(pattern.clone()));
+        binds.push(Box::new(pattern));
     }
     if let Some(ids) = tag_ids.filter(|v| !v.is_empty()) {
         let placeholders = vec!["?"; ids.len()].join(",");

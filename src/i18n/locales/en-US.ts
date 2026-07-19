@@ -29,7 +29,7 @@ export default {
   },
   projects: {
     home: {
-      searchPlaceholder: "Search projects...",
+      searchPlaceholder: "Search name or description...",
       filterTags: "Filter tags",
       clearFilter: "Clear filter",
       removeFilterTag: "Remove filter: {name}",

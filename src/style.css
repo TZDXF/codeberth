@@ -81,6 +81,9 @@
     --sidebar-accent-foreground: oklch(0.205 0 0);
     --sidebar-border: oklch(0.922 0 0);
     --sidebar-ring: oklch(0.708 0 0);
+    --scrollbar-thumb: oklch(0.87 0 0);
+    --scrollbar-thumb-hover: oklch(0.708 0 0);
+    color-scheme: light;
 }
 
 .dark {
@@ -115,6 +118,9 @@
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(1 0 0 / 10%);
     --sidebar-ring: oklch(0.556 0 0);
+    --scrollbar-thumb: oklch(1 0 0 / 20%);
+    --scrollbar-thumb-hover: oklch(1 0 0 / 35%);
+    color-scheme: dark;
 }
 
 /* ===== Animal Island skin（动森小岛）===== */
@@ -153,6 +159,8 @@
     --sidebar-accent-foreground: #12695f;
     --sidebar-border: #e8e2d6;
     --sidebar-ring: #19c8b9;
+    --scrollbar-thumb: #d9cbae;
+    --scrollbar-thumb-hover: #b8a684;
 }
 
 /* 动森暗色：原项目无暗色，按保色相、降明度、暖色调原则推导 */
@@ -183,6 +191,8 @@
     --sidebar-accent-foreground: #7fe8dc;
     --sidebar-border: #4d4130;
     --sidebar-ring: #22cfc0;
+    --scrollbar-thumb: #554834;
+    --scrollbar-thumb-hover: #6f5f47;
 }
 
 @layer base {
@@ -192,6 +202,34 @@
   body {
     @apply bg-background text-foreground;
     @apply font-sans;
+    }
+
+  /* ===== 滚动条主题化 ===== */
+  /* Firefox */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+    }
+  /* WebKit / Chromium（含 WebView2） */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+    }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--scrollbar-thumb);
+    border-radius: 9999px;
+    /* 透明边框 + content-box 裁剪，呈现更细的胶囊滑块 */
+    border: 2px solid transparent;
+    background-clip: content-box;
+    }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--scrollbar-thumb-hover);
+    }
+  ::-webkit-scrollbar-corner {
+    background: transparent;
     }
 
   /* ===== Animal Island 风味细节 ===== */
