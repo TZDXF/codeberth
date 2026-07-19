@@ -6,6 +6,7 @@ import { toast } from "vue-sonner";
 import { ArrowLeft, BookOpen, Pencil } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import GitStatusBar from "@/components/git/GitStatusBar.vue";
+import GitActions from "@/components/git/GitActions.vue";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
 import DockerCompose from "@/components/project/DockerCompose.vue";
 import ReadmeDrawer from "@/components/project/ReadmeDrawer.vue";
@@ -24,11 +25,14 @@ const project = computed(() => {
   return Number.isFinite(id) ? store.projects.find((p) => p.id === id) : undefined;
 });
 
-// 选中项目进入详情页时优先触发一次远端 fetch
+// 选中项目进入详情页时刷新本地工作区状态,并触发一次远端 fetch
 watch(
   () => project.value?.id,
   () => {
-    if (project.value) store.triggerRemoteFetch(project.value);
+    if (project.value) {
+      store.refreshGitStatus(project.value);
+      store.triggerRemoteFetch(project.value);
+    }
   },
   { immediate: true },
 );
@@ -174,6 +178,7 @@ async function saveDesc() {
       <div class="mt-2.5 flex flex-wrap items-center gap-x-6 gap-y-2 pl-10">
         <TagPicker :project="project" />
         <GitStatusBar :project="project" />
+        <GitActions :project="project" />
       </div>
     </header>
 

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { ArrowDown, ArrowUp, GitBranch } from "@lucide/vue";
+import { ArrowDown, ArrowUp, ChevronDown, GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
+import GitBranchMenu from "@/components/git/GitBranchMenu.vue";
 import type { Project } from "@/types";
 
 const { t } = useI18n();
@@ -15,10 +16,17 @@ const git = computed(() => props.project.git);
   <div class="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
     <span v-if="git && !git.is_repo">{{ t("git.notARepo") }}</span>
     <template v-else-if="git">
-      <Badge variant="secondary" class="gap-1">
-        <GitBranch class="h-3 w-3" />
-        {{ git.branch ?? t("git.unknownBranch") }}
-      </Badge>
+      <GitBranchMenu :project="project">
+        <Badge
+          variant="secondary"
+          class="cursor-pointer gap-1 transition-colors hover:bg-accent"
+          :title="t('git.branch.switch')"
+        >
+          <GitBranch class="h-3 w-3" />
+          {{ git.branch ?? t("git.unknownBranch") }}
+          <ChevronDown class="h-3 w-3 opacity-60" />
+        </Badge>
+      </GitBranchMenu>
       <span
         v-if="git.ahead > 0"
         class="flex items-center gap-0.5 text-emerald-600"
@@ -46,6 +54,10 @@ const git = computed(() => props.project.git);
       <span>
         {{ t("git.untracked") }}
         <span class="font-medium text-sky-600">{{ git.untracked }}</span>
+      </span>
+      <span v-if="git.conflicted > 0" class="text-red-600">
+        {{ t("git.conflicted") }}
+        <span class="font-medium">{{ git.conflicted }}</span>
       </span>
       <span v-if="git.remote_ahead > 0" class="text-amber-600">
         {{ t("git.remoteAhead") }}

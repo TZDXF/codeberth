@@ -1,7 +1,7 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 import { cmd } from "@/lib/tauri";
-import type { GitStatus, GitUpdatedPayload, Project } from "@/types";
+import type { GitBranches, GitPullResult, GitStatus, GitUpdatedPayload, Project } from "@/types";
 
 export const useProjectsStore = defineStore("projects", () => {
   const projects = ref<Project[]>([]);
@@ -139,6 +139,50 @@ export const useProjectsStore = defineStore("projects", () => {
     }
   }
 
+  // --- Git 写操作:错误向上抛出由 UI toast,成功后用返回的最新状态就地更新 ---
+
+  function listBranches(project: Project) {
+    return cmd<GitBranches>("list_git_branches", { path: project.path });
+  }
+
+  /**
+   * 切换分支。create: 创建并切换;remote: branch 形如 "origin/feature",
+   * 本地无同名分支时自动创建跟踪分支
+   */
+  async function checkoutBranch(
+    project: Project,
+    branch: string,
+    options: { create?: boolean; remote?: boolean } = {},
+  ) {
+    project.git = await cmd<GitStatus>("git_checkout", {
+      path: project.path,
+      branch,
+      create: options.create ?? false,
+      remote: options.remote ?? false,
+    });
+  }
+
+  /** 提交更改(未暂存修改始终纳入;includeUntracked 控制是否包含未跟踪文件) */
+  async function commitChanges(project: Project, message: string, includeUntracked: boolean) {
+    project.git = await cmd<GitStatus>("git_commit", {
+      path: project.path,
+      message,
+      includeUntracked,
+    });
+  }
+
+  /** 拉取远端;返回冲突文件列表(非空表示产生了合并冲突) */
+  async function pullRepository(project: Project) {
+    const result = await cmd<GitPullResult>("git_pull", { path: project.path });
+    project.git = result.status;
+    return result.conflicts;
+  }
+
+  /** 推送当前分支(无 upstream 时后端自动 -u origin HEAD) */
+  async function pushRepository(project: Project) {
+    project.git = await cmd<GitStatus>("git_push", { path: project.path });
+  }
+
   const byId = computed(() => {
     return (id: number) => projects.value.find((p) => p.id === id);
   });
@@ -163,6 +207,11 @@ export const useProjectsStore = defineStore("projects", () => {
     refreshGitStatus,
     triggerRemoteFetch,
     updateGitRemote,
+    listBranches,
+    checkoutBranch,
+    commitChanges,
+    pullRepository,
+    pushRepository,
     byId,
   };
 });

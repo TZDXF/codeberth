@@ -10,10 +10,25 @@ export interface GitStatus {
   ahead: number;
   behind: number;
   staged: number;
+  /** 未暂存修改数(含冲突文件) */
   modified: number;
   untracked: number;
+  /** 合并冲突文件数 */
+  conflicted: number;
   remote_ahead: number;
   last_fetch_at: number | null;
+}
+
+/** `git pull` 的结果:最新状态 + 产生的合并冲突文件(为空表示无冲突) */
+export interface GitPullResult {
+  status: GitStatus;
+  conflicts: string[];
+}
+
+/** 本地/远程分支列表(remote 不含 origin/HEAD 这类符号引用) */
+export interface GitBranches {
+  local: string[];
+  remote: string[];
 }
 
 export interface Project {

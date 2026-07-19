@@ -14,10 +14,27 @@ pub struct GitStatus {
     pub ahead: i32,
     pub behind: i32,
     pub staged: i32,
+    /// 未暂存修改数(含冲突文件,保证「工作区干净」判断不变)
     pub modified: i32,
     pub untracked: i32,
+    /// 合并冲突文件数(porcelain 的 u 条目)
+    pub conflicted: i32,
     pub remote_ahead: i32,
     pub last_fetch_at: Option<i64>,
+}
+
+/// `git pull` 的结果:最新状态 + 产生的合并冲突文件(为空表示无冲突)
+#[derive(Debug, Clone, Serialize)]
+pub struct GitPullResult {
+    pub status: GitStatus,
+    pub conflicts: Vec<String>,
+}
+
+/// 本地/远程分支列表(remote 不含 origin/HEAD 这类符号引用)
+#[derive(Debug, Clone, Serialize)]
+pub struct GitBranches {
+    pub local: Vec<String>,
+    pub remote: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
