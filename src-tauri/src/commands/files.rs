@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::commands::walk;
 use crate::error::{AppError, AppResult};
-use crate::models::{ComposeFile, ReadmeContent};
+use crate::models::{ComposeFile, ComposeService, ReadmeContent};
 
 /// README 候选文件名,按优先级排列(大小写常见变体)
 const README_CANDIDATES: &[&str] = &[
@@ -70,16 +70,106 @@ pub fn read_readme(path: String) -> AppResult<Option<ReadmeContent>> {
 }
 
 /// 判断 YAML 内容是否为 Docker Compose 格式:顶层含 mapping 类型的 services。
-/// 是则返回服务名列表;非法 YAML / 无 services(CI 配置等)返回 None。
-fn parse_compose(content: &str) -> Option<Vec<String>> {
+/// 是则返回服务列表(含可访问端口);非法 YAML / 无 services(CI 配置等)返回 None。
+fn parse_compose(content: &str) -> Option<Vec<ComposeService>> {
     let yaml = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(content).ok()?;
     let services = yaml.get("services")?.as_mapping()?;
     Some(
         services
-            .keys()
-            .filter_map(|k| k.as_str().map(String::from))
+            .iter()
+            .filter_map(|(k, v)| {
+                let mut ports = extract_ports(v);
+                ports.sort_unstable();
+                ports.dedup();
+                Some(ComposeService {
+                    name: k.as_str()?.to_string(),
+                    ports,
+                })
+            })
             .collect(),
     )
+}
+
+/// 提取服务 ports 中可访问的宿主机端口:
+/// 短语法 "8080:80" / "127.0.0.1:8080:80" / 长语法 { target, published } 取发布端口;
+/// 仅容器端口(宿主机随机分配)、UDP、端口段范围无法确定入口,跳过。
+fn extract_ports(service: &serde_yaml_ng::Value) -> Vec<u16> {
+    use serde_yaml_ng::Value;
+    let Some(list) = service.get("ports").and_then(Value::as_sequence) else {
+        return Vec::new();
+    };
+    list.iter()
+        .filter_map(|item| match item {
+            Value::String(s) => port_from_short(s),
+            Value::Mapping(m) => port_from_long(m),
+            // 纯数字仅声明容器端口,宿主机端口随机,不可直接访问
+            _ => None,
+        })
+        .collect()
+}
+
+/// 短语法:"[IP:]发布端口:容器端口[/协议]"。发布端口恒为末段容器端口前的一段,
+/// IPv6 带括号写法([::1]:8080:80)按 ':' 切分后该规律仍成立。
+fn port_from_short(s: &str) -> Option<u16> {
+    let resolved = resolve_env(s)?;
+    let (addr, proto) = resolved
+        .split_once('/')
+        .map_or((resolved.as_str(), "tcp"), |(a, p)| (a, p));
+    if !proto.trim().eq_ignore_ascii_case("tcp") {
+        return None; // UDP 等无法通过浏览器访问
+    }
+    let parts: Vec<&str> = addr.split(':').collect();
+    if parts.len() < 2 {
+        return None; // 仅容器端口,宿主机端口随机
+    }
+    parse_published(parts[parts.len() - 2])
+}
+
+/// 长语法:{ target: 80, published: 8080, protocol: tcp }
+fn port_from_long(m: &serde_yaml_ng::Mapping) -> Option<u16> {
+    use serde_yaml_ng::Value;
+    let proto = m
+        .get("protocol")
+        .and_then(Value::as_str)
+        .unwrap_or("tcp");
+    if !proto.eq_ignore_ascii_case("tcp") {
+        return None;
+    }
+    match m.get("published")? {
+        Value::Number(n) => n.as_u64().and_then(|v| u16::try_from(v).ok()),
+        Value::String(s) => parse_published(&resolve_env(s)?),
+        _ => None,
+    }
+}
+
+/// 替换 "${VAR:-default}" / "${VAR-default}" 为默认值;
+/// 存在无默认值的变量时端口无法确定,整条映射返回 None。
+/// 必须先于 ':' 切分执行——默认值语法自身含冒号,直接切分会把变量拆碎。
+fn resolve_env(s: &str) -> Option<String> {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(start) = rest.find("${") {
+        out.push_str(&rest[..start]);
+        let end = rest[start..].find('}')? + start;
+        let inner = &rest[start + 2..end];
+        let default = inner
+            .split_once(":-")
+            .or_else(|| inner.split_once('-'))
+            .map(|(_, d)| d)?;
+        out.push_str(default.trim());
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+    Some(out)
+}
+
+/// 解析发布端口文本:纯数字直接取;端口段范围(8080-8081)无法确定,跳过。
+fn parse_published(raw: &str) -> Option<u16> {
+    let s = raw.trim();
+    if s.contains('-') {
+        return None;
+    }
+    s.parse().ok()
 }
 
 /// 是否为可能包含 compose 定义的 YAML 文件(按扩展名粗筛)
@@ -190,7 +280,8 @@ mod tests {
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "app.yml");
         assert_eq!(files[0].file_name, "app.yml");
-        assert_eq!(files[0].services, vec!["web"]);
+        assert_eq!(files[0].services[0].name, "web");
+        assert!(files[0].services[0].ports.is_empty());
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -215,7 +306,8 @@ mod tests {
         let files = scan_compose_files(dir.clone()).unwrap();
         assert_eq!(files.len(), 1);
         assert_eq!(files[0].path, "deploy/prod/stack.yaml");
-        assert_eq!(files[0].services, vec!["api", "db"]);
+        let names: Vec<&str> = files[0].services.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(names, vec!["api", "db"]);
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -236,5 +328,38 @@ mod tests {
         assert_eq!(paths, vec!["a.yml", "z.yml", "abc/x.yml"]);
 
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn compose_extracts_accessible_ports() {
+        let content = r#"
+services:
+  web:
+    image: nginx
+    ports:
+      - "8080:80"
+      - "127.0.0.1:9090:90/tcp"
+      - "53:53/udp"
+      - "3000"
+      - "8081-8082:81-82"
+      - target: 443
+        published: 8443
+        protocol: tcp
+      - target: 541
+        published: 541
+        protocol: udp
+  api:
+    image: app
+    ports:
+      - "${API_PORT:-8000}:8000"
+  db:
+    image: postgres
+"#;
+        let services = parse_compose(content).unwrap();
+        assert_eq!(services.len(), 3);
+        // web: 8080/9090/8443 可访问;udp、仅容器端口、端口段范围跳过;去重升序
+        assert_eq!(services[0].ports, vec![8080, 8443, 9090]);
+        assert_eq!(services[1].ports, vec![8000]);
+        assert!(services[2].ports.is_empty());
     }
 }

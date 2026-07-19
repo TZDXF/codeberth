@@ -119,6 +119,11 @@ export default {
     stopService: "停止服务: docker compose stop {service}",
     started: "已在终端启动 docker compose {args}",
     fileCount: "{count} 个文件",
+    refreshStatus: "刷新运行状态",
+    running: "运行中",
+    stopped: "未运行",
+    statusUnknown: "状态未知(docker 不可用或未启动)",
+    openPort: "在浏览器打开 localhost:{port}",
   },
   readme: {
     title: "README",

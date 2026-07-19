@@ -119,6 +119,11 @@ export default {
     stopService: "Stop service: docker compose stop {service}",
     started: "Started docker compose {args} in terminal",
     fileCount: "1 file | {count} files",
+    refreshStatus: "Refresh status",
+    running: "Running",
+    stopped: "Stopped",
+    statusUnknown: "Status unknown (docker unavailable or not started)",
+    openPort: "Open localhost:{port} in browser",
   },
   readme: {
     title: "README",

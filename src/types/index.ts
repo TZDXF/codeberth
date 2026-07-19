@@ -57,11 +57,26 @@ export interface ReadmeContent {
   content: string;
 }
 
+/** compose 文件中的一个服务及其对外可访问的宿主机端口 */
+export interface ComposeService {
+  name: string;
+  /** 映射到宿主机的端口(去重升序);仅含可浏览器访问的固定发布端口 */
+  ports: number[];
+}
+
 export interface ComposeFile {
   /** 相对项目根的路径('/' 分隔),如 "compose.yml" 或 "deploy/app.yml" */
   path: string;
   file_name: string;
-  services: string[];
+  services: ComposeService[];
+}
+
+/** `docker compose ps` 查询到的单个服务运行状态 */
+export interface ComposeServiceState {
+  name: string;
+  running: boolean;
+  /** 原始状态文案,如 "Up 2 hours" / "Exited (0) 5 minutes ago" */
+  status: string;
 }
 
 export type EditorKind = "vscode" | "explorer" | "terminal";

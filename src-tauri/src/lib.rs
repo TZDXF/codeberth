@@ -50,6 +50,7 @@ pub fn run() {
             commands::script::run_in_terminal,
             commands::files::read_readme,
             commands::files::scan_compose_files,
+            commands::docker::compose_ps,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -66,12 +66,29 @@ pub struct ReadmeContent {
     pub content: String,
 }
 
+/// compose 文件中的一个服务及其对外可访问的宿主机端口
+#[derive(Debug, Clone, Serialize)]
+pub struct ComposeService {
+    pub name: String,
+    /// 映射到宿主机的端口(去重升序);仅含可浏览器访问的固定发布端口
+    pub ports: Vec<u16>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct ComposeFile {
     /// 相对项目根的路径('/' 分隔),如 "compose.yml" 或 "deploy/app.yml"
     pub path: String,
     pub file_name: String,
-    pub services: Vec<String>,
+    pub services: Vec<ComposeService>,
+}
+
+/// `docker compose ps` 查询到的单个服务运行状态
+#[derive(Debug, Clone, Serialize)]
+pub struct ComposeServiceState {
+    pub name: String,
+    pub running: bool,
+    /// 原始状态文案,如 "Up 2 hours" / "Exited (0) 5 minutes ago"
+    pub status: String,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
