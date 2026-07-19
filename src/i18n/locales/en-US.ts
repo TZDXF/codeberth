@@ -99,14 +99,12 @@ export default {
     remoteAhead: "Remote ahead",
   },
   openWith: {
-    vscodeUnavailable: "VSCode not detected (the code command is unavailable)",
     vscode: "VSCode",
     openInVscode: "Open in VSCode",
     explorer: "Explorer",
     openInExplorer: "Open in system file explorer",
     terminal: "Terminal",
     openInTerminal: "Open this directory in a system terminal",
-    more: "More ways to open",
   },
   docker: {
     title: "Docker Compose",

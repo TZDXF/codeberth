@@ -99,14 +99,12 @@ export default {
     remoteAhead: "远端领先",
   },
   openWith: {
-    vscodeUnavailable: "未检测到 VSCode(code 命令不可用)",
     vscode: "VSCode",
     openInVscode: "在 VSCode 中打开",
     explorer: "资源管理器",
     openInExplorer: "在系统文件管理器中打开",
     terminal: "终端",
     openInTerminal: "在系统终端中打开该目录",
-    more: "更多打开方式",
   },
   docker: {
     title: "Docker Compose",
