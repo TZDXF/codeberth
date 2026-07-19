@@ -15,11 +15,12 @@ export function onListen<T>(
   return listen<T>(event, (e) => handler(e.payload));
 }
 
-/** 在项目目录的系统终端里执行命令(新窗口,跑完不关) */
-export function runInTerminal(project: Project, command: string): Promise<unknown> {
+/** 在系统终端里执行命令(新窗口,跑完不关);cwd 缺省为项目根目录 */
+export function runInTerminal(project: Project, command: string, cwd?: string): Promise<unknown> {
   return cmd("run_in_terminal", {
     path: project.path,
     projectName: project.name,
     command,
+    ...(cwd ? { cwd } : {}),
   });
 }

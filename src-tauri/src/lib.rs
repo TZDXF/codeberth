@@ -6,6 +6,9 @@ mod models;
 use db::Db;
 use tauri::Manager;
 
+/// 应用数据目录名(位于用户主目录下)
+const APP_DATA_DIR_NAME: &str = ".pm";
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -14,9 +17,9 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
         .setup(|app| {
-            // 数据库文件: %APPDATA%/com.projectdev.app/projects.db
-            // (Mac: ~/Library/Application Support/com.projectdev.app/projects.db)
-            let dir = app.path().app_data_dir()?;
+            // 数据库文件: ~/.pm/projects.db
+            // (Windows: C:\Users\<user>\.pm\projects.db)
+            let dir = app.path().home_dir()?.join(APP_DATA_DIR_NAME);
             let db = Db::open(&dir.join("projects.db"))?;
             app.manage(db);
             Ok(())
@@ -46,7 +49,7 @@ pub fn run() {
             commands::script::delete_custom_command,
             commands::script::run_in_terminal,
             commands::files::read_readme,
-            commands::files::detect_compose_file,
+            commands::files::scan_compose_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

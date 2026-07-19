@@ -1,5 +1,6 @@
 use std::path::Path;
 
+use crate::commands::walk;
 use crate::error::{AppError, AppResult};
 use crate::models::{ComposeFile, ReadmeContent};
 
@@ -14,16 +15,11 @@ const README_CANDIDATES: &[&str] = &[
     "README",
 ];
 
-/// Docker Compose 候选文件名,按官方约定优先级排列
-const COMPOSE_CANDIDATES: &[&str] = &[
-    "compose.yaml",
-    "compose.yml",
-    "docker-compose.yml",
-    "docker-compose.yaml",
-];
-
 /// README 读取上限 512KB,避免超大文件拖垮前端渲染
 const README_MAX_BYTES: u64 = 512 * 1024;
+
+/// compose 文件大小上限 256KB,超过的直接跳过(正常 compose 文件远小于此)
+const COMPOSE_MAX_BYTES: u64 = 256 * 1024;
 
 fn ensure_dir(path: &str) -> AppResult<()> {
     if !Path::new(path).is_dir() {
@@ -73,37 +69,57 @@ pub fn read_readme(path: String) -> AppResult<Option<ReadmeContent>> {
     Ok(Some(ReadmeContent { file_name, content }))
 }
 
-/// 解析 compose 文件中的 services 列表;解析失败或没有 services 返回空列表
-fn parse_services(content: &str) -> Vec<String> {
-    let Ok(yaml) = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(content) else {
-        return vec![];
-    };
-    yaml.get("services")
-        .and_then(|s| s.as_mapping())
-        .map(|m| {
-            m.keys()
-                .filter_map(|k| k.as_str().map(String::from))
-                .collect()
-        })
-        .unwrap_or_default()
+/// 判断 YAML 内容是否为 Docker Compose 格式:顶层含 mapping 类型的 services。
+/// 是则返回服务名列表;非法 YAML / 无 services(CI 配置等)返回 None。
+fn parse_compose(content: &str) -> Option<Vec<String>> {
+    let yaml = serde_yaml_ng::from_str::<serde_yaml_ng::Value>(content).ok()?;
+    let services = yaml.get("services")?.as_mapping()?;
+    Some(
+        services
+            .keys()
+            .filter_map(|k| k.as_str().map(String::from))
+            .collect(),
+    )
 }
 
-/// 检测项目内 Docker Compose 文件;不存在时返回 None
+/// 是否为可能包含 compose 定义的 YAML 文件(按扩展名粗筛)
+fn is_yaml_file(path: &Path) -> bool {
+    path.extension()
+        .and_then(|e| e.to_str())
+        .is_some_and(|e| e.eq_ignore_ascii_case("yml") || e.eq_ignore_ascii_case("yaml"))
+}
+
+/// 递归扫描项目内的 Docker Compose 文件(尊重 git 排除规则,按内容识别)
 #[tauri::command]
-pub fn detect_compose_file(path: String) -> AppResult<Option<ComposeFile>> {
+pub fn scan_compose_files(path: String) -> AppResult<Vec<ComposeFile>> {
     ensure_dir(&path)?;
     let dir = Path::new(&path);
-    let Some(file_name) = find_file(dir, COMPOSE_CANDIDATES) else {
-        return Ok(None);
-    };
-    // 读失败(编码问题等)不阻塞检测,只是没有服务列表
-    let services = std::fs::read_to_string(dir.join(&file_name))
-        .map(|c| parse_services(&c))
-        .unwrap_or_default();
-    Ok(Some(ComposeFile {
-        file_name,
-        services,
-    }))
+    let mut files: Vec<ComposeFile> = walk::project_files(dir)
+        .iter()
+        .filter(|rel| is_yaml_file(rel))
+        .filter(|rel| {
+            std::fs::metadata(dir.join(rel))
+                .map(|m| m.len() <= COMPOSE_MAX_BYTES)
+                .unwrap_or(false)
+        })
+        .filter_map(|rel| {
+            let content = std::fs::read_to_string(dir.join(rel)).ok()?;
+            let services = parse_compose(&content)?;
+            let file_name = rel
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())?;
+            Some(ComposeFile {
+                path: walk::to_slash(rel),
+                file_name,
+                services,
+            })
+        })
+        .collect();
+    // 根目录文件优先,同级按路径字典序
+    files.sort_by(|a, b| {
+        (a.path.contains('/'), &a.path).cmp(&(b.path.contains('/'), &b.path))
+    });
+    Ok(files)
 }
 
 #[cfg(test)]
@@ -155,59 +171,69 @@ mod tests {
     }
 
     #[test]
-    fn compose_detect_by_priority() {
-        let dir = temp_project_dir("compose");
+    fn compose_scan_by_content_not_name() {
+        let dir = temp_project_dir("compose-content");
         let p = Path::new(&dir);
 
-        assert!(detect_compose_file(dir.clone()).unwrap().is_none());
+        // 非标准文件名,但内容是 compose 格式 -> 识别
+        fs::write(p.join("app.yml"), "services:\n  web:\n    image: nginx\n").unwrap();
+        // 标准文件名但无 services -> 不识别
+        fs::write(p.join("docker-compose.yml"), "name: demo\n").unwrap();
+        // CI 配置(yml 但非 compose)-> 不识别
+        fs::write(p.join("ci.yaml"), "on: push\njobs: {}\n").unwrap();
+        // 非法 YAML -> 不识别
+        fs::write(p.join("broken.yml"), "services: [not a map").unwrap();
+        // 非 yml 文件不参与
+        fs::write(p.join("services.txt"), "services:\n  x: {}\n").unwrap();
 
-        fs::write(p.join("docker-compose.yml"), "services: {}").unwrap();
-        assert_eq!(
-            detect_compose_file(dir.clone()).unwrap().unwrap().file_name,
-            "docker-compose.yml"
-        );
-
-        // compose.yaml 优先级更高
-        fs::write(p.join("compose.yaml"), "services: {}").unwrap();
-        assert_eq!(
-            detect_compose_file(dir.clone()).unwrap().unwrap().file_name,
-            "compose.yaml"
-        );
+        let files = scan_compose_files(dir.clone()).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "app.yml");
+        assert_eq!(files[0].file_name, "app.yml");
+        assert_eq!(files[0].services, vec!["web"]);
 
         let _ = fs::remove_dir_all(&dir);
     }
 
     #[test]
-    fn compose_parses_services() {
-        let dir = temp_project_dir("services");
+    fn compose_scan_nested_and_gitignored() {
+        let dir = temp_project_dir("compose-nested");
         let p = Path::new(&dir);
 
+        // 嵌套子目录中的 compose
+        fs::create_dir_all(p.join("deploy/prod")).unwrap();
         fs::write(
-            p.join("docker-compose.yml"),
-            r#"
-version: "3"
-services:
-  web:
-    build: .
-    ports: ["8080:80"]
-  db:
-    image: postgres:16
-  cache:
-    image: redis:7
-"#,
+            p.join("deploy/prod/stack.yaml"),
+            "services:\n  api:\n    build: .\n  db:\n    image: postgres:16\n",
         )
         .unwrap();
-        let c = detect_compose_file(dir.clone()).unwrap().unwrap();
-        assert_eq!(c.services, vec!["web", "db", "cache"]);
+        // 被 .gitignore 排除的目录不扫描
+        fs::create_dir_all(p.join("ignored")).unwrap();
+        fs::write(p.join("ignored/svc.yml"), "services:\n  x: {}\n").unwrap();
+        fs::write(p.join(".gitignore"), "ignored/\n").unwrap();
 
-        // 无 services 字段 / 非法 YAML -> 空列表,不影响检测
-        fs::write(p.join("docker-compose.yml"), "name: demo\n").unwrap();
-        let c = detect_compose_file(dir.clone()).unwrap().unwrap();
-        assert!(c.services.is_empty());
+        let files = scan_compose_files(dir.clone()).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].path, "deploy/prod/stack.yaml");
+        assert_eq!(files[0].services, vec!["api", "db"]);
 
-        fs::write(p.join("docker-compose.yml"), "services: [not a map").unwrap();
-        let c = detect_compose_file(dir.clone()).unwrap().unwrap();
-        assert!(c.services.is_empty());
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn compose_scan_root_first_ordering() {
+        let dir = temp_project_dir("compose-order");
+        let p = Path::new(&dir);
+
+        fs::create_dir_all(p.join("abc")).unwrap();
+        fs::write(p.join("abc/x.yml"), "services:\n  a: {}\n").unwrap();
+        // 根目录文件名字典序更大,但仍应排在前面
+        fs::write(p.join("z.yml"), "services:\n  z: {}\n").unwrap();
+        fs::write(p.join("a.yml"), "services:\n  a: {}\n").unwrap();
+
+        let files = scan_compose_files(dir.clone()).unwrap();
+        let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
+        assert_eq!(paths, vec!["a.yml", "z.yml", "abc/x.yml"]);
 
         let _ = fs::remove_dir_all(&dir);
     }

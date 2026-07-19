@@ -39,6 +39,16 @@ pub struct PackageScript {
     pub command: String,
 }
 
+/// 一个 package.json 的 scripts 分组(monorepo 下可能有多个)
+#[derive(Debug, Clone, Serialize)]
+pub struct PackageScriptsGroup {
+    /// package.json 所在目录的相对路径('/' 分隔),根目录为 "."
+    pub dir: String,
+    /// package.json 的 name 字段(可能缺失)
+    pub package_name: Option<String>,
+    pub scripts: Vec<PackageScript>,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct CustomCommand {
     pub id: i64,
@@ -58,6 +68,8 @@ pub struct ReadmeContent {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ComposeFile {
+    /// 相对项目根的路径('/' 分隔),如 "compose.yml" 或 "deploy/app.yml"
+    pub path: String,
     pub file_name: String,
     pub services: Vec<String>,
 }

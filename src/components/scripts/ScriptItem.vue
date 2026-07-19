@@ -32,13 +32,9 @@ const emit = defineEmits<{
       :title="t('scripts.item.runTitle', { command })"
       @click="emit('run')"
     >
-      <Play class="h-3.5 w-3.5" />
+      <component :is="iconComponent" v-if="iconComponent" class="h-3.5 w-3.5" />
+      <Play v-else class="h-3.5 w-3.5" />
     </Button>
-    <component
-      :is="iconComponent"
-      v-if="iconComponent"
-      class="h-4 w-4 shrink-0 text-muted-foreground"
-    />
     <span class="w-32 shrink-0 truncate text-sm font-medium" :title="description || name">
       {{ name }}
     </span>

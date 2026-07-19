@@ -33,6 +33,15 @@ export interface PackageScript {
   command: string;
 }
 
+/** 一个 package.json 的 scripts 分组(monorepo 下可能有多个) */
+export interface PackageScriptsGroup {
+  /** package.json 所在目录的相对路径('/' 分隔),根目录为 "." */
+  dir: string;
+  /** package.json 的 name 字段,可能为空 */
+  package_name: string | null;
+  scripts: PackageScript[];
+}
+
 export interface CustomCommand {
   id: number;
   project_id: number;
@@ -49,6 +58,8 @@ export interface ReadmeContent {
 }
 
 export interface ComposeFile {
+  /** 相对项目根的路径('/' 分隔),如 "compose.yml" 或 "deploy/app.yml" */
+  path: string;
   file_name: string;
   services: string[];
 }

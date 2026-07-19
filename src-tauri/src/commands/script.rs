@@ -2,23 +2,18 @@ use rusqlite::{params, Connection, OptionalExtension};
 use tauri::State;
 
 use crate::commands::open::spawn_terminal;
+use crate::commands::walk;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
-use crate::models::{CustomCommand, PackageScript};
+use crate::models::{CustomCommand, PackageScript, PackageScriptsGroup};
 
-/// 解析 <path>/package.json 的 scripts 字段;文件缺失或解析失败返回空列表
-pub fn package_scripts(path: &str) -> AppResult<Vec<PackageScript>> {
-    let file = std::path::Path::new(path).join("package.json");
-    let Ok(content) = std::fs::read_to_string(&file) else {
-        return Ok(vec![]);
-    };
-    let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) else {
-        return Ok(vec![]);
-    };
-    let Some(scripts) = json.get("scripts").and_then(|s| s.as_object()) else {
-        return Ok(vec![]);
-    };
-    Ok(scripts
+/// 解析 package.json 内容,返回 (包名, scripts)。
+/// 解析失败、无 scripts 字段或 scripts 为空时返回 None。
+fn parse_package_json(content: &str) -> Option<(Option<String>, Vec<PackageScript>)> {
+    let json = serde_json::from_str::<serde_json::Value>(content).ok()?;
+    let scripts: Vec<PackageScript> = json
+        .get("scripts")?
+        .as_object()?
         .iter()
         .filter_map(|(name, cmd)| {
             cmd.as_str().map(|c| PackageScript {
@@ -26,7 +21,38 @@ pub fn package_scripts(path: &str) -> AppResult<Vec<PackageScript>> {
                 command: c.to_string(),
             })
         })
-        .collect())
+        .collect();
+    if scripts.is_empty() {
+        return None;
+    }
+    let package_name = json
+        .get("name")
+        .and_then(|n| n.as_str())
+        .map(String::from);
+    Some((package_name, scripts))
+}
+
+/// 递归发现项目内所有 package.json(尊重 git 排除规则),按包分组返回 scripts。
+/// 支持 monorepo;node_modules 恒被跳过。
+pub fn package_scripts(path: &str) -> AppResult<Vec<PackageScriptsGroup>> {
+    let dir = std::path::Path::new(path);
+    let mut groups: Vec<PackageScriptsGroup> = walk::project_files(dir)
+        .iter()
+        .filter(|rel| rel.file_name().and_then(|n| n.to_str()) == Some("package.json"))
+        .filter_map(|rel| {
+            let content = std::fs::read_to_string(dir.join(rel)).ok()?;
+            let (package_name, scripts) = parse_package_json(&content)?;
+            let parent = rel.parent().filter(|p| !p.as_os_str().is_empty());
+            Some(PackageScriptsGroup {
+                dir: parent.map(walk::to_slash).unwrap_or_else(|| ".".into()),
+                package_name,
+                scripts,
+            })
+        })
+        .collect();
+    // 根目录包优先,其余按目录字典序
+    groups.sort_by(|a, b| (a.dir != ".", &a.dir).cmp(&(b.dir != ".", &b.dir)));
+    Ok(groups)
 }
 
 fn map_command_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CustomCommand> {
@@ -150,7 +176,7 @@ pub fn delete_command(conn: &Connection, id: i64) -> AppResult<()> {
 // ---- Tauri 命令包装 ----
 
 #[tauri::command]
-pub fn list_package_scripts(path: String) -> AppResult<Vec<PackageScript>> {
+pub fn list_package_scripts(path: String) -> AppResult<Vec<PackageScriptsGroup>> {
     package_scripts(&path)
 }
 
@@ -192,13 +218,20 @@ pub fn delete_custom_command(db: State<'_, Db>, id: i64) -> AppResult<()> {
     delete_command(&conn, id)
 }
 
-/// 在系统终端执行命令(新窗口,跑完不关)
+/// 在系统终端执行命令(新窗口,跑完不关)。
+/// cwd 指定工作目录(缺省用项目根 path),用于 monorepo 子包内执行 npm run。
 #[tauri::command]
-pub fn run_in_terminal(path: String, project_name: String, command: String) -> AppResult<()> {
-    if !std::path::Path::new(&path).is_dir() {
-        return Err(AppError::Invalid(format!("目录不存在: {path}")));
+pub fn run_in_terminal(
+    path: String,
+    project_name: String,
+    command: String,
+    cwd: Option<String>,
+) -> AppResult<()> {
+    let work_dir = cwd.unwrap_or(path);
+    if !std::path::Path::new(&work_dir).is_dir() {
+        return Err(AppError::Invalid(format!("目录不存在: {work_dir}")));
     }
-    spawn_terminal(&path, &format!("Project: {project_name}"), Some(&command))
+    spawn_terminal(&work_dir, &format!("Project: {project_name}"), Some(&command))
 }
 
 #[cfg(test)]
@@ -219,29 +252,90 @@ mod tests {
         project::add(conn, &dir, "demo").unwrap().id
     }
 
-    #[test]
-    fn parses_package_scripts() {
+    fn temp_project_dir(tag: &str) -> String {
         let dir = std::env::temp_dir().join(format!(
-            "projectdev-pkg-test-{}-{}",
+            "projectdev-pkg-{tag}-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
         fs::create_dir_all(&dir).unwrap();
-        assert!(package_scripts(dir.to_str().unwrap()).unwrap().is_empty());
+        dir.to_string_lossy().to_string()
+    }
 
-        fs::write(dir.join("package.json"), "{ not json").unwrap();
-        assert!(package_scripts(dir.to_str().unwrap()).unwrap().is_empty());
+    #[test]
+    fn parses_package_scripts() {
+        let dir = temp_project_dir("basic");
+        let p = std::path::Path::new(&dir);
+
+        assert!(package_scripts(&dir).unwrap().is_empty());
+
+        fs::write(p.join("package.json"), "{ not json").unwrap();
+        assert!(package_scripts(&dir).unwrap().is_empty());
 
         fs::write(
-            dir.join("package.json"),
-            r#"{"scripts":{"dev":"vite","build":"vite build"}}"#,
+            p.join("package.json"),
+            r#"{"name":"demo","scripts":{"dev":"vite","build":"vite build"}}"#,
         )
         .unwrap();
-        let scripts = package_scripts(dir.to_str().unwrap()).unwrap();
-        assert_eq!(scripts.len(), 2);
-        assert!(scripts
+        let groups = package_scripts(&dir).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].dir, ".");
+        assert_eq!(groups[0].package_name.as_deref(), Some("demo"));
+        assert_eq!(groups[0].scripts.len(), 2);
+        assert!(groups[0]
+            .scripts
             .iter()
             .any(|s| s.name == "dev" && s.command == "vite"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn discovers_monorepo_packages() {
+        let dir = temp_project_dir("monorepo");
+        let p = std::path::Path::new(&dir);
+
+        fs::write(p.join("package.json"), r#"{"name":"root","scripts":{"dev":"vite"}}"#).unwrap();
+        fs::create_dir_all(p.join("packages/api")).unwrap();
+        fs::write(
+            p.join("packages/api/package.json"),
+            r#"{"name":"@app/api","scripts":{"start":"node index.js","test":"vitest"}}"#,
+        )
+        .unwrap();
+        // 无 scripts 字段 -> 跳过
+        fs::create_dir_all(p.join("packages/empty")).unwrap();
+        fs::write(p.join("packages/empty/package.json"), r#"{"name":"@app/empty"}"#).unwrap();
+        // scripts 为空对象 -> 跳过
+        fs::create_dir_all(p.join("packages/none")).unwrap();
+        fs::write(p.join("packages/none/package.json"), r#"{"scripts":{}}"#).unwrap();
+        // node_modules 中的 package.json 恒跳过(即使未被 gitignore)
+        fs::create_dir_all(p.join("node_modules/dep")).unwrap();
+        fs::write(p.join("node_modules/dep/package.json"), r#"{"scripts":{"x":"y"}}"#).unwrap();
+
+        let groups = package_scripts(&dir).unwrap();
+        assert_eq!(groups.len(), 2);
+        // 根目录包优先
+        assert_eq!(groups[0].dir, ".");
+        assert_eq!(groups[1].dir, "packages/api");
+        assert_eq!(groups[1].package_name.as_deref(), Some("@app/api"));
+        assert_eq!(groups[1].scripts.len(), 2);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn respects_gitignore_when_scanning_packages() {
+        let dir = temp_project_dir("gitignore");
+        let p = std::path::Path::new(&dir);
+
+        fs::write(p.join("package.json"), r#"{"scripts":{"dev":"vite"}}"#).unwrap();
+        fs::create_dir_all(p.join("vendored/ui")).unwrap();
+        fs::write(p.join("vendored/ui/package.json"), r#"{"scripts":{"build":"x"}}"#).unwrap();
+        fs::write(p.join(".gitignore"), "vendored/\n").unwrap();
+
+        let groups = package_scripts(&dir).unwrap();
+        assert_eq!(groups.len(), 1);
+        assert_eq!(groups[0].dir, ".");
 
         let _ = fs::remove_dir_all(&dir);
     }

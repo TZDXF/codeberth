@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import { defineStore } from "pinia";
 import { load, type Store } from "@tauri-apps/plugin-store";
+import { homeDir, join } from "@tauri-apps/api/path";
 import { setI18nLocale, type SupportedLocale } from "@/i18n";
 import type { EditorKind } from "@/types";
 
@@ -8,6 +9,8 @@ export type ThemeMode = "system" | "light" | "dark";
 export type ThemeSkin = "default" | "island";
 export type Language = SupportedLocale;
 
+// 应用数据统一存放于用户主目录下的 .pm 目录(与 Rust 端 APP_DATA_DIR_NAME 保持一致)
+const APP_DATA_DIR_NAME = ".pm";
 const STORE_FILE = "settings.json";
 
 export const useSettingsStore = defineStore("settings", () => {
@@ -41,7 +44,7 @@ export const useSettingsStore = defineStore("settings", () => {
     if (initialized) return;
     initialized = true;
 
-    fileStore = await load(STORE_FILE, {
+    fileStore = await load(await join(await homeDir(), APP_DATA_DIR_NAME, STORE_FILE), {
       defaults: {
         theme: "system",
         themeSkin: "default",
