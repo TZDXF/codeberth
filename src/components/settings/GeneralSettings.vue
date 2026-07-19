@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { Separator } from "@/components/ui/separator";
 import ThemeSettings from "@/components/settings/ThemeSettings.vue";
+import MdThemeSettings from "@/components/settings/MdThemeSettings.vue";
 import LanguageSettings from "@/components/settings/LanguageSettings.vue";
 import OpenWithSettings from "@/components/settings/OpenWithSettings.vue";
 </script>
@@ -8,6 +9,8 @@ import OpenWithSettings from "@/components/settings/OpenWithSettings.vue";
 <template>
   <div class="flex flex-col gap-6">
     <ThemeSettings />
+    <Separator />
+    <MdThemeSettings />
     <Separator />
     <OpenWithSettings />
     <Separator />

@@ -1,0 +1,13 @@
+/* ===== Markdown 渲染样式总入口 =====
+ * 分层结构:
+ *   1. vue-stream-markdown 库样式(组件结构 + 默认主题)
+ *   2. base.css      —— 结构层(主题无关):排版骨架、自定义渲染器样式
+ *   3. themes/*.css  —— 主题层:各 MD 主题的配色/字体令牌,通过 <html data-md-theme> 切换
+ */
+@import "vue-stream-markdown/index.css";
+@import "vue-stream-markdown/theme.css";
+@import "./base.css";
+@import "./themes/default.css";
+@import "./themes/github.css";
+@import "./themes/notion.css";
+@import "./themes/serif.css";

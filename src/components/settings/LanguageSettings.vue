@@ -29,8 +29,5 @@ const OPTIONS: { value: Language; labelKey: string; nativeLabelKey: string }[] =
         <Check v-if="store.language === opt.value" class="h-4 w-4 shrink-0 text-primary" />
       </button>
     </div>
-    <p class="mt-3 text-xs text-muted-foreground">
-      {{ t("settings.general.languageNote") }}
-    </p>
   </section>
 </template>

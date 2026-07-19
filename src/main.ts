@@ -11,6 +11,7 @@ import "@fontsource/zen-maru-gothic/400.css";
 import "@fontsource/zen-maru-gothic/500.css";
 import "@fontsource/zen-maru-gothic/700.css";
 import "./style.css";
+import "./styles/markdown/index.css";
 import "vue-sonner/style.css";
 
 const app = createApp(App);

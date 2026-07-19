@@ -1,25 +1,52 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from "vue";
+import { provide, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { marked } from "marked";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { BookOpen, X } from "@lucide/vue";
+import {
+  Markdown,
+  type ControlsConfig,
+  type NodeRenderers,
+} from "vue-stream-markdown";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import MdImage from "@/components/markdown/MdImage.vue";
+import MdLink from "@/components/markdown/MdLink.vue";
+import { MD_BASE_PATH_KEY } from "@/components/markdown/keys";
 import { cmd } from "@/lib/tauri";
+import { hasScheme, resolvePath } from "@/lib/markdown";
+import { useSettingsStore } from "@/stores/settings";
 import type { Project, ReadmeContent } from "@/types";
 
 const { t } = useI18n();
-marked.use({ gfm: true, breaks: true });
+const settingsStore = useSettingsStore();
 
 const props = defineProps<{ project: Project }>();
 const open = defineModel<boolean>("open", { default: false });
 
 const readme = ref<ReadmeContent | null>(null);
-const html = ref("");
+const content = ref("");
 const loading = ref(false);
-const bodyRef = ref<HTMLElement | null>(null);
+
+// 相对路径图片/文件的解析基准(供自定义渲染器使用)
+provide(MD_BASE_PATH_KEY, () => props.project.path);
+
+// 自定义渲染器:图片走本地 asset 协议,链接输出真实 href 由外层统一拦截
+const nodeRenderers: NodeRenderers = {
+  image: MdImage,
+  link: MdLink,
+};
+
+// 表格复制/导出(CSV/TSV/Markdown)/全屏 + 代码复制/折叠,库默认全开,这里显式声明
+const controls: ControlsConfig = {
+  table: { copy: true, download: true, fullscreen: true },
+  code: { copy: true, collapse: true },
+};
+
+// 阻止库把宿主元素上的 shadcn 变量内联到组件根节点(island 皮肤的 hex 色值
+// 会被库误包成 hsl(#xxx) 非法值),MD 主题完全交给 CSS 层(src/styles/markdown/)
+const detachedThemeEl = document.createElement("div");
+const themeElement = () => detachedThemeEl;
 
 async function load() {
   loading.value = true;
@@ -27,12 +54,10 @@ async function load() {
     readme.value = await cmd<ReadmeContent | null>("read_readme", {
       path: props.project.path,
     });
-    html.value = readme.value
-      ? (marked.parse(readme.value.content, { async: false }) as string)
-      : "";
+    content.value = readme.value?.content ?? "";
   } catch {
     readme.value = null;
-    html.value = "";
+    content.value = "";
   } finally {
     loading.value = false;
   }
@@ -47,12 +72,6 @@ watch(
   { immediate: true },
 );
 
-// 渲染完成后把相对路径图片换成本地 asset 协议地址
-watch(html, async () => {
-  await nextTick();
-  fixRelativeImages();
-});
-
 // Esc 关闭
 watch(open, (isOpen) => {
   if (isOpen) window.addEventListener("keydown", onEsc);
@@ -61,29 +80,6 @@ watch(open, (isOpen) => {
 
 function onEsc(e: KeyboardEvent) {
   if (e.key === "Escape") open.value = false;
-}
-
-/** 带协议头的 URL(http:, data:, asset: 等) */
-function hasScheme(url: string): boolean {
-  return /^[a-z][a-z0-9+.-]*:/i.test(url);
-}
-
-/** 把 README 里的相对路径解析成项目内的绝对路径 */
-function resolvePath(base: string, rel: string): string {
-  const clean = decodeURIComponent(rel).split("#")[0].split("?")[0];
-  // 已是绝对路径(Windows 盘符 / UNC / POSIX 根)
-  if (/^([a-zA-Z]:[\\/]|\\\\|\/)/.test(clean)) return clean;
-  return `${base.replace(/[\\/]+$/, "")}/${clean}`;
-}
-
-function fixRelativeImages() {
-  const el = bodyRef.value;
-  if (!el) return;
-  el.querySelectorAll("img").forEach((img) => {
-    const src = img.getAttribute("src");
-    if (!src || hasScheme(src)) return;
-    img.src = convertFileSrc(resolvePath(props.project.path, src));
-  });
 }
 
 /** 拦截链接点击:外链交给系统浏览器,相对路径用系统默认程序打开 */
@@ -118,7 +114,7 @@ async function onBodyClick(e: MouseEvent) {
     <Transition name="slide">
       <aside
         v-if="open"
-        class="fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l bg-background shadow-xl"
+        class="readme-surface fixed inset-y-0 right-0 z-50 flex w-full max-w-2xl flex-col border-l shadow-xl"
       >
         <header class="flex shrink-0 items-center justify-between gap-2 border-b px-4 py-3">
           <div class="flex min-w-0 items-center gap-2 text-sm font-semibold">
@@ -146,14 +142,16 @@ async function onBodyClick(e: MouseEvent) {
           <p v-else-if="!readme" class="p-6 text-sm text-muted-foreground">
             {{ t("readme.notFound") }}
           </p>
-          <!-- README 来自本地项目目录,内容由用户自己控制 -->
-          <div
-            v-else
-            ref="bodyRef"
-            class="markdown-body p-6 text-sm"
-            @click="onBodyClick"
-            v-html="html"
-          />
+          <div v-else class="p-6 text-sm" @click="onBodyClick">
+            <Markdown
+              mode="static"
+              :content="content"
+              :controls="controls"
+              :node-renderers="nodeRenderers"
+              :theme-element="themeElement"
+              :locale="settingsStore.language"
+            />
+          </div>
         </ScrollArea>
       </aside>
     </Transition>
@@ -176,110 +174,5 @@ async function onBodyClick(e: MouseEvent) {
 .slide-enter-from,
 .slide-leave-to {
   transform: translateX(100%);
-}
-
-.markdown-body {
-  line-height: 1.7;
-  color: var(--foreground);
-  word-break: break-word;
-}
-.markdown-body :deep(h1),
-.markdown-body :deep(h2),
-.markdown-body :deep(h3),
-.markdown-body :deep(h4) {
-  margin: 1em 0 0.5em;
-  font-weight: 600;
-  line-height: 1.3;
-}
-.markdown-body :deep(h1) {
-  font-size: 1.4em;
-  padding-bottom: 0.3em;
-  border-bottom: 1px solid var(--border);
-}
-.markdown-body :deep(h2) {
-  font-size: 1.2em;
-  padding-bottom: 0.25em;
-  border-bottom: 1px solid var(--border);
-}
-.markdown-body :deep(h3) {
-  font-size: 1.05em;
-}
-.markdown-body :deep(h4) {
-  font-size: 0.95em;
-}
-.markdown-body :deep(h1:first-child),
-.markdown-body :deep(h2:first-child),
-.markdown-body :deep(h3:first-child) {
-  margin-top: 0;
-}
-.markdown-body :deep(p) {
-  margin: 0.5em 0;
-}
-.markdown-body :deep(a) {
-  color: var(--primary);
-  text-decoration: underline;
-  text-underline-offset: 2px;
-  cursor: pointer;
-}
-.markdown-body :deep(code) {
-  font-family: ui-monospace, monospace;
-  font-size: 0.85em;
-  background: var(--muted);
-  padding: 0.15em 0.4em;
-  border-radius: 4px;
-}
-.markdown-body :deep(pre) {
-  margin: 0.75em 0;
-  padding: 0.75em 1em;
-  background: var(--muted);
-  border-radius: 6px;
-  overflow-x: auto;
-}
-.markdown-body :deep(pre code) {
-  background: transparent;
-  padding: 0;
-}
-.markdown-body :deep(ul),
-.markdown-body :deep(ol) {
-  margin: 0.5em 0;
-  padding-left: 1.5em;
-}
-.markdown-body :deep(ul) {
-  list-style: disc;
-}
-.markdown-body :deep(ol) {
-  list-style: decimal;
-}
-.markdown-body :deep(li + li) {
-  margin-top: 0.2em;
-}
-.markdown-body :deep(blockquote) {
-  margin: 0.75em 0;
-  padding: 0.25em 1em;
-  border-left: 3px solid var(--border);
-  color: var(--muted-foreground);
-}
-.markdown-body :deep(img) {
-  max-width: 100%;
-  border-radius: 4px;
-}
-.markdown-body :deep(hr) {
-  margin: 1em 0;
-  border: none;
-  border-top: 1px solid var(--border);
-}
-.markdown-body :deep(table) {
-  margin: 0.75em 0;
-  border-collapse: collapse;
-  font-size: 0.9em;
-}
-.markdown-body :deep(th),
-.markdown-body :deep(td) {
-  padding: 0.35em 0.75em;
-  border: 1px solid var(--border);
-}
-.markdown-body :deep(th) {
-  background: var(--muted);
-  font-weight: 600;
 }
 </style>

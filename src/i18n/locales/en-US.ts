@@ -268,6 +268,18 @@ export default {
       island: "Animal Island",
       islandDesc: "Creamy picture-book style with teal accents",
     },
+    mdTheme: {
+      title: "Markdown theme",
+      description: "Rendering style for README and other Markdown content, adapts to light/dark mode",
+      default: "Follow app",
+      defaultDesc: "Matches the app's interface theme",
+      github: "GitHub",
+      githubDesc: "Classic GitHub README look with blue links and striped tables",
+      notion: "Elegant doc",
+      notionDesc: "Notion-style modern typography with relaxed line height",
+      serif: "Reading",
+      serifDesc: "Serif font on a paper-toned surface for long reads",
+    },
     language: {
       zhCN: "Simplified Chinese",
       zhCNNative: "简体中文",

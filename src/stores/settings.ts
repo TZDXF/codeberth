@@ -7,6 +7,7 @@ import type { EditorKind } from "@/types";
 
 export type ThemeMode = "system" | "light" | "dark";
 export type ThemeSkin = "default" | "island";
+export type MdTheme = "default" | "github" | "notion" | "serif";
 export type Language = SupportedLocale;
 
 // 应用数据统一存放于用户主目录下的 .pm 目录(与 Rust 端 APP_DATA_DIR_NAME 保持一致)
@@ -16,6 +17,7 @@ const STORE_FILE = "settings.json";
 export const useSettingsStore = defineStore("settings", () => {
   const theme = ref<ThemeMode>("system");
   const themeSkin = ref<ThemeSkin>("default");
+  const mdTheme = ref<MdTheme>("default");
   const language = ref<Language>("zh-CN");
   const defaultOpenWith = ref<EditorKind>("explorer");
 
@@ -36,6 +38,15 @@ export const useSettingsStore = defineStore("settings", () => {
     }
   }
 
+  function applyMdTheme() {
+    const root = document.documentElement;
+    if (mdTheme.value === "default") {
+      root.removeAttribute("data-md-theme");
+    } else {
+      root.setAttribute("data-md-theme", mdTheme.value);
+    }
+  }
+
   function onSystemThemeChange() {
     if (theme.value === "system") applyTheme();
   }
@@ -48,6 +59,7 @@ export const useSettingsStore = defineStore("settings", () => {
       defaults: {
         theme: "system",
         themeSkin: "default",
+        mdTheme: "default",
         language: "zh-CN",
         defaultOpenWith: "explorer",
       },
@@ -59,6 +71,15 @@ export const useSettingsStore = defineStore("settings", () => {
     const savedSkin = await fileStore.get<ThemeSkin>("themeSkin");
     if (savedSkin === "default" || savedSkin === "island") {
       themeSkin.value = savedSkin;
+    }
+    const savedMdTheme = await fileStore.get<MdTheme>("mdTheme");
+    if (
+      savedMdTheme === "default" ||
+      savedMdTheme === "github" ||
+      savedMdTheme === "notion" ||
+      savedMdTheme === "serif"
+    ) {
+      mdTheme.value = savedMdTheme;
     }
     const savedLanguage = await fileStore.get<Language>("language");
     if (savedLanguage === "zh-CN" || savedLanguage === "en-US") {
@@ -74,6 +95,7 @@ export const useSettingsStore = defineStore("settings", () => {
       defaultOpenWith.value = savedOpenWith;
     }
     applyTheme();
+    applyMdTheme();
     systemDark.addEventListener("change", onSystemThemeChange);
   }
 
@@ -95,6 +117,12 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("themeSkin", value);
   }
 
+  async function setMdTheme(value: MdTheme) {
+    mdTheme.value = value;
+    applyMdTheme();
+    await persist("mdTheme", value);
+  }
+
   async function setLanguage(value: Language) {
     language.value = value;
     setI18nLocale(value);
@@ -109,11 +137,13 @@ export const useSettingsStore = defineStore("settings", () => {
   return {
     theme,
     themeSkin,
+    mdTheme,
     language,
     defaultOpenWith,
     init,
     setTheme,
     setThemeSkin,
+    setMdTheme,
     setLanguage,
     setDefaultOpenWith,
   };

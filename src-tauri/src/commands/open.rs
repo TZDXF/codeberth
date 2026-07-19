@@ -18,9 +18,20 @@ fn hidden(#[allow(unused_mut)] mut cmd: Command) -> Command {
     cmd
 }
 
-/// 在系统终端打开目录,可选执行命令(跑完不关窗口)
+/// 在系统终端打开目录,可选执行命令(跑完不关窗口)。
+/// 优先用 Windows Terminal(wt.exe);未安装或启动失败时退回 cmd。
 #[cfg(windows)]
 pub fn spawn_terminal(path: &str, title: &str, command: Option<&str>) -> AppResult<()> {
+    if let Some(wt) = find_wt() {
+        // wt 是 GUI 子系统进程,自己创建窗口,不存在句柄透传问题,直接启动即可
+        let spawned = Command::new(wt)
+            .args(build_wt_args(path, title, command))
+            .spawn();
+        if spawned.is_ok() {
+            return Ok(());
+        }
+        // 启动失败(如 AppX 执行别名被用户禁用)则继续走下面的 cmd 兜底
+    }
     // 结构:cmd /C start "<title>" cmd /K "<inner>",外层 cmd 用 CREATE_NO_WINDOW 隐藏。
     //
     // 为什么不能直接 CREATE_NEW_CONSOLE 起 cmd /K:Rust 的 Command 会把父进程
@@ -61,6 +72,44 @@ fn sanitize_cmd_text(s: &str) -> String {
     s.chars()
         .filter(|c| !matches!(c, '"' | '&' | '|' | '<' | '>' | '^'))
         .collect()
+}
+
+/// 定位 wt.exe:先查 AppX 执行别名(Store / 官网安装都会注册),
+/// 再用 where 搜 PATH(覆盖 scoop / choco / 绿色版等安装方式);找不到返回 None
+#[cfg(windows)]
+fn find_wt() -> Option<String> {
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        let alias = format!(r"{local}\Microsoft\WindowsApps\wt.exe");
+        if std::path::Path::new(&alias).exists() {
+            return Some(alias);
+        }
+    }
+    let probe = hidden(Command::new("where")).arg("wt").output();
+    match probe {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .next()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_string),
+        _ => None,
+    }
+}
+
+/// 构造 wt 参数:`wt --title "<title>" -d "<path>" [cmd /k "<command>"]`
+/// 不带命令时由 wt 打开默认配置文件的 shell;带命令时套 cmd /k,跑完窗口保留
+#[cfg(windows)]
+fn build_wt_args(path: &str, title: &str, command: Option<&str>) -> Vec<String> {
+    let mut args = vec![
+        "--title".into(),
+        sanitize_cmd_text(title),
+        "-d".into(),
+        path.replace('"', ""),
+    ];
+    if let Some(c) = command {
+        args.extend(["cmd".into(), "/k".into(), c.into()]);
+    }
+    args
 }
 
 #[cfg(target_os = "macos")]
@@ -202,5 +251,46 @@ mod tests {
         // 用户命令原样透传,允许 shell 操作符
         let s = build_start_cmdline(r"D:\p", "t", Some("cargo build && cargo run"));
         assert!(s.ends_with("&& cargo build && cargo run\""));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn wt_args_without_command() {
+        let args = build_wt_args(r"D:\code\foo bar", "Terminal", None);
+        assert_eq!(args, ["--title", "Terminal", "-d", r"D:\code\foo bar"]);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn wt_args_with_command_keeps_window() {
+        // 带命令时必须套 cmd /k,保证跑完窗口保留
+        let args = build_wt_args(r"D:\code\foo", "Project: my-app", Some("npm run dev"));
+        assert_eq!(
+            args,
+            [
+                "--title",
+                "Project: my-app",
+                "-d",
+                r"D:\code\foo",
+                "cmd",
+                "/k",
+                "npm run dev"
+            ]
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn wt_args_sanitizes_display_text_but_keeps_command() {
+        let args = build_wt_args(r#"D:\weird"path"#, r#"a&b"c"#, Some("cargo build && cargo run"));
+        assert_eq!(args[1], "abc");
+        assert_eq!(args[3], r"D:\weirdpath");
+        assert_eq!(args[6], "cargo build && cargo run");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn find_wt_does_not_panic() {
+        let _wt = find_wt();
     }
 }

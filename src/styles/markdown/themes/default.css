@@ -1,0 +1,25 @@
+/* ===== MD 主题:跟随应用(默认)=====
+ * 不设置 data-md-theme 时生效。
+ * 让库作用域内的 shadcn 变量穿透回应用主题,
+ * 应用的 light/dark 与 island 皮肤变化会自动反映到 Markdown 内容。
+ */
+.stream-markdown.stream-markdown {
+  --background: inherit;
+  --foreground: inherit;
+  --card: inherit;
+  --card-foreground: inherit;
+  --popover: inherit;
+  --popover-foreground: inherit;
+  --primary: inherit;
+  --primary-foreground: inherit;
+  --secondary: inherit;
+  --secondary-foreground: inherit;
+  --muted: inherit;
+  --muted-foreground: inherit;
+  --accent: inherit;
+  --accent-foreground: inherit;
+  --destructive: inherit;
+  --border: inherit;
+  --input: inherit;
+  --ring: inherit;
+}

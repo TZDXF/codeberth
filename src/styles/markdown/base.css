@@ -1,0 +1,34 @@
+/* ===== Markdown 结构层(主题无关)=====
+ * 职责:排版骨架与行为,不放任何具体配色。
+ * 颜色由 themes/*.css 注入;可调旋钮:
+ *   --md-font     正文字体(默认继承应用字体)
+ *   --md-leading  正文行距
+ *   --md-surface  MD 容器表面色(默认沿用应用 --background)
+ */
+
+/* README 抽屉等 MD 容器表面色(未层叠工具类,优先级高于 Tailwind 工具类) */
+.readme-surface {
+  background-color: var(--md-surface, var(--background));
+}
+
+.stream-markdown.stream-markdown {
+  /* 双层类提升特异性,确保压在库 theme.css 的 .stream-markdown.light/.dark 之上 */
+  font-family: var(--md-font, inherit);
+  line-height: var(--md-leading, 1.75);
+  word-break: break-word;
+}
+
+/* 自定义链接渲染器(MdLink):外观对齐库内建链接 */
+.stream-markdown a[data-md-link] {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+/* 自定义图片渲染器(MdImage) */
+.stream-markdown img[data-md-image] {
+  max-width: 100%;
+  border-radius: 4px;
+}

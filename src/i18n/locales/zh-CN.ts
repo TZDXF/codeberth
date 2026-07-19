@@ -266,6 +266,18 @@ export default {
       island: "动森小岛",
       islandDesc: "奶油底色、青绿点缀的绘本风",
     },
+    mdTheme: {
+      title: "Markdown 主题",
+      description: "选择 README 等 Markdown 内容的渲染风格,随亮暗模式自动适配",
+      default: "跟随应用",
+      defaultDesc: "与应用界面主题保持一致",
+      github: "GitHub",
+      githubDesc: "经典 GitHub README 风,蓝色链接、斑马纹表格",
+      notion: "优雅文档",
+      notionDesc: "Notion 风现代排版,宽松行距",
+      serif: "阅读",
+      serifDesc: "衬线字体、羊皮纸底色,适合长文阅读",
+    },
     language: {
       zhCN: "简体中文",
       zhCNNative: "简体中文",

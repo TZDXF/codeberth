@@ -1,0 +1,53 @@
+/* ===== MD 主题:Serif(阅读风)=====
+ * 衬线字体 + 羊皮纸底色,适合长文阅读
+ */
+
+[data-md-theme="serif"] {
+  --md-surface: #f8f5ef;
+  --md-font: Georgia, "Times New Roman", "Songti SC", "SimSun", serif;
+  --md-leading: 1.85;
+}
+[data-md-theme="serif"] .stream-markdown.stream-markdown {
+  --background: var(--md-surface);
+  --foreground: #3b3730;
+  --card: #f3efe6;
+  --card-foreground: #3b3730;
+  --popover: #fdfbf7;
+  --popover-foreground: #3b3730;
+  --primary: #966f33;
+  --primary-foreground: #ffffff;
+  --secondary: #efeae0;
+  --secondary-foreground: #3b3730;
+  --muted: #efeae0;
+  --muted-foreground: #8a8375;
+  --accent: #efe8da;
+  --accent-foreground: #3b3730;
+  --destructive: #b3402e;
+  --border: #e3ddd0;
+  --input: #e3ddd0;
+  --ring: #966f33;
+}
+
+[data-md-theme="serif"].dark {
+  --md-surface: #1c1a17;
+}
+[data-md-theme="serif"] .stream-markdown.stream-markdown.dark {
+  --background: var(--md-surface);
+  --foreground: #d6d0c4;
+  --card: #24211b;
+  --card-foreground: #d6d0c4;
+  --popover: #26231f;
+  --popover-foreground: #d6d0c4;
+  --primary: #c9a86a;
+  --primary-foreground: #1c1a17;
+  --secondary: #26231f;
+  --secondary-foreground: #d6d0c4;
+  --muted: #26231f;
+  --muted-foreground: #a39a8a;
+  --accent: #2c2822;
+  --accent-foreground: #d6d0c4;
+  --destructive: #d06a5a;
+  --border: #3a352c;
+  --input: #3a352c;
+  --ring: #c9a86a;
+}

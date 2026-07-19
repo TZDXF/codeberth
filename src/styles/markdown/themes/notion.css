@@ -1,0 +1,57 @@
+/* ===== MD 主题:Notion(优雅文档)=====
+ * 现代文档风:更宽行距、无标题分隔线、柔和引用块
+ */
+
+[data-md-theme="notion"] {
+  --md-surface: #ffffff;
+  --md-leading: 1.8;
+}
+[data-md-theme="notion"] .stream-markdown.stream-markdown {
+  --background: var(--md-surface);
+  --foreground: #37352f;
+  --card: #ffffff;
+  --card-foreground: #37352f;
+  --popover: #ffffff;
+  --popover-foreground: #37352f;
+  --primary: #2383e2;
+  --primary-foreground: #ffffff;
+  --secondary: #f7f7f5;
+  --secondary-foreground: #37352f;
+  --muted: #f7f7f5;
+  --muted-foreground: #787774;
+  --accent: #f1f1ef;
+  --accent-foreground: #37352f;
+  --destructive: #eb5757;
+  --border: #e9e9e7;
+  --input: #e9e9e7;
+  --ring: #2383e2;
+}
+
+[data-md-theme="notion"].dark {
+  --md-surface: #191919;
+}
+[data-md-theme="notion"] .stream-markdown.stream-markdown.dark {
+  --background: var(--md-surface);
+  --foreground: #d4d4d2;
+  --card: #202020;
+  --card-foreground: #d4d4d2;
+  --popover: #252525;
+  --popover-foreground: #d4d4d2;
+  --primary: #529cca;
+  --primary-foreground: #ffffff;
+  --secondary: #252525;
+  --secondary-foreground: #d4d4d2;
+  --muted: #252525;
+  --muted-foreground: #9b9b9b;
+  --accent: #2f2f2f;
+  --accent-foreground: #d4d4d2;
+  --destructive: #eb5757;
+  --border: #2f2f2f;
+  --input: #2f2f2f;
+  --ring: #529cca;
+}
+
+/* Notion 风引用:弱化左边条,整体底色块 */
+[data-md-theme="notion"] .stream-markdown blockquote {
+  border-left-color: var(--foreground);
+}
