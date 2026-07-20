@@ -221,6 +221,8 @@ watch(open, (v) => {
   // 锁定单项目时 selectedIds 可能与上次相同而不触发上面的 watch,这里显式解析一次
   selfNames.value = {};
   void resolveSelfNames(selectedIds.value);
+  // 同理:各筛选值均未变时自动加载 watch 不触发,显式拉一次提交记录
+  void loadCommits();
 });
 
 function toggleProject(id: number) {
@@ -229,53 +231,84 @@ function toggleProject(id: number) {
     : [...selectedIds.value, id];
 }
 
-async function generate() {
-  if (generating.value) return;
+const loadingCommits = ref(false);
+/** 筛选快速变化时防止旧请求覆盖新结果 */
+let commitsToken = 0;
+
+/** 按当前项目/时间范围/作者过滤拉取提交记录(打开弹窗与筛选变化时自动触发) */
+async function loadCommits() {
   const ids = props.presetProjectId != null ? [props.presetProjectId] : selectedIds.value;
   const projects = activeProjects.value.filter((p) => ids.includes(p.id));
+  const token = ++commitsToken;
   if (!projects.length) {
-    toast.error(t("report.noProjects"));
+    commitData.value = [];
     return;
   }
-  commitData.value = [];
-  generating.value = true;
+  loadingCommits.value = true;
+  const stale = () => token !== commitsToken;
   try {
     const since = `${fmt(range.value.from)} 00:00:00`;
     const until = `${fmt(range.value.to)} 23:59:59`;
-    let data: ProjectCommits[];
-    try {
-      data = await Promise.all(
-        projects.map(async (p) => {
-          // "仅自己":取该仓库 git 用户身份作为 --author 过滤;未配置则不过滤
-          let author: string | undefined;
-          if (authorMode.value === "me") {
-            const user = await cmd<GitUser>("git_current_user", { path: p.path });
-            author = user.name || user.email || undefined;
-          }
-          return {
-            projectName: p.name,
-            commits: await cmd<GitCommitInfo[]>("git_log", {
-              path: p.path,
-              since,
-              until,
-              maxCount: 500,
-              author,
-            }),
-          };
-        }),
-      );
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      toast.error(t("report.loadFailed", { error: message }));
-      return;
-    }
+    const data = await Promise.all(
+      projects.map(async (p) => {
+        // "仅自己":取该仓库 git 用户身份作为 --author 过滤;未配置则不过滤
+        let author: string | undefined;
+        if (authorMode.value === "me") {
+          const user = await cmd<GitUser>("git_current_user", { path: p.path }).catch(() => null);
+          author = user?.name || user?.email || undefined;
+        }
+        return {
+          projectName: p.name,
+          commits: await cmd<GitCommitInfo[]>("git_log", {
+            path: p.path,
+            since,
+            until,
+            maxCount: 500,
+            author,
+          }),
+        };
+      }),
+    );
+    if (stale()) return;
     commitData.value = data;
     commitOpen.value = {};
-    if (!data.some((d) => d.commits.length)) {
-      result.value = "";
-      toast.info(t("report.noCommits"));
-      return;
-    }
+  } catch (e) {
+    if (stale()) return;
+    commitData.value = [];
+    const message = e instanceof Error ? e.message : String(e);
+    toast.error(t("report.loadFailed", { error: message }));
+  } finally {
+    if (!stale()) loadingCommits.value = false;
+  }
+}
+
+// 项目勾选 / 时间范围 / 作者过滤变化时自动刷新提交列表
+watch(
+  () =>
+    [
+      [...selectedIds.value].sort((a, b) => a - b).join(","),
+      fmt(range.value.from),
+      fmt(range.value.to),
+      authorMode.value,
+    ].join("|"),
+  () => void loadCommits(),
+);
+
+async function generate() {
+  if (generating.value || loadingCommits.value) return;
+  const ids = props.presetProjectId != null ? [props.presetProjectId] : selectedIds.value;
+  if (!ids.length) {
+    toast.error(t("report.noProjects"));
+    return;
+  }
+  const data = commitData.value;
+  if (!data.some((d) => d.commits.length)) {
+    result.value = "";
+    toast.info(t("report.noCommits"));
+    return;
+  }
+  generating.value = true;
+  try {
     const rangeLabel = t("report.rangeLabel", {
       from: fmt(range.value.from),
       to: fmt(range.value.to),
@@ -306,7 +339,9 @@ async function copyResult() {
         <DialogDescription>{{ t("report.description") }}</DialogDescription>
       </DialogHeader>
 
-      <div class="flex flex-col gap-4">
+      <!-- DialogContent 是 grid 容器,grid item 的 min-width:auto 会按内容 min-content
+           撑破弹窗(如提交信息中的长 URL/英文串),min-w-0 解除该自动最小宽度 -->
+      <div class="flex min-w-0 flex-col gap-4">
         <div v-if="!locked" class="flex flex-col gap-1.5">
           <div class="flex items-center justify-between">
             <label class="text-sm font-medium">{{ t("report.selectProjects") }}</label>
@@ -463,21 +498,32 @@ async function copyResult() {
         </div>
 
         <div class="flex justify-end">
-          <Button size="sm" class="gap-1.5" :disabled="generating" @click="generate">
+          <Button
+            size="sm"
+            class="gap-1.5"
+            :disabled="generating || loadingCommits"
+            @click="generate"
+          >
             <Loader2 v-if="generating" class="h-3.5 w-3.5 animate-spin" />
             <Sparkles v-else class="h-3.5 w-3.5" />
             {{ generating ? t("report.generating") : t("report.generate") }}
           </Button>
         </div>
 
-        <div v-if="commitData.length" class="flex flex-col gap-1.5">
+        <div v-if="commitData.length || loadingCommits" class="flex min-w-0 flex-col gap-1.5">
           <div class="flex items-center justify-between">
-            <label class="text-sm font-medium">{{ t("report.commits") }}</label>
-            <Badge variant="secondary" class="text-xs">
+            <div class="flex items-center gap-1.5">
+              <label class="text-sm font-medium">{{ t("report.commits") }}</label>
+              <Loader2
+                v-if="loadingCommits"
+                class="h-3.5 w-3.5 animate-spin text-muted-foreground"
+              />
+            </div>
+            <Badge v-if="commitData.length" variant="secondary" class="text-xs">
               {{ t("report.commitCount", { count: totalCommits }) }}
             </Badge>
           </div>
-          <div class="rounded-md border">
+          <div v-if="commitData.length" class="overflow-hidden rounded-md border">
             <Collapsible
               v-for="d in commitData"
               :key="d.projectName"
@@ -493,23 +539,33 @@ async function copyResult() {
                   :class="{ 'rotate-90': expanded }"
                 />
                 <span class="min-w-0 flex-1 truncate">{{ d.projectName }}</span>
-                <span class="shrink-0 text-xs text-muted-foreground">
+                <span class="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
                   {{ t("report.commitCount", { count: d.commits.length }) }}
                 </span>
               </CollapsibleTrigger>
-              <CollapsibleContent>
-                <div v-if="d.commits.length" class="max-h-40 overflow-y-auto border-t">
+              <CollapsibleContent class="min-w-0 overflow-hidden">
+                <div
+                  v-if="d.commits.length"
+                  class="max-h-40 overflow-y-auto overflow-x-hidden border-t"
+                >
                   <div
                     v-for="c in d.commits"
                     :key="c.hash + c.date"
-                    class="flex items-center gap-2 px-3 py-1 text-xs"
+                    class="flex min-w-0 items-center gap-2 px-3 py-1 text-xs"
                   >
                     <code class="shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
                       {{ c.hash }}
                     </code>
                     <span class="min-w-0 flex-1 truncate" :title="c.subject">{{ c.subject }}</span>
-                    <span class="shrink-0 text-muted-foreground">{{ c.author }}</span>
-                    <span class="shrink-0 text-muted-foreground">{{ c.date }}</span>
+                    <span
+                      class="max-w-28 shrink-0 truncate whitespace-nowrap text-muted-foreground"
+                      :title="c.author"
+                    >
+                      {{ c.author }}
+                    </span>
+                    <span class="shrink-0 whitespace-nowrap text-muted-foreground">{{
+                      c.date
+                    }}</span>
                   </div>
                 </div>
                 <p v-else class="border-t px-3 py-2 text-xs text-muted-foreground">
