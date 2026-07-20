@@ -62,20 +62,34 @@ export async function generateCommitMessage(
   const prompts = await loadAiPrompts();
   const description = project.description.trim();
   const projectSection = `Project: ${project.name}${description ? `\nDescription: ${description}` : ""}`;
-  const untracked = ctx.untracked.length
-    ? `\nUntracked new files (no diff content available):\n${ctx.untracked.join("\n")}`
+  // 风格锚定:真实提交示例比 system 提示词的抽象规则更能让模型对齐仓库惯例
+  const recentSection = ctx.recent_commits.length
+    ? `\n\nRecent commit messages (match their style and language):\n${ctx.recent_commits
+        .map((s) => `- ${s}`)
+        .join("\n")}`
     : "";
   const truncatedNote = ctx.truncated ? "\n(Note: the diff was truncated due to length.)" : "";
+  // 有内容的未跟踪文件单独成段给出全文;无内容的(二进制/超限)仅列文件名
+  const withContent = new Set(ctx.untracked_files.map((f) => f.path));
+  const namesOnly = ctx.untracked.filter((n) => !withContent.has(n));
+  const untrackedNamesSection = namesOnly.length
+    ? `\n\nUntracked new files (no diff content available):\n${namesOnly.join("\n")}`
+    : "";
+  const untrackedContentsSection = ctx.untracked_files.length
+    ? `\n\nNew file contents (untracked):\n${ctx.untracked_files
+        .map((f) => `=== ${f.path}${f.truncated ? " (truncated)" : ""} ===\n${f.content}`)
+        .join("\n\n")}`
+    : "";
   const { text } = await generateText({
     model: getChatModel(),
     system: buildSystemPrompt(prompts.commit, DEFAULT_COMMIT_PROMPT, language),
-    prompt: `${projectSection}
+    prompt: `${projectSection}${recentSection}
 
 Change summary (git diff --stat):
 ${ctx.stat || "(none)"}
 
 Diff:${truncatedNote}
-${ctx.diff || "(empty)"}${untracked}`,
+${ctx.diff || "(empty)"}${untrackedNamesSection}${untrackedContentsSection}`,
   });
   return text.trim();
 }

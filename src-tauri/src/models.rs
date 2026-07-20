@@ -37,17 +37,30 @@ pub struct GitBranches {
     pub remote: Vec<String>,
 }
 
+/// 一个可读取文本内容的未跟踪新文件(二进制/超限文件不会出现在此)
+#[derive(Debug, Clone, Serialize)]
+pub struct GitUntrackedFile {
+    pub path: String,
+    pub content: String,
+    /// 内容是否因超长被截断
+    pub truncated: bool,
+}
+
 /// 生成提交信息所需的变更上下文(diff 可能已被截断)
 #[derive(Debug, Clone, Serialize)]
 pub struct GitCommitContext {
     /// `git diff --stat` 摘要
     pub stat: String,
-    /// 相对 HEAD 的完整 diff(超长时截断并追加标记)
+    /// 相对 HEAD 的完整 diff(超长时截断并追加标记;已排除锁文件等噪声)
     pub diff: String,
     /// diff 是否因超长被截断
     pub truncated: bool,
-    /// 未跟踪文件名(无 diff 内容,供模型感知新增文件)
+    /// 全部未跟踪文件名(含无内容的,供模型感知新增文件)
     pub untracked: Vec<String>,
+    /// 未跟踪文件中可读取的文本内容(跳过二进制与超限文件)
+    pub untracked_files: Vec<GitUntrackedFile>,
+    /// 最近提交信息 subject(风格锚定用,新仓库为空)
+    pub recent_commits: Vec<String>,
 }
 
 /// 一条 git 提交记录(日报生成用)

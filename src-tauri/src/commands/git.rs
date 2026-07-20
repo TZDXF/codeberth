@@ -1,3 +1,4 @@
+use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Output};
 use std::sync::OnceLock;
@@ -7,7 +8,10 @@ use tauri::{Emitter, Window};
 use tokio::sync::Semaphore;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{GitBranches, GitCommitContext, GitCommitInfo, GitPullResult, GitStatus, GitUser};
+use crate::models::{
+    GitBranches, GitCommitContext, GitCommitInfo, GitPullResult, GitStatus, GitUntrackedFile,
+    GitUser,
+};
 
 /// 后台 fetch 并发上限(超出排队)
 static FETCH_PERMITS: OnceLock<Semaphore> = OnceLock::new();
@@ -355,6 +359,27 @@ pub fn git_push(path: String) -> AppResult<GitStatus> {
 
 /// 送入 AI 的 diff 长度上限(超出截断,避免 token 爆炸)
 const DIFF_MAX_CHARS: usize = 30_000;
+/// 单个未跟踪文件内容上限(字符)
+const UNTRACKED_FILE_MAX_CHARS: usize = 4_000;
+/// 全部未跟踪文件内容的总预算(字符)
+const UNTRACKED_TOTAL_MAX_CHARS: usize = 12_000;
+/// 二进制嗅探的前缀长度(含 NUL 即视为二进制)
+const BINARY_SNIFF_BYTES: usize = 8_000;
+/// 风格锚定用的最近提交条数
+const RECENT_COMMITS_COUNT: usize = 10;
+
+/// diff 噪声文件:内容对撰写提交信息无意义,排除以节省 token 预算。
+/// pathspec 的 `*` 可跨目录匹配,无需逐层列举;stat 仍保留这些文件(摘要成本低且"锁文件变了"本身有价值)
+const DIFF_EXCLUDES: &[&str] = &[
+    ":(exclude)*pnpm-lock.yaml",
+    ":(exclude)*package-lock.json",
+    ":(exclude)*yarn.lock",
+    ":(exclude)*bun.lockb",
+    ":(exclude)*Cargo.lock",
+    ":(exclude)*.min.js",
+    ":(exclude)*.min.css",
+    ":(exclude)*.map",
+];
 
 /// 按 char 边界安全截断,返回 (文本, 是否截断)
 fn truncate_chars(text: &str, max: usize) -> (String, bool) {
@@ -369,10 +394,40 @@ fn truncate_chars(text: &str, max: usize) -> (String, bool) {
     (text[..end].to_string(), true)
 }
 
+/// 读取未跟踪新文件的文本内容;非常规文件/二进制/读失败返回 None(由调用方回退到仅列文件名)
+fn read_untracked_file(repo: &str, rel: &str) -> Option<GitUntrackedFile> {
+    let full = Path::new(repo).join(rel);
+    let meta = std::fs::metadata(&full).ok()?;
+    if !meta.is_file() {
+        return None;
+    }
+    // 按字节多读一段用于二进制嗅探;char 截断在解码后做(UTF-8 最多 4 字节/字符,预算留足)
+    let max_bytes = (UNTRACKED_FILE_MAX_CHARS * 4 + BINARY_SNIFF_BYTES) as u64;
+    let mut buf = Vec::new();
+    std::fs::File::open(&full)
+        .ok()?
+        .take(max_bytes)
+        .read_to_end(&mut buf)
+        .ok()?;
+    if buf[..buf.len().min(BINARY_SNIFF_BYTES)].contains(&0) {
+        return None;
+    }
+    let text = String::from_utf8_lossy(&buf);
+    let (content, char_truncated) = truncate_chars(&text, UNTRACKED_FILE_MAX_CHARS);
+    Some(GitUntrackedFile {
+        path: rel.to_string(),
+        content,
+        truncated: char_truncated || meta.len() > buf.len() as u64,
+    })
+}
+
 /// 收集 AI 生成提交信息所需的变更上下文:
 /// 覆盖已暂存 + 已跟踪未暂存修改(与 git_commit 语义一致,相对 HEAD);
 /// 仓库尚无提交(无 HEAD)时回退到暂存区 diff;
-/// 未跟踪清单剔除嵌套 git 仓库目录(子仓库是独立项目,不算本仓库内容)
+/// diff 排除锁文件/min/map 等噪声文件(stat 保留);
+/// 未跟踪清单剔除嵌套 git 仓库目录(子仓库是独立项目,不算本仓库内容),
+/// 其中可读的文本文件附带内容(预算受限,二进制跳过);
+/// 附最近若干条提交 subject 供模型对齐仓库提交风格
 #[tauri::command]
 pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
     let has_head = git_command(&path)
@@ -383,15 +438,56 @@ pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
     let base: &[&str] = if has_head { &["HEAD"] } else { &["--cached"] };
 
     let stat_out = run_git(&path, &[&["diff", "--stat"], base].concat())?;
-    let diff_out = run_git(&path, &[&["diff"], base].concat())?;
+    let diff_out = run_git(
+        &path,
+        &[&["diff"], base, &["--", "."], DIFF_EXCLUDES].concat(),
+    )?;
 
     let untracked_out = run_git(&path, &["ls-files", "--others", "--exclude-standard"])?;
-    let untracked = String::from_utf8_lossy(&untracked_out.stdout)
+    let untracked: Vec<String> = String::from_utf8_lossy(&untracked_out.stdout)
         .lines()
         .map(str::trim)
         .filter(|l| !l.is_empty() && !is_nested_repo(&path, l))
         .map(String::from)
         .collect();
+
+    let mut untracked_files = Vec::new();
+    let mut budget = UNTRACKED_TOTAL_MAX_CHARS;
+    for name in &untracked {
+        if budget == 0 {
+            break;
+        }
+        if let Some(mut f) = read_untracked_file(&path, name) {
+            let (content, hit_budget) = truncate_chars(&f.content, budget);
+            f.truncated = f.truncated || hit_budget;
+            budget -= content.chars().count();
+            f.content = content;
+            untracked_files.push(f);
+        }
+    }
+
+    let recent_commits = if has_head {
+        run_git(
+            &path,
+            &[
+                "log",
+                "--no-merges",
+                &format!("-{RECENT_COMMITS_COUNT}"),
+                "--pretty=%s",
+            ],
+        )
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(String::from)
+                .collect()
+        })
+        .unwrap_or_default()
+    } else {
+        Vec::new()
+    };
 
     let (diff, truncated) = truncate_chars(&String::from_utf8_lossy(&diff_out.stdout), DIFF_MAX_CHARS);
     Ok(GitCommitContext {
@@ -399,6 +495,8 @@ pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
         diff,
         truncated,
         untracked,
+        untracked_files,
+        recent_commits,
     })
 }
 
@@ -888,6 +986,71 @@ mod tests {
         assert_eq!(ctx.untracked, vec!["b.txt".to_string()]);
         assert!(ctx.stat.is_empty());
         assert!(ctx.diff.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn commit_context_includes_untracked_text_and_skips_binary() {
+        let dir = temp_dir("ctx-untracked-content");
+        init_repo(&dir);
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        git(&dir, &["add", "a.txt"]);
+        git(&dir, &["commit", "-m", "init"]);
+
+        fs::write(dir.join("new.txt"), "hello world").unwrap();
+        fs::write(dir.join("bin.dat"), [0u8, 159, 146, 150]).unwrap(); // 含 NUL,视为二进制
+
+        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        // 名称清单两个都在;内容清单只有文本文件
+        assert!(ctx.untracked.contains(&"new.txt".to_string()));
+        assert!(ctx.untracked.contains(&"bin.dat".to_string()));
+        assert_eq!(ctx.untracked_files.len(), 1);
+        assert_eq!(ctx.untracked_files[0].path, "new.txt");
+        assert_eq!(ctx.untracked_files[0].content, "hello world");
+        assert!(!ctx.untracked_files[0].truncated);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn commit_context_excludes_lockfile_from_diff_but_keeps_stat() {
+        let dir = temp_dir("ctx-lockfile");
+        init_repo(&dir);
+        fs::create_dir_all(dir.join("sub")).unwrap();
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        fs::write(dir.join("sub/pnpm-lock.yaml"), "lockfileVersion: 9").unwrap();
+        git(&dir, &["add", "."]);
+        git(&dir, &["commit", "-m", "init"]);
+
+        fs::write(dir.join("a.txt"), "changed").unwrap();
+        fs::write(dir.join("sub/pnpm-lock.yaml"), "lockfileVersion: 10").unwrap();
+
+        // diff 排除子目录中的锁文件(* 跨目录匹配);stat 仍保留,模型可感知"锁文件变了"
+        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        assert!(ctx.diff.contains("changed"));
+        assert!(!ctx.diff.contains("pnpm-lock"));
+        assert!(ctx.stat.contains("pnpm-lock.yaml"));
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn commit_context_includes_recent_commits() {
+        let dir = temp_dir("ctx-recent");
+        init_repo(&dir);
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        git(&dir, &["add", "a.txt"]);
+        git(&dir, &["commit", "-m", "feat: init"]);
+        fs::write(dir.join("a.txt"), "b").unwrap();
+        git(&dir, &["commit", "-am", "fix: second"]);
+
+        // 新提交在前,供模型对齐提交风格
+        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        assert_eq!(
+            ctx.recent_commits,
+            vec!["fix: second".to_string(), "feat: init".to_string()]
+        );
 
         let _ = fs::remove_dir_all(&dir);
     }

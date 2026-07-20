@@ -37,16 +37,28 @@ export interface GitRemote {
   url: string;
 }
 
+/** 一个可读取文本内容的未跟踪新文件(二进制/超限文件不在此列) */
+export interface GitUntrackedFile {
+  path: string;
+  content: string;
+  /** 内容是否因超长被截断 */
+  truncated: boolean;
+}
+
 /** 生成提交信息所需的变更上下文(diff 可能已被截断) */
 export interface GitCommitContext {
   /** `git diff --stat` 摘要 */
   stat: string;
-  /** 相对 HEAD 的完整 diff(超长时截断) */
+  /** 相对 HEAD 的完整 diff(超长时截断;已排除锁文件等噪声) */
   diff: string;
   /** diff 是否因超长被截断 */
   truncated: boolean;
-  /** 未跟踪文件名(无 diff 内容,供模型感知新增文件) */
+  /** 全部未跟踪文件名(含无内容的,供模型感知新增文件) */
   untracked: string[];
+  /** 未跟踪文件中可读取的文本内容(跳过二进制与超限文件) */
+  untracked_files: GitUntrackedFile[];
+  /** 最近提交信息 subject(风格锚定用,新仓库为空) */
+  recent_commits: string[];
 }
 
 /** 一条 git 提交记录(日报生成用) */
