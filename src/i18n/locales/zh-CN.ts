@@ -169,6 +169,7 @@ export default {
     pickRange: "选择日期范围",
     author: "提交作者",
     authorMe: "仅我自己",
+    authorMeNamed: "仅我自己({name})",
     authorAll: "所有人",
     commits: "提交记录",
     commitCount: "{count} 条提交",

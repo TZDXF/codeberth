@@ -170,6 +170,7 @@ export default {
     pickRange: "Pick a date range",
     author: "Commit author",
     authorMe: "Only me",
+    authorMeNamed: "Only me ({name})",
     authorAll: "Everyone",
     commits: "Commits",
     commitCount: "{count} commits",

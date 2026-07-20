@@ -26,6 +26,18 @@ const hasChanges = computed(
   () => !!git.value && git.value.staged + git.value.modified + git.value.untracked > 0,
 );
 
+const staged = computed(() => git.value?.staged ?? 0);
+const modified = computed(() => git.value?.modified ?? 0);
+const untracked = computed(() => git.value?.untracked ?? 0);
+const ahead = computed(() => git.value?.ahead ?? 0);
+const behind = computed(() => git.value?.behind ?? 0);
+
+/** 提交按钮悬浮提示:三类变更明细 */
+const commitTitle = computed(
+  () =>
+    `${t("git.staged")} ${staged.value} · ${t("git.modified")} ${modified.value} · ${t("git.untracked")} ${untracked.value}`,
+);
+
 async function pull(): Promise<boolean> {
   if (busy.value) return false;
   busy.value = "pull";
@@ -80,20 +92,54 @@ async function pullThenPush() {
       variant="outline"
       size="xs"
       :disabled="busy !== '' || !hasChanges"
+      :title="commitTitle"
       @click="commitOpen = true"
     >
       <GitCommitHorizontal class="h-3.5 w-3.5" />
       {{ t("git.actions.commit") }}
+      <span v-if="hasChanges" class="ml-0.5 flex items-center gap-1 text-[10px] leading-none">
+        <span v-if="staged > 0" class="flex items-center gap-0.5 font-medium text-emerald-600">
+          <span class="h-1.5 w-1.5 rounded-full bg-current" />{{ staged }}
+        </span>
+        <span v-if="modified > 0" class="flex items-center gap-0.5 font-medium text-amber-600">
+          <span class="h-1.5 w-1.5 rounded-full bg-current" />{{ modified }}
+        </span>
+        <span v-if="untracked > 0" class="flex items-center gap-0.5 font-medium text-sky-600">
+          <span class="h-1.5 w-1.5 rounded-full bg-current" />{{ untracked }}
+        </span>
+      </span>
     </Button>
-    <Button variant="outline" size="xs" :disabled="busy !== ''" @click="pull">
+    <Button
+      variant="outline"
+      size="xs"
+      :disabled="busy !== ''"
+      :title="behind > 0 ? t('git.behind') : undefined"
+      @click="pull"
+    >
       <Loader2 v-if="busy === 'pull'" class="h-3.5 w-3.5 animate-spin" />
       <ArrowDownToLine v-else class="h-3.5 w-3.5" />
       {{ busy === "pull" ? t("git.pull.pulling") : t("git.actions.pull") }}
+      <span
+        v-if="behind > 0 && busy !== 'pull'"
+        class="ml-0.5 text-[10px] font-medium leading-none text-amber-600"
+        >{{ behind }}</span
+      >
     </Button>
-    <Button variant="outline" size="xs" :disabled="busy !== ''" @click="push">
+    <Button
+      variant="outline"
+      size="xs"
+      :disabled="busy !== ''"
+      :title="ahead > 0 ? t('git.ahead') : undefined"
+      @click="push"
+    >
       <Loader2 v-if="busy === 'push'" class="h-3.5 w-3.5 animate-spin" />
       <ArrowUpToLine v-else class="h-3.5 w-3.5" />
       {{ busy === "push" ? t("git.push.pushing") : t("git.actions.push") }}
+      <span
+        v-if="ahead > 0 && busy !== 'push'"
+        class="ml-0.5 text-[10px] font-medium leading-none text-emerald-600"
+        >{{ ahead }}</span
+      >
     </Button>
 
     <CommitDialog v-model:open="commitOpen" :project="project" />
