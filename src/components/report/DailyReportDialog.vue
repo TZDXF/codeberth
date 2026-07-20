@@ -260,6 +260,7 @@ async function loadCommits() {
         }
         return {
           projectName: p.name,
+          projectDescription: p.description,
           commits: await cmd<GitCommitInfo[]>("git_log", {
             path: p.path,
             since,

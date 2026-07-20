@@ -9,6 +9,8 @@ import type { GitCommitContext, GitCommitInfo } from "@/types";
 /** 一个项目在给定时间范围内的提交记录(日报输入) */
 export interface ProjectCommits {
   projectName: string;
+  /** 项目描述,帮助模型理解业务语境;可能为空串 */
+  projectDescription: string;
   commits: GitCommitInfo[];
 }
 
@@ -90,7 +92,9 @@ export async function generateDailyReport(
       const lines = p.commits
         .map((c) => `- [${c.date}] ${c.subject} (${c.hash}, ${c.author})`)
         .join("\n");
-      return `### ${p.projectName}\n${lines || "(no commits)"}`;
+      const description = p.projectDescription.trim();
+      const heading = description ? `${p.projectName} — ${description}` : p.projectName;
+      return `### ${heading}\n${lines || "(no commits)"}`;
     })
     .join("\n\n");
   const { text } = await generateText({
