@@ -222,8 +222,6 @@ export default {
   scripts: {
     package: {
       title: "NPM Scripts",
-      loading: "Loading...",
-      empty: "No package.json found or no scripts defined",
       rootDir: "Root",
       scriptCount: "1 script | {count} scripts",
       started: "Started npm run {name} in terminal",

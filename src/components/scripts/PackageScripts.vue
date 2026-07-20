@@ -66,7 +66,8 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
 </script>
 
 <template>
-  <Card>
+  <!-- 无 package.json(或无 scripts)时整体不渲染卡片,与 DockerCompose 一致 -->
+  <Card v-if="loaded && groups.length">
     <CardHeader class="pb-3">
       <CardTitle class="flex items-center gap-2 text-sm font-semibold">
         <Package class="h-4 w-4" />
@@ -74,11 +75,7 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
       </CardTitle>
     </CardHeader>
     <CardContent>
-      <p v-if="!loaded" class="text-sm text-muted-foreground">{{ t("scripts.package.loading") }}</p>
-      <p v-else-if="!groups.length" class="text-sm text-muted-foreground">
-        {{ t("scripts.package.empty") }}
-      </p>
-      <ScrollArea v-else class="max-h-[420px]">
+      <ScrollArea class="max-h-[420px]">
         <div class="flex flex-col">
           <Collapsible
             v-for="(g, gi) in groups"

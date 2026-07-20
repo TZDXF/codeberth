@@ -221,8 +221,6 @@ export default {
   scripts: {
     package: {
       title: "NPM Scripts",
-      loading: "加载中...",
-      empty: "未找到 package.json 或没有 scripts",
       rootDir: "根目录",
       scriptCount: "{count} 个脚本",
       started: "已在终端启动 npm run {name}",
