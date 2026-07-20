@@ -1,3 +1,4 @@
+use std::path::Path;
 use std::process::{Command, Output};
 use std::sync::OnceLock;
 
@@ -58,7 +59,7 @@ pub fn status(path: &str) -> AppResult<GitStatus> {
         return Ok(GitStatus::default());
     }
     let text = String::from_utf8_lossy(&output.stdout);
-    Ok(parse_porcelain(&text))
+    Ok(parse_porcelain(path, &text))
 }
 
 /// fetch 远端(无 remote 时跳过),返回最新状态
@@ -71,8 +72,9 @@ pub fn fetch_and_status(path: &str) -> AppResult<GitStatus> {
     status(path)
 }
 
-/// 解析 `git status --porcelain=v2 --branch` 输出
-fn parse_porcelain(text: &str) -> GitStatus {
+/// 解析 `git status --porcelain=v2 --branch` 输出。
+/// 嵌套 git 仓库(含 .git 的未跟踪目录)不计入未跟踪数:它是独立项目,不算本仓库的改动
+fn parse_porcelain(path: &str, text: &str) -> GitStatus {
     let mut st = GitStatus {
         is_repo: true,
         ..Default::default()
@@ -103,8 +105,12 @@ fn parse_porcelain(text: &str) -> GitStatus {
         } else if line.starts_with("u ") {
             st.modified += 1; // 冲突文件仍计入未暂存,保持「干净」判断语义
             st.conflicted += 1;
-        } else if line.starts_with("? ") {
-            st.untracked += 1;
+        } else if let Some(entry) = line.strip_prefix("? ") {
+            // porcelain 对特殊字符路径做 C 风格引号转义,去掉外层引号再判断
+            let entry = entry.trim().trim_matches('"');
+            if !is_nested_repo(path, entry) {
+                st.untracked += 1;
+            }
         }
     }
     st.remote_ahead = st.behind;
@@ -257,8 +263,33 @@ pub fn git_checkout(
 }
 
 /// 提交更改,返回最新状态。
+/// 判断未跟踪条目是否为嵌套 git 仓库:
+/// git 对含 .git 的未跟踪目录只列目录本身(以 / 结尾);.git 可能是目录或 worktree gitfile
+fn is_nested_repo(path: &str, entry: &str) -> bool {
+    entry.ends_with('/')
+        && Path::new(path)
+            .join(entry.trim_end_matches('/'))
+            .join(".git")
+            .exists()
+}
+
+/// 列出未跟踪目录中的嵌套 git 仓库(返回不带结尾 / 的相对路径)。
+/// 嵌套仓库是独立项目,不算本仓库的未提交内容
+fn nested_repo_dirs(path: &str) -> Vec<String> {
+    let Ok(out) = run_git(path, &["ls-files", "--others", "--exclude-standard"]) else {
+        return Vec::new();
+    };
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|l| is_nested_repo(path, l))
+        .map(|l| l.trim_end_matches('/').to_string())
+        .collect()
+}
+
 /// 参考 IDEA 提交模型:已暂存内容与未暂存修改(含已解决的冲突文件)始终提交;
-/// 仅未跟踪文件需要显式勾选(include_untracked)才纳入
+/// 仅未跟踪文件需要显式勾选(include_untracked)才纳入;
+/// 嵌套 git 仓库始终排除,避免被误加成 embedded gitlink(只存 commit 指针)
 #[tauri::command]
 pub fn git_commit(path: String, message: String, include_untracked: bool) -> AppResult<GitStatus> {
     let message = message.trim();
@@ -266,7 +297,17 @@ pub fn git_commit(path: String, message: String, include_untracked: bool) -> App
         return Err(AppError::Invalid("提交信息不能为空".into()));
     }
     if include_untracked {
-        run_git(&path, &["add", "-A"])?;
+        let nested = nested_repo_dirs(&path);
+        if nested.is_empty() {
+            run_git(&path, &["add", "-A"])?;
+        } else {
+            let mut args: Vec<String> = vec!["add".into(), "-A".into(), "--".into(), ".".into()];
+            for dir in &nested {
+                args.push(format!(":(exclude){dir}"));
+            }
+            let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+            run_git(&path, &arg_refs)?;
+        }
     } else {
         run_git(&path, &["add", "-u"])?;
     }
@@ -330,7 +371,8 @@ fn truncate_chars(text: &str, max: usize) -> (String, bool) {
 
 /// 收集 AI 生成提交信息所需的变更上下文:
 /// 覆盖已暂存 + 已跟踪未暂存修改(与 git_commit 语义一致,相对 HEAD);
-/// 仓库尚无提交(无 HEAD)时回退到暂存区 diff
+/// 仓库尚无提交(无 HEAD)时回退到暂存区 diff;
+/// 未跟踪清单剔除嵌套 git 仓库目录(子仓库是独立项目,不算本仓库内容)
 #[tauri::command]
 pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
     let has_head = git_command(&path)
@@ -347,7 +389,7 @@ pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
     let untracked = String::from_utf8_lossy(&untracked_out.stdout)
         .lines()
         .map(str::trim)
-        .filter(|l| !l.is_empty())
+        .filter(|l| !l.is_empty() && !is_nested_repo(&path, l))
         .map(String::from)
         .collect();
 
@@ -795,6 +837,83 @@ mod tests {
         let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
         assert!(ctx.diff.contains("a.txt"));
         assert!(ctx.untracked.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// 在 dir 下创建一个带一次提交的嵌套 git 仓库
+    fn init_nested_repo(dir: &PathBuf, name: &str) -> PathBuf {
+        let nested = dir.join(name);
+        fs::create_dir_all(&nested).unwrap();
+        init_repo(&nested);
+        fs::write(nested.join("n.txt"), "n").unwrap();
+        git(&nested, &["add", "n.txt"]);
+        git(&nested, &["commit", "-m", "nested init"]);
+        nested
+    }
+
+    #[test]
+    fn nested_repo_is_not_counted_as_untracked() {
+        let dir = temp_dir("status-nested");
+        init_repo(&dir);
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        git(&dir, &["add", "a.txt"]);
+        git(&dir, &["commit", "-m", "init"]);
+
+        let nested = init_nested_repo(&dir, "sub-lib");
+        fs::write(nested.join("n.txt"), "changed").unwrap(); // 嵌套仓库内部改动
+        fs::write(dir.join("b.txt"), "b").unwrap(); // 普通未跟踪文件
+
+        // 嵌套仓库及其内部改动都不计入,只有 b.txt 算未跟踪
+        let st = status(dir.to_str().unwrap()).unwrap();
+        assert_eq!(st.untracked, 1);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn commit_context_excludes_nested_repo() {
+        let dir = temp_dir("ctx-nested");
+        init_repo(&dir);
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        git(&dir, &["add", "a.txt"]);
+        git(&dir, &["commit", "-m", "init"]);
+
+        let nested = init_nested_repo(&dir, "sub-lib");
+        fs::write(nested.join("n.txt"), "changed").unwrap();
+        fs::write(dir.join("b.txt"), "b").unwrap();
+
+        // 外层只看到 b.txt;嵌套仓库不出现在 untracked,其内部改动不进 diff
+        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        assert_eq!(ctx.untracked, vec!["b.txt".to_string()]);
+        assert!(ctx.stat.is_empty());
+        assert!(ctx.diff.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn commit_with_untracked_skips_nested_repo() {
+        let dir = temp_dir("commit-nested");
+        init_repo(&dir);
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        git(&dir, &["add", "a.txt"]);
+        git(&dir, &["commit", "-m", "init"]);
+
+        init_nested_repo(&dir, "sub-lib");
+        fs::write(dir.join("b.txt"), "b").unwrap();
+
+        // 勾选包含未跟踪:b.txt 被提交,嵌套仓库不被加成 embedded gitlink
+        let st = git_commit(dir.to_str().unwrap().to_string(), "add b".into(), true).unwrap();
+        assert_eq!(st.untracked, 0);
+
+        let out = git_command(dir.to_str().unwrap())
+            .args(["ls-files"])
+            .output()
+            .unwrap();
+        let tracked = String::from_utf8_lossy(&out.stdout);
+        assert!(tracked.lines().any(|l| l == "b.txt"));
+        assert!(!tracked.lines().any(|l| l.starts_with("sub-lib")));
 
         let _ = fs::remove_dir_all(&dir);
     }
