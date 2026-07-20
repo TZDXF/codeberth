@@ -37,6 +37,29 @@ pub struct GitBranches {
     pub remote: Vec<String>,
 }
 
+/// 生成提交信息所需的变更上下文(diff 可能已被截断)
+#[derive(Debug, Clone, Serialize)]
+pub struct GitCommitContext {
+    /// `git diff --stat` 摘要
+    pub stat: String,
+    /// 相对 HEAD 的完整 diff(超长时截断并追加标记)
+    pub diff: String,
+    /// diff 是否因超长被截断
+    pub truncated: bool,
+    /// 未跟踪文件名(无 diff 内容,供模型感知新增文件)
+    pub untracked: Vec<String>,
+}
+
+/// 一条 git 提交记录(日报生成用)
+#[derive(Debug, Clone, Serialize)]
+pub struct GitCommitInfo {
+    pub hash: String,
+    pub author: String,
+    /// 本地时间 "YYYY-MM-DD HH:MM"
+    pub date: String,
+    pub subject: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Project {
     pub id: i64,

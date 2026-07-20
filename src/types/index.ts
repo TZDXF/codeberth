@@ -31,6 +31,33 @@ export interface GitBranches {
   remote: string[];
 }
 
+/** 一个 git remote 及其地址 */
+export interface GitRemote {
+  name: string;
+  url: string;
+}
+
+/** 生成提交信息所需的变更上下文(diff 可能已被截断) */
+export interface GitCommitContext {
+  /** `git diff --stat` 摘要 */
+  stat: string;
+  /** 相对 HEAD 的完整 diff(超长时截断) */
+  diff: string;
+  /** diff 是否因超长被截断 */
+  truncated: boolean;
+  /** 未跟踪文件名(无 diff 内容,供模型感知新增文件) */
+  untracked: string[];
+}
+
+/** 一条 git 提交记录(日报生成用) */
+export interface GitCommitInfo {
+  hash: string;
+  author: string;
+  /** 本地时间 "YYYY-MM-DD HH:MM" */
+  date: string;
+  subject: string;
+}
+
 export interface Project {
   id: number;
   path: string;

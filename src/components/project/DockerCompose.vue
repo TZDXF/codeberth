@@ -8,14 +8,19 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useCollapsibleOpen } from "@/composables/useCollapsibleOpen";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { ComposeFile, ComposeServiceState, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 
+const { isOpen, setOpen } = useCollapsibleOpen("compose");
+
 const files = ref<ComposeFile[]>([]);
 const loaded = ref(false);
+/** 各 compose 文件展开状态,key 为文件路径 */
+const openStates = ref<Record<string, boolean>>({});
 /** 服务运行状态,key 为 `${file.path}\n${service}`;无记录表示未创建/docker 不可用 */
 const statuses = ref<Record<string, ComposeServiceState>>({});
 const refreshing = ref(false);
@@ -35,10 +40,21 @@ watch(
     } finally {
       loaded.value = true;
     }
+    openStates.value = Object.fromEntries(
+      files.value.map((f) => [
+        f.path,
+        isOpen(`${props.project.id}:${f.path}`, files.value.length === 1),
+      ]),
+    );
     loadStatuses();
   },
   { immediate: true },
 );
+
+function onToggle(f: ComposeFile, open: boolean) {
+  openStates.value[f.path] = open;
+  setOpen(`${props.project.id}:${f.path}`, open);
+}
 
 /** 查询每个 compose 文件的服务运行状态(失败静默,全部按未知处理) */
 async function loadStatuses() {
@@ -141,8 +157,9 @@ async function run(
             v-for="(f, i) in files"
             :key="`${project.id}:${f.path}`"
             v-slot="{ open }"
-            :default-open="files.length === 1"
+            :open="openStates[f.path]"
             :class="{ 'mt-2 border-t border-border pt-2': i > 0 }"
+            @update:open="onToggle(f, $event)"
           >
             <div class="group flex items-center gap-2 rounded-md px-2 py-1.5">
               <!-- 多文件时文件名区域可点击折叠;单文件保持静态展示 -->

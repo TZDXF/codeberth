@@ -7,14 +7,19 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ScriptItem from "@/components/scripts/ScriptItem.vue";
+import { useCollapsibleOpen } from "@/composables/useCollapsibleOpen";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { PackageScript, PackageScriptsGroup, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 
+const { isOpen, setOpen } = useCollapsibleOpen("scripts");
+
 const groups = ref<PackageScriptsGroup[]>([]);
 const loaded = ref(false);
+/** 各分组展开状态,key 为分组目录 */
+const openStates = ref<Record<string, boolean>>({});
 
 watch(
   () => props.project.id,
@@ -29,9 +34,20 @@ watch(
     } finally {
       loaded.value = true;
     }
+    openStates.value = Object.fromEntries(
+      groups.value.map((g) => [
+        g.dir,
+        isOpen(`${props.project.id}:${g.dir}`, groups.value.length === 1),
+      ]),
+    );
   },
   { immediate: true },
 );
+
+function onToggle(g: PackageScriptsGroup, open: boolean) {
+  openStates.value[g.dir] = open;
+  setOpen(`${props.project.id}:${g.dir}`, open);
+}
 
 function groupLabel(g: PackageScriptsGroup): string {
   return g.dir === "." ? t("scripts.package.rootDir") : g.dir;
@@ -68,8 +84,9 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
             v-for="(g, gi) in groups"
             :key="`${project.id}:${g.dir}`"
             v-slot="{ open }"
-            :default-open="groups.length === 1"
+            :open="openStates[g.dir]"
             :class="{ 'mt-2 border-t border-border pt-2': gi > 0 }"
+            @update:open="onToggle(g, $event)"
           >
             <!-- 多分组时可点击折叠;单分组不显示分组头,直接列出脚本 -->
             <CollapsibleTrigger

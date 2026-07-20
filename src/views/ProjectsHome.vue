@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import {
   ArrowDownUp,
+  FileText,
   LayoutGrid,
   List,
   Plus,
@@ -27,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import AddProjectDialog from "@/components/project/AddProjectDialog.vue";
 import ProjectCard from "@/components/project/ProjectCard.vue";
 import ProjectTable from "@/components/project/ProjectTable.vue";
+import DailyReportDialog from "@/components/report/DailyReportDialog.vue";
 import TagCheckList from "@/components/tags/TagCheckList.vue";
 import TagManager from "@/components/tags/TagManager.vue";
 import { useProjectsStore } from "@/stores/projects";
@@ -39,6 +41,9 @@ const { t } = useI18n();
 const store = useProjectsStore();
 const tagsStore = useTagsStore();
 const router = useRouter();
+
+// AI 日报弹窗
+const reportOpen = ref(false);
 
 // 搜索(防抖,逻辑同原 Sidebar)
 const searchInput = ref(store.query);
@@ -196,6 +201,16 @@ const sortedProjects = computed(() => {
         </AddProjectDialog>
         <Button
           variant="outline"
+          size="sm"
+          class="h-8 gap-1.5"
+          :title="t('report.title')"
+          @click="reportOpen = true"
+        >
+          <FileText class="h-3.5 w-3.5" />
+          {{ t("ai.entry") }}
+        </Button>
+        <Button
+          variant="outline"
           size="icon"
           class="h-8 w-8"
           :title="t('projects.home.settings')"
@@ -222,5 +237,7 @@ const sortedProjects = computed(() => {
         }}
       </p>
     </div>
+
+    <DailyReportDialog v-model:open="reportOpen" />
   </div>
 </template>

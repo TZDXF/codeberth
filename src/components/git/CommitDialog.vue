@@ -2,6 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
+import { Loader2, Sparkles } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -11,16 +12,21 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { generateCommitMessage } from "@/lib/ai";
+import { cmd } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
-import type { Project } from "@/types";
+import { useSettingsStore } from "@/stores/settings";
+import type { GitCommitContext, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 const open = defineModel<boolean>("open", { required: true });
 const store = useProjectsStore();
+const settings = useSettingsStore();
 
 const message = ref("");
 const submitting = ref(false);
+const generating = ref(false);
 // 参考 IDEA:未跟踪文件默认不纳入提交,需显式勾选
 const includeUntracked = ref(false);
 
@@ -53,6 +59,21 @@ async function submit() {
     submitting.value = false;
   }
 }
+
+/** AI 生成提交信息:取暂存+已跟踪修改的 diff 上下文,交给模型后填入输入框 */
+async function generate() {
+  if (generating.value || committable.value === 0) return;
+  generating.value = true;
+  try {
+    const ctx = await cmd<GitCommitContext>("git_commit_context", { path: props.project.path });
+    if (!ctx.stat && !ctx.diff && ctx.untracked.length === 0) return;
+    message.value = await generateCommitMessage(ctx, settings.language);
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e));
+  } finally {
+    generating.value = false;
+  }
+}
 </script>
 
 <template>
@@ -78,7 +99,21 @@ async function submit() {
           </span>
         </div>
         <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">{{ t("git.commit.messageLabel") }}</label>
+          <div class="flex items-center justify-between">
+            <label class="text-sm font-medium">{{ t("git.commit.messageLabel") }}</label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              class="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+              :disabled="generating || committable === 0"
+              @click="generate"
+            >
+              <Loader2 v-if="generating" class="h-3.5 w-3.5 animate-spin" />
+              <Sparkles v-else class="h-3.5 w-3.5" />
+              {{ generating ? t("git.commit.generating") : t("git.commit.generate") }}
+            </Button>
+          </div>
           <textarea
             v-model="message"
             rows="3"

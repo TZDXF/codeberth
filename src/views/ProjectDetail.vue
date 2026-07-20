@@ -3,13 +3,14 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { ArrowLeft, BookOpen, Pencil } from "@lucide/vue";
+import { ArrowLeft, BookOpen, FileText, Pencil } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import GitStatusBar from "@/components/git/GitStatusBar.vue";
 import GitActions from "@/components/git/GitActions.vue";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
 import DockerCompose from "@/components/project/DockerCompose.vue";
 import ReadmeDrawer from "@/components/project/ReadmeDrawer.vue";
+import DailyReportDialog from "@/components/report/DailyReportDialog.vue";
 import CustomCommands from "@/components/scripts/CustomCommands.vue";
 import PackageScripts from "@/components/scripts/PackageScripts.vue";
 import TagPicker from "@/components/tags/TagPicker.vue";
@@ -49,6 +50,9 @@ watch(
 
 // --- README 侧边栏 ---
 const readmeOpen = ref(false);
+
+// --- AI 日报弹窗 ---
+const reportOpen = ref(false);
 
 // --- 名称内联编辑 ---
 const editingName = ref(false);
@@ -137,6 +141,10 @@ async function saveDesc() {
           </h1>
         </div>
         <div class="flex shrink-0 items-center gap-2">
+          <Button variant="outline" size="sm" :title="t('report.title')" @click="reportOpen = true">
+            <FileText class="h-4 w-4" />
+            {{ t("ai.entry") }}
+          </Button>
           <Button variant="outline" size="sm" @click="readmeOpen = true">
             <BookOpen class="h-4 w-4" />
             {{ t("readme.title") }}
@@ -191,6 +199,7 @@ async function saveDesc() {
     </div>
 
     <ReadmeDrawer v-model:open="readmeOpen" :project="project" />
+    <DailyReportDialog v-model:open="reportOpen" :preset-project-id="project.id" />
   </div>
 
   <div

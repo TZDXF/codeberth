@@ -16,6 +16,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_http::init())
         .setup(|app| {
             // 数据库文件: ~/.pm/projects.db
             // (Windows: C:\Users\<user>\.pm\projects.db)
@@ -34,12 +35,15 @@ pub fn run() {
             commands::project::unarchive_project,
             commands::project::delete_project,
             commands::git::get_git_status,
+            commands::git::list_git_remotes,
             commands::git::fetch_git_remote_async,
             commands::git::list_git_branches,
             commands::git::git_checkout,
             commands::git::git_commit,
             commands::git::git_pull,
             commands::git::git_push,
+            commands::git::git_commit_context,
+            commands::git::git_log,
             commands::open::open_with,
             commands::open::detect_vscode,
             commands::tag::list_tags,

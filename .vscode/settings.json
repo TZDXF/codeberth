@@ -19,5 +19,6 @@
     "editor.defaultFormatter": "oxc.oxc-vscode"
   },
   "oxc.enable": true,
-  "oxc.lint.run": "onType"
+  "oxc.lint.run": "onType",
+  "i18n-ally.localesPaths": ["src/i18n", "src/i18n/locales"]
 }

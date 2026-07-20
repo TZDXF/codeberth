@@ -14,12 +14,19 @@ export type Language = SupportedLocale;
 const APP_DATA_DIR_NAME = ".pm";
 const STORE_FILE = "settings.json";
 
+/** AI 服务默认接入参数(OpenAI Chat Completions 兼容) */
+export const AI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
+export const AI_DEFAULT_MODEL = "gpt-4o-mini";
+
 export const useSettingsStore = defineStore("settings", () => {
   const theme = ref<ThemeMode>("system");
   const themeSkin = ref<ThemeSkin>("default");
   const mdTheme = ref<MdTheme>("default");
   const language = ref<Language>("zh-CN");
   const defaultOpenWith = ref<EditorKind>("explorer");
+  const aiBaseUrl = ref(AI_DEFAULT_BASE_URL);
+  const aiApiKey = ref("");
+  const aiModel = ref(AI_DEFAULT_MODEL);
 
   let fileStore: Store | null = null;
   let initialized = false;
@@ -61,6 +68,9 @@ export const useSettingsStore = defineStore("settings", () => {
         mdTheme: "default",
         language: "zh-CN",
         defaultOpenWith: "explorer",
+        aiBaseUrl: AI_DEFAULT_BASE_URL,
+        aiApiKey: "",
+        aiModel: AI_DEFAULT_MODEL,
       },
     });
     const savedTheme = await fileStore.get<ThemeMode>("theme");
@@ -92,6 +102,19 @@ export const useSettingsStore = defineStore("settings", () => {
       savedOpenWith === "terminal"
     ) {
       defaultOpenWith.value = savedOpenWith;
+    }
+    // AI 配置为自由文本:空值回退默认(baseUrl/model),apiKey 允许为空
+    const savedAiBaseUrl = await fileStore.get<string>("aiBaseUrl");
+    if (typeof savedAiBaseUrl === "string" && savedAiBaseUrl.trim()) {
+      aiBaseUrl.value = savedAiBaseUrl.trim();
+    }
+    const savedAiApiKey = await fileStore.get<string>("aiApiKey");
+    if (typeof savedAiApiKey === "string") {
+      aiApiKey.value = savedAiApiKey;
+    }
+    const savedAiModel = await fileStore.get<string>("aiModel");
+    if (typeof savedAiModel === "string" && savedAiModel.trim()) {
+      aiModel.value = savedAiModel.trim();
     }
     applyTheme();
     applyMdTheme();
@@ -133,17 +156,38 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("defaultOpenWith", value);
   }
 
+  async function setAiBaseUrl(value: string) {
+    aiBaseUrl.value = value.trim() || AI_DEFAULT_BASE_URL;
+    await persist("aiBaseUrl", aiBaseUrl.value);
+  }
+
+  async function setAiApiKey(value: string) {
+    aiApiKey.value = value.trim();
+    await persist("aiApiKey", aiApiKey.value);
+  }
+
+  async function setAiModel(value: string) {
+    aiModel.value = value.trim() || AI_DEFAULT_MODEL;
+    await persist("aiModel", aiModel.value);
+  }
+
   return {
     theme,
     themeSkin,
     mdTheme,
     language,
     defaultOpenWith,
+    aiBaseUrl,
+    aiApiKey,
+    aiModel,
     init,
     setTheme,
     setThemeSkin,
     setMdTheme,
     setLanguage,
     setDefaultOpenWith,
+    setAiBaseUrl,
+    setAiApiKey,
+    setAiModel,
   };
 });

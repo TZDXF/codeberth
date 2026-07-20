@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { ArrowDown, ArrowUp, ChevronDown, GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import GitBranchMenu from "@/components/git/GitBranchMenu.vue";
+import GitRemoteLink from "@/components/git/GitRemoteLink.vue";
 import type { Project } from "@/types";
 
 const { t } = useI18n();
@@ -27,6 +28,7 @@ const git = computed(() => props.project.git);
           <ChevronDown class="h-3 w-3 opacity-60" />
         </Badge>
       </GitBranchMenu>
+      <GitRemoteLink :project="project" />
       <span
         v-if="git.ahead > 0"
         class="flex items-center gap-0.5 text-emerald-600"

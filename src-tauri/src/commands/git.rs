@@ -6,7 +6,7 @@ use tauri::{Emitter, Window};
 use tokio::sync::Semaphore;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{GitBranches, GitPullResult, GitStatus};
+use crate::models::{GitBranches, GitCommitContext, GitCommitInfo, GitPullResult, GitStatus};
 
 /// 后台 fetch 并发上限(超出排队)
 static FETCH_PERMITS: OnceLock<Semaphore> = OnceLock::new();
@@ -114,6 +114,40 @@ fn parse_porcelain(text: &str) -> GitStatus {
 #[tauri::command]
 pub fn get_git_status(path: String) -> AppResult<GitStatus> {
     status(&path)
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GitRemote {
+    pub name: String,
+    pub url: String,
+}
+
+/// 列出所有 remote 及其地址(非仓库或无 remote 返回空列表)
+#[tauri::command]
+pub fn list_git_remotes(path: String) -> AppResult<Vec<GitRemote>> {
+    let remotes = git_command(&path).arg("remote").output()?;
+    if !remotes.status.success() {
+        return Ok(vec![]);
+    }
+    let stdout = String::from_utf8_lossy(&remotes.stdout);
+    let mut out = Vec::new();
+    for name in stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        if let Ok(o) = git_command(&path)
+            .args(["remote", "get-url", name])
+            .output()
+        {
+            if o.status.success() {
+                let url = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                if !url.is_empty() {
+                    out.push(GitRemote {
+                        name: name.to_string(),
+                        url,
+                    });
+                }
+            }
+        }
+    }
+    Ok(out)
 }
 
 /// 后台 fetch:不返回数据,完成后 emit "git://updated"
@@ -276,6 +310,120 @@ pub fn git_push(path: String) -> AppResult<GitStatus> {
         }
     }
     status(&path)
+}
+
+/// 送入 AI 的 diff 长度上限(超出截断,避免 token 爆炸)
+const DIFF_MAX_CHARS: usize = 30_000;
+
+/// 按 char 边界安全截断,返回 (文本, 是否截断)
+fn truncate_chars(text: &str, max: usize) -> (String, bool) {
+    if text.chars().count() <= max {
+        return (text.to_string(), false);
+    }
+    let end = text
+        .char_indices()
+        .nth(max)
+        .map(|(i, _)| i)
+        .unwrap_or(text.len());
+    (text[..end].to_string(), true)
+}
+
+/// 收集 AI 生成提交信息所需的变更上下文:
+/// 覆盖已暂存 + 已跟踪未暂存修改(与 git_commit 语义一致,相对 HEAD);
+/// 仓库尚无提交(无 HEAD)时回退到暂存区 diff
+#[tauri::command]
+pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
+    let has_head = git_command(&path)
+        .args(["rev-parse", "--verify", "HEAD"])
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let base: &[&str] = if has_head { &["HEAD"] } else { &["--cached"] };
+
+    let stat_out = run_git(&path, &[&["diff", "--stat"], base].concat())?;
+    let diff_out = run_git(&path, &[&["diff"], base].concat())?;
+
+    let untracked_out = run_git(&path, &["ls-files", "--others", "--exclude-standard"])?;
+    let untracked = String::from_utf8_lossy(&untracked_out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .map(String::from)
+        .collect();
+
+    let (diff, truncated) = truncate_chars(&String::from_utf8_lossy(&diff_out.stdout), DIFF_MAX_CHARS);
+    Ok(GitCommitContext {
+        stat: String::from_utf8_lossy(&stat_out.stdout).trim().to_string(),
+        diff,
+        truncated,
+        untracked,
+    })
+}
+
+/// 读取提交记录(日报生成用),按时间倒序。
+/// 非 git 仓库或尚无提交时返回空数组而非报错(多项目汇总时容错)
+#[tauri::command]
+pub fn git_log(
+    path: String,
+    since: Option<String>,
+    until: Option<String>,
+    max_count: Option<u32>,
+) -> AppResult<Vec<GitCommitInfo>> {
+    let mut args: Vec<String> = vec![
+        "log".into(),
+        "--no-merges".into(),
+        // 单元分隔符,避免 subject 中的空格/竖线干扰解析
+        "--pretty=format:%h%x1f%an%x1f%ad%x1f%s".into(),
+        "--date=format:%Y-%m-%d %H:%M".into(),
+    ];
+    if let Some(s) = since.filter(|s| !s.trim().is_empty()) {
+        args.push(format!("--since={s}"));
+    }
+    if let Some(u) = until.filter(|u| !u.trim().is_empty()) {
+        args.push(format!("--until={u}"));
+    }
+    let limit = max_count.unwrap_or(200).min(1000);
+    args.push(format!("--max-count={limit}"));
+
+    let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
+    let output = git_command(&path).args(&arg_refs).output()?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let benign = stderr.contains("not a git repository")
+            || stderr.contains("does not have any commits")
+            || stderr.contains("your current branch")
+            || stderr.contains("bad default revision");
+        if benign {
+            return Ok(Vec::new());
+        }
+        let detail = stderr.trim();
+        return Err(AppError::External(if detail.is_empty() {
+            format!("git log 退出码 {}", output.status)
+        } else {
+            detail.to_string()
+        }));
+    }
+
+    let commits = String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.splitn(4, '\x1f');
+            let hash = parts.next()?.trim();
+            let author = parts.next()?.trim();
+            let date = parts.next()?.trim();
+            let subject = parts.next()?.trim();
+            if hash.is_empty() {
+                return None;
+            }
+            Some(GitCommitInfo {
+                hash: hash.to_string(),
+                author: author.to_string(),
+                date: date.to_string(),
+                subject: subject.to_string(),
+            })
+        })
+        .collect();
+    Ok(commits)
 }
 
 #[cfg(test)]
@@ -583,5 +731,84 @@ mod tests {
         let _ = fs::remove_dir_all(&origin);
         let _ = fs::remove_dir_all(&clone_a);
         let _ = fs::remove_dir_all(&clone_b);
+    }
+
+    #[test]
+    fn commit_context_covers_staged_modified_untracked() {
+        let dir = temp_dir("ctx");
+        init_repo(&dir);
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        git(&dir, &["add", "a.txt"]);
+        git(&dir, &["commit", "-m", "init"]);
+
+        fs::write(dir.join("a.txt"), "changed").unwrap(); // 未暂存修改
+        fs::write(dir.join("b.txt"), "b").unwrap(); // 已暂存新增
+        git(&dir, &["add", "b.txt"]);
+        fs::write(dir.join("c.txt"), "c").unwrap(); // 未跟踪
+
+        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        assert!(ctx.stat.contains("a.txt"));
+        assert!(ctx.stat.contains("b.txt"));
+        assert!(ctx.diff.contains("changed"));
+        assert!(!ctx.truncated);
+        assert_eq!(ctx.untracked, vec!["c.txt".to_string()]);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn commit_context_falls_back_to_cached_without_head() {
+        let dir = temp_dir("ctx-no-head");
+        init_repo(&dir);
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        git(&dir, &["add", "a.txt"]);
+
+        // 尚无提交:回退到暂存区 diff
+        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        assert!(ctx.diff.contains("a.txt"));
+        assert!(ctx.untracked.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn git_log_parses_and_filters() {
+        let dir = temp_dir("log");
+        init_repo(&dir);
+        fs::write(dir.join("a.txt"), "a").unwrap();
+        git(&dir, &["add", "a.txt"]);
+        git(&dir, &["commit", "-m", "feat: first"]);
+        fs::write(dir.join("a.txt"), "a2").unwrap();
+        git(&dir, &["commit", "-am", "fix: second"]);
+
+        let all = git_log(dir.to_str().unwrap().to_string(), None, None, None).unwrap();
+        assert_eq!(all.len(), 2);
+        // 时间倒序:最新在前
+        assert_eq!(all[0].subject, "fix: second");
+        assert_eq!(all[1].subject, "feat: first");
+        assert_eq!(all[0].author, "test");
+        assert!(!all[0].hash.is_empty());
+
+        // max_count 截断
+        let one = git_log(dir.to_str().unwrap().to_string(), None, None, Some(1)).unwrap();
+        assert_eq!(one.len(), 1);
+
+        // until 远早于提交时间 → 空
+        let none = git_log(
+            dir.to_str().unwrap().to_string(),
+            None,
+            Some("2000-01-01".into()),
+            None,
+        )
+        .unwrap();
+        assert!(none.is_empty());
+
+        // 非仓库 → 空数组而非报错
+        let plain = temp_dir("log-plain");
+        let res = git_log(plain.to_str().unwrap().to_string(), None, None, None).unwrap();
+        assert!(res.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&plain);
     }
 }
