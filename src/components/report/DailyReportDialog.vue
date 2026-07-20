@@ -38,6 +38,7 @@ import { RangeCalendar } from "@/components/ui/range-calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import TagCheckList from "@/components/tags/TagCheckList.vue";
 import { generateDailyReport, type ProjectCommits } from "@/lib/ai";
+import { formatCommitTime } from "@/lib/format";
 import { cmd } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
@@ -333,251 +334,267 @@ async function copyResult() {
 
 <template>
   <Dialog v-model:open="open">
-    <DialogContent class="max-w-2xl">
-      <DialogHeader>
+    <!-- flex 覆盖基类 grid;内容叠加易超视口,max-h 限制弹窗总高。
+         基类 sm:max-w-sm 在 ≥sm 断点的层叠顺序后于非变体类,会盖掉普通 max-w-*,
+         故宽度必须用 sm: 变体覆盖;min(4xl, 100%-2rem) 防止窗口较窄时弹窗贴边 -->
+    <DialogContent
+      class="flex max-h-[calc(100dvh-3rem)] flex-col sm:max-w-[min(56rem,calc(100%-2rem))]"
+    >
+      <DialogHeader class="shrink-0">
         <DialogTitle>{{ t("report.title") }}</DialogTitle>
         <DialogDescription>{{ t("report.description") }}</DialogDescription>
       </DialogHeader>
 
-      <!-- DialogContent 是 grid 容器,grid item 的 min-width:auto 会按内容 min-content
-           撑破弹窗(如提交信息中的长 URL/英文串),min-w-0 解除该自动最小宽度 -->
-      <div class="flex min-w-0 flex-col gap-4">
-        <div v-if="!locked" class="flex flex-col gap-1.5">
-          <div class="flex items-center justify-between">
-            <label class="text-sm font-medium">{{ t("report.selectProjects") }}</label>
-            <div class="flex gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-6 px-2 text-xs"
-                @click="
-                  selectedIds = [...new Set([...selectedIds, ...visibleProjects.map((p) => p.id)])]
-                "
-              >
-                {{ t("report.selectAll") }}
-              </Button>
-              <Button variant="ghost" size="sm" class="h-6 px-2 text-xs" @click="selectedIds = []">
-                {{ t("report.clear") }}
-              </Button>
-            </div>
-          </div>
-          <div class="flex items-center gap-1.5">
-            <div class="relative flex-1">
-              <Search
-                class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-              />
-              <Input
-                v-model="keyword"
-                :placeholder="t('report.projectSearchPlaceholder')"
-                class="h-7 pl-7 text-xs"
-              />
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger as-child>
-                <Button variant="outline" size="sm" class="h-7 gap-1.5 px-2 text-xs">
-                  <Tags class="h-3.5 w-3.5" />
-                  {{ t("projects.home.filterTags") }}
-                  <span
-                    v-if="filterTagIds.length"
-                    class="rounded-full bg-primary px-1.5 text-[11px] leading-4 text-primary-foreground"
-                  >
-                    {{ filterTagIds.length }}
-                  </span>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" class="w-52">
-                <TagCheckList
-                  :tags="tagsStore.tags"
-                  :checked-ids="filterTagIds"
-                  @toggle="toggleTagFilter"
-                />
-                <template v-if="filterTagIds.length">
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem class="gap-2 text-xs" @click="filterTagIds = []">
-                    <X class="h-3.5 w-3.5" />
-                    {{ t("projects.home.clearFilter") }}
-                  </DropdownMenuItem>
-                </template>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-          <div v-if="selectedFilterTags.length" class="flex flex-wrap items-center gap-1.5">
-            <button
-              v-for="tag in selectedFilterTags"
-              :key="tag.id"
-              type="button"
-              class="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-opacity hover:opacity-80"
-              :style="{ backgroundColor: tag.color, borderColor: tag.color, color: '#fff' }"
-              :title="t('projects.home.removeFilterTag', { name: tag.name })"
-              @click="toggleTagFilter(tag.id)"
-            >
-              {{ tag.name }}
-              <X class="h-2.5 w-2.5" />
-            </button>
-          </div>
-          <div class="grid max-h-36 grid-cols-2 gap-x-2 overflow-y-auto rounded-md border p-2">
-            <label
-              v-for="p in visibleProjects"
-              :key="p.id"
-              class="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-accent"
-            >
-              <input
-                type="checkbox"
-                class="h-3.5 w-3.5 shrink-0 accent-primary"
-                :checked="selectedIds.includes(p.id)"
-                @change="toggleProject(p.id)"
-              />
-              <span class="truncate" :title="p.path">{{ p.name }}</span>
-            </label>
-            <p
-              v-if="!visibleProjects.length"
-              class="col-span-2 px-1.5 py-2 text-xs text-muted-foreground"
-            >
-              {{ t("report.noMatch") }}
-            </p>
-          </div>
-        </div>
-
-        <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">{{ t("report.range") }}</label>
-          <div class="flex flex-wrap items-center gap-1.5">
-            <Button
-              v-for="opt in RANGE_OPTIONS"
-              :key="opt.value"
-              size="sm"
-              :variant="rangeKey === opt.value ? 'default' : 'outline'"
-              class="h-7 px-2.5 text-xs"
-              @click="rangeKey = opt.value"
-            >
-              {{ t(opt.labelKey) }}
-            </Button>
-            <Popover v-if="rangeKey === 'custom'">
-              <PopoverTrigger as-child>
+      <!-- 左右双栏:左侧筛选配置(固定宽,超出滚动),右侧 Markdown 结果自适应撑满。
+           item 的 min-width:auto 会按内容 min-content 撑破弹窗(如长 URL/英文串),
+           min-w-0 解除该自动最小宽度;min-h-0 同理,是限高下内部滚动生效的关键 -->
+      <div class="flex min-h-0 min-w-0 flex-1 gap-4">
+        <div class="flex min-h-0 w-72 shrink-0 flex-col gap-4 overflow-y-auto pr-1">
+          <div v-if="!locked" class="flex flex-col gap-1.5">
+            <div class="flex items-center justify-between">
+              <label class="text-sm font-medium">{{ t("report.selectProjects") }}</label>
+              <div class="flex gap-1">
                 <Button
-                  variant="outline"
+                  variant="ghost"
                   size="sm"
-                  class="h-7 gap-1.5 px-2.5 text-xs font-normal"
-                  :class="{ 'text-muted-foreground': !customRange.start && !customRange.end }"
+                  class="h-6 px-2 text-xs"
+                  @click="
+                    selectedIds = [
+                      ...new Set([...selectedIds, ...visibleProjects.map((p) => p.id)]),
+                    ]
+                  "
                 >
-                  <CalendarIcon class="h-3.5 w-3.5" />
-                  {{ customRangeLabel }}
+                  {{ t("report.selectAll") }}
                 </Button>
-              </PopoverTrigger>
-              <PopoverContent class="w-auto p-0" align="start">
-                <RangeCalendar
-                  v-model="customRange"
-                  :number-of-months="2"
-                  :locale="settings.language"
-                  :max-value="maxDate"
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-6 px-2 text-xs"
+                  @click="selectedIds = []"
+                >
+                  {{ t("report.clear") }}
+                </Button>
+              </div>
+            </div>
+            <div class="flex items-center gap-1.5">
+              <div class="relative flex-1">
+                <Search
+                  class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
                 />
-              </PopoverContent>
-            </Popover>
+                <Input
+                  v-model="keyword"
+                  :placeholder="t('report.projectSearchPlaceholder')"
+                  class="h-7 pl-7 text-xs"
+                />
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger as-child>
+                  <Button variant="outline" size="sm" class="h-7 gap-1.5 px-2 text-xs">
+                    <Tags class="h-3.5 w-3.5" />
+                    {{ t("projects.home.filterTags") }}
+                    <span
+                      v-if="filterTagIds.length"
+                      class="rounded-full bg-primary px-1.5 text-[11px] leading-4 text-primary-foreground"
+                    >
+                      {{ filterTagIds.length }}
+                    </span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" class="w-52">
+                  <TagCheckList
+                    :tags="tagsStore.tags"
+                    :checked-ids="filterTagIds"
+                    @toggle="toggleTagFilter"
+                  />
+                  <template v-if="filterTagIds.length">
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem class="gap-2 text-xs" @click="filterTagIds = []">
+                      <X class="h-3.5 w-3.5" />
+                      {{ t("projects.home.clearFilter") }}
+                    </DropdownMenuItem>
+                  </template>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+            <div v-if="selectedFilterTags.length" class="flex flex-wrap items-center gap-1.5">
+              <button
+                v-for="tag in selectedFilterTags"
+                :key="tag.id"
+                type="button"
+                class="flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] transition-opacity hover:opacity-80"
+                :style="{ backgroundColor: tag.color, borderColor: tag.color, color: '#fff' }"
+                :title="t('projects.home.removeFilterTag', { name: tag.name })"
+                @click="toggleTagFilter(tag.id)"
+              >
+                {{ tag.name }}
+                <X class="h-2.5 w-2.5" />
+              </button>
+            </div>
+            <div class="grid max-h-36 grid-cols-1 gap-x-2 overflow-y-auto rounded-md border p-2">
+              <label
+                v-for="p in visibleProjects"
+                :key="p.id"
+                class="flex cursor-pointer items-center gap-2 rounded px-1.5 py-1 text-sm hover:bg-accent"
+              >
+                <input
+                  type="checkbox"
+                  class="h-3.5 w-3.5 shrink-0 accent-primary"
+                  :checked="selectedIds.includes(p.id)"
+                  @change="toggleProject(p.id)"
+                />
+                <span class="truncate" :title="p.path">{{ p.name }}</span>
+              </label>
+              <p v-if="!visibleProjects.length" class="px-1.5 py-2 text-xs text-muted-foreground">
+                {{ t("report.noMatch") }}
+              </p>
+            </div>
           </div>
-        </div>
 
-        <div class="flex flex-col gap-1.5">
-          <label class="text-sm font-medium">{{ t("report.author") }}</label>
-          <div class="flex flex-wrap items-center gap-1.5">
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">{{ t("report.range") }}</label>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <Button
+                v-for="opt in RANGE_OPTIONS"
+                :key="opt.value"
+                size="sm"
+                :variant="rangeKey === opt.value ? 'default' : 'outline'"
+                class="h-7 px-2.5 text-xs"
+                @click="rangeKey = opt.value"
+              >
+                {{ t(opt.labelKey) }}
+              </Button>
+              <Popover v-if="rangeKey === 'custom'">
+                <PopoverTrigger as-child>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="h-7 gap-1.5 px-2.5 text-xs font-normal"
+                    :class="{ 'text-muted-foreground': !customRange.start && !customRange.end }"
+                  >
+                    <CalendarIcon class="h-3.5 w-3.5" />
+                    {{ customRangeLabel }}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent class="w-auto p-0" align="start">
+                  <RangeCalendar
+                    v-model="customRange"
+                    :number-of-months="2"
+                    :locale="settings.language"
+                    :max-value="maxDate"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">{{ t("report.author") }}</label>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <Button
+                v-for="opt in AUTHOR_OPTIONS"
+                :key="opt.value"
+                size="sm"
+                :variant="authorMode === opt.value ? 'default' : 'outline'"
+                class="h-7 max-w-64 px-2.5 text-xs"
+                @click="authorMode = opt.value"
+              >
+                <span class="truncate">
+                  {{
+                    opt.value === "me" && selfLabel
+                      ? t("report.authorMeNamed", { name: selfLabel })
+                      : t(opt.labelKey)
+                  }}
+                </span>
+              </Button>
+            </div>
+          </div>
+
+          <div v-if="commitData.length || loadingCommits" class="flex min-w-0 flex-col gap-1.5">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-1.5">
+                <label class="text-sm font-medium">{{ t("report.commits") }}</label>
+                <Loader2
+                  v-if="loadingCommits"
+                  class="h-3.5 w-3.5 animate-spin text-muted-foreground"
+                />
+              </div>
+              <Badge v-if="commitData.length" variant="secondary" class="text-xs">
+                {{ t("report.commitCount", { count: totalCommits }) }}
+              </Badge>
+            </div>
+            <div v-if="commitData.length" class="overflow-hidden rounded-md border">
+              <Collapsible
+                v-for="d in commitData"
+                :key="d.projectName"
+                v-slot="{ open: expanded }"
+                :open="commitOpen[d.projectName]"
+                @update:open="commitOpen[d.projectName] = $event"
+              >
+                <CollapsibleTrigger
+                  class="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-sm hover:bg-accent"
+                >
+                  <ChevronRight
+                    class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform"
+                    :class="{ 'rotate-90': expanded }"
+                  />
+                  <span class="min-w-0 flex-1 truncate">{{ d.projectName }}</span>
+                  <span class="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
+                    {{ t("report.commitCount", { count: d.commits.length }) }}
+                  </span>
+                </CollapsibleTrigger>
+                <CollapsibleContent class="min-w-0 overflow-hidden">
+                  <div
+                    v-if="d.commits.length"
+                    class="max-h-40 overflow-y-auto overflow-x-hidden border-t"
+                  >
+                    <div
+                      v-for="c in d.commits"
+                      :key="c.hash + c.date"
+                      class="flex min-w-0 items-center gap-2 px-3 py-1 text-xs"
+                    >
+                      <code class="shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
+                        {{ c.hash }}
+                      </code>
+                      <span class="min-w-0 flex-1 truncate" :title="c.subject">{{
+                        c.subject
+                      }}</span>
+                      <span
+                        class="max-w-28 shrink-0 truncate whitespace-nowrap text-muted-foreground"
+                        :title="c.author"
+                      >
+                        {{ c.author }}
+                      </span>
+                      <span
+                        class="shrink-0 whitespace-nowrap text-muted-foreground"
+                        :title="c.date"
+                        >{{ formatCommitTime(c.date) }}</span
+                      >
+                    </div>
+                  </div>
+                  <p v-else class="border-t px-3 py-2 text-xs text-muted-foreground">
+                    {{ t("report.projectNoCommits") }}
+                  </p>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+          </div>
+
+          <div class="flex justify-end">
             <Button
-              v-for="opt in AUTHOR_OPTIONS"
-              :key="opt.value"
               size="sm"
-              :variant="authorMode === opt.value ? 'default' : 'outline'"
-              class="h-7 max-w-64 px-2.5 text-xs"
-              @click="authorMode = opt.value"
+              class="gap-1.5"
+              :disabled="generating || loadingCommits"
+              @click="generate"
             >
-              <span class="truncate">
-                {{
-                  opt.value === "me" && selfLabel
-                    ? t("report.authorMeNamed", { name: selfLabel })
-                    : t(opt.labelKey)
-                }}
-              </span>
+              <Loader2 v-if="generating" class="h-3.5 w-3.5 animate-spin" />
+              <Sparkles v-else class="h-3.5 w-3.5" />
+              {{ generating ? t("report.generating") : t("report.generate") }}
             </Button>
           </div>
         </div>
 
-        <div class="flex justify-end">
-          <Button
-            size="sm"
-            class="gap-1.5"
-            :disabled="generating || loadingCommits"
-            @click="generate"
-          >
-            <Loader2 v-if="generating" class="h-3.5 w-3.5 animate-spin" />
-            <Sparkles v-else class="h-3.5 w-3.5" />
-            {{ generating ? t("report.generating") : t("report.generate") }}
-          </Button>
-        </div>
-
-        <div v-if="commitData.length || loadingCommits" class="flex min-w-0 flex-col gap-1.5">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-1.5">
-              <label class="text-sm font-medium">{{ t("report.commits") }}</label>
-              <Loader2
-                v-if="loadingCommits"
-                class="h-3.5 w-3.5 animate-spin text-muted-foreground"
-              />
-            </div>
-            <Badge v-if="commitData.length" variant="secondary" class="text-xs">
-              {{ t("report.commitCount", { count: totalCommits }) }}
-            </Badge>
-          </div>
-          <div v-if="commitData.length" class="overflow-hidden rounded-md border">
-            <Collapsible
-              v-for="d in commitData"
-              :key="d.projectName"
-              v-slot="{ open: expanded }"
-              :open="commitOpen[d.projectName]"
-              @update:open="commitOpen[d.projectName] = $event"
-            >
-              <CollapsibleTrigger
-                class="flex w-full cursor-pointer items-center gap-2 px-2.5 py-1.5 text-left text-sm hover:bg-accent"
-              >
-                <ChevronRight
-                  class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform"
-                  :class="{ 'rotate-90': expanded }"
-                />
-                <span class="min-w-0 flex-1 truncate">{{ d.projectName }}</span>
-                <span class="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                  {{ t("report.commitCount", { count: d.commits.length }) }}
-                </span>
-              </CollapsibleTrigger>
-              <CollapsibleContent class="min-w-0 overflow-hidden">
-                <div
-                  v-if="d.commits.length"
-                  class="max-h-40 overflow-y-auto overflow-x-hidden border-t"
-                >
-                  <div
-                    v-for="c in d.commits"
-                    :key="c.hash + c.date"
-                    class="flex min-w-0 items-center gap-2 px-3 py-1 text-xs"
-                  >
-                    <code class="shrink-0 rounded bg-muted px-1 py-0.5 font-mono text-[11px]">
-                      {{ c.hash }}
-                    </code>
-                    <span class="min-w-0 flex-1 truncate" :title="c.subject">{{ c.subject }}</span>
-                    <span
-                      class="max-w-28 shrink-0 truncate whitespace-nowrap text-muted-foreground"
-                      :title="c.author"
-                    >
-                      {{ c.author }}
-                    </span>
-                    <span class="shrink-0 whitespace-nowrap text-muted-foreground">{{
-                      c.date
-                    }}</span>
-                  </div>
-                </div>
-                <p v-else class="border-t px-3 py-2 text-xs text-muted-foreground">
-                  {{ t("report.projectNoCommits") }}
-                </p>
-              </CollapsibleContent>
-            </Collapsible>
-          </div>
-        </div>
-
-        <div class="rounded-md border">
-          <div class="flex items-center justify-between border-b px-3 py-1.5">
+        <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-md border">
+          <div class="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
             <span class="text-xs text-muted-foreground">Markdown</span>
             <Button
               v-if="result"
@@ -590,7 +607,7 @@ async function copyResult() {
               {{ t("report.copy") }}
             </Button>
           </div>
-          <ScrollArea class="h-64">
+          <ScrollArea class="min-h-0 flex-1">
             <p v-if="!result" class="p-4 text-sm text-muted-foreground">
               {{ generating ? t("report.generating") : t("report.placeholder") }}
             </p>

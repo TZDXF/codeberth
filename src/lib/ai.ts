@@ -51,12 +51,15 @@ function buildSystemPrompt(custom: string, fallback: string, language: Supported
   return `${base}\n\nRespond in ${languageName(language)}.`;
 }
 
-/** 根据当前变更上下文生成 git 提交信息 */
+/** 根据当前变更上下文生成 git 提交信息;user 提示词携带项目名称与描述帮助模型理解业务语境 */
 export async function generateCommitMessage(
   ctx: GitCommitContext,
+  project: { name: string; description: string },
   language: SupportedLocale,
 ): Promise<string> {
   const prompts = await loadAiPrompts();
+  const description = project.description.trim();
+  const projectSection = `Project: ${project.name}${description ? `\nDescription: ${description}` : ""}`;
   const untracked = ctx.untracked.length
     ? `\nUntracked new files (no diff content available):\n${ctx.untracked.join("\n")}`
     : "";
@@ -64,7 +67,9 @@ export async function generateCommitMessage(
   const { text } = await generateText({
     model: getChatModel(),
     system: buildSystemPrompt(prompts.commit, DEFAULT_COMMIT_PROMPT, language),
-    prompt: `Change summary (git diff --stat):
+    prompt: `${projectSection}
+
+Change summary (git diff --stat):
 ${ctx.stat || "(none)"}
 
 Diff:${truncatedNote}

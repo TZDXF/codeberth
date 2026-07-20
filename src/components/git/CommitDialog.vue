@@ -67,7 +67,7 @@ async function generate() {
   try {
     const ctx = await cmd<GitCommitContext>("git_commit_context", { path: props.project.path });
     if (!ctx.stat && !ctx.diff && ctx.untracked.length === 0) return;
-    message.value = await generateCommitMessage(ctx, settings.language);
+    message.value = await generateCommitMessage(ctx, props.project, settings.language);
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e));
   } finally {
