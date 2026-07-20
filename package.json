@@ -24,6 +24,7 @@
     "@ai-sdk/openai": "^4.0.16",
     "@fontsource/nunito": "^5.2.7",
     "@fontsource/zen-maru-gothic": "^5.2.8",
+    "@internationalized/date": "^3.12.2",
     "@lucide/vue": "^1.25.0",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-dialog": "^2.7.1",

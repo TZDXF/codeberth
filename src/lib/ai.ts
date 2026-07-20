@@ -2,6 +2,7 @@ import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { i18n, type SupportedLocale } from "@/i18n";
+import { DEFAULT_COMMIT_PROMPT, DEFAULT_REPORT_PROMPT, loadAiPrompts } from "@/lib/ai-prompts";
 import { useSettingsStore } from "@/stores/settings";
 import type { GitCommitContext, GitCommitInfo } from "@/types";
 
@@ -44,27 +45,26 @@ function languageName(language: SupportedLocale) {
   return language === "zh-CN" ? "中文" : "English";
 }
 
+/** 组装 system prompt:用户自定义(~/.pm/prompts/*.md)优先,空则回退内置默认;输出语言指令统一追加 */
+function buildSystemPrompt(custom: string, fallback: string, language: SupportedLocale) {
+  const base = custom.trim() || fallback;
+  return `${base}\n\nRespond in ${languageName(language)}.`;
+}
+
 /** 根据当前变更上下文生成 git 提交信息 */
 export async function generateCommitMessage(
   ctx: GitCommitContext,
   language: SupportedLocale,
 ): Promise<string> {
+  const prompts = await loadAiPrompts();
   const untracked = ctx.untracked.length
     ? `\nUntracked new files (no diff content available):\n${ctx.untracked.join("\n")}`
     : "";
   const truncatedNote = ctx.truncated ? "\n(Note: the diff was truncated due to length.)" : "";
   const { text } = await generateText({
     model: getChatModel(),
-    system: "You write concise, high-quality git commit messages.",
-    prompt: `Write a git commit message in ${languageName(language)} for the following changes.
-
-Requirements:
-- Use the Conventional Commits format: "type: summary", e.g. feat / fix / refactor / docs / chore / perf / test / build.
-- The first line (subject) must be a single line of at most 72 characters.
-- Optionally add one blank line followed by a short body with bullet points for important details; omit the body for small changes.
-- Output ONLY the commit message itself. No explanations, no quotes, no markdown code fences.
-
-Change summary (git diff --stat):
+    system: buildSystemPrompt(prompts.commit, DEFAULT_COMMIT_PROMPT, language),
+    prompt: `Change summary (git diff --stat):
 ${ctx.stat || "(none)"}
 
 Diff:${truncatedNote}
@@ -79,6 +79,7 @@ export async function generateDailyReport(
   rangeLabel: string,
   language: SupportedLocale,
 ): Promise<string> {
+  const prompts = await loadAiPrompts();
   const sections = data
     .map((p) => {
       const lines = p.commits
@@ -89,15 +90,8 @@ export async function generateDailyReport(
     .join("\n\n");
   const { text } = await generateText({
     model: getChatModel(),
-    system: "You are an assistant that writes clear, professional daily work reports in Markdown.",
-    prompt: `Based on the following git commit records, write a daily work report in ${languageName(language)}.
-
-Report requirements:
-- Time range: ${rangeLabel}.
-- Output Markdown. Start with a top-level summary (2-4 sentences), then one section per project.
-- Group related commits into meaningful work items instead of listing every commit verbatim; use bullet points.
-- Keep it factual and concise; do not invent work that is not reflected in the commits.
-- Output ONLY the report Markdown itself.
+    system: buildSystemPrompt(prompts.report, DEFAULT_REPORT_PROMPT, language),
+    prompt: `Time range: ${rangeLabel}.
 
 Commit records:
 ${sections}`,

@@ -142,7 +142,7 @@ fn open_vscode(path: &str) -> AppResult<()> {
     Ok(())
 }
 
-fn open_explorer(path: &str) -> AppResult<()> {
+pub(crate) fn open_explorer(path: &str) -> AppResult<()> {
     #[cfg(windows)]
     Command::new("explorer").arg(path).spawn()?;
     #[cfg(target_os = "macos")]

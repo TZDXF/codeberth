@@ -60,6 +60,13 @@ pub struct GitCommitInfo {
     pub subject: String,
 }
 
+/// 仓库当前 git 用户身份(user.name / user.email,含全局配置回退)
+#[derive(Debug, Clone, Serialize)]
+pub struct GitUser {
+    pub name: String,
+    pub email: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct Project {
     pub id: i64,

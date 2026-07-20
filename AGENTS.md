@@ -48,7 +48,7 @@ src-tauri/migrations/ SQL 迁移,NNN_name.sql
 
 1. **新增 Rust 命令**:在 `commands/*.rs` 实现(返回 `AppResult<T>`)后,必须在 `lib.rs` 的 `invoke_handler!` 里注册,前端经 `cmd<T>("snake_case 名", { camelCase 参数 })` 调用(Tauri 自动做参数名映射)。
 2. **数据库**:SQLite 文件在 `~/.pm/projects.db`(Windows: `C:\Users\<user>\.pm\`)。改表结构 = 新增 `migrations/00N_xxx.sql` + 在 `db/migrations.rs` 按 `PRAGMA user_version` 顺序应用,保证幂等。不要改已发布的迁移文件。
-3. **应用数据目录名 `.pm`** 在 Rust(`lib.rs` 的 `APP_DATA_DIR_NAME`)和前端(`stores/settings.ts`)各有一份常量,改动需同步。设置持久化走 `tauri-plugin-store` → `~/.pm/settings.json`。
+3. **应用数据目录名 `.pm`** 在 Rust(`lib.rs` 的 `APP_DATA_DIR_NAME`)和前端(`stores/settings.ts`)各有一份常量,改动需同步。设置持久化走 `tauri-plugin-store` → `~/.pm/settings.json`。AI 提示词不走 store/SQLite,存 `~/.pm/prompts/*.md`(`commands/prompt.rs` 读写,文件缺失/为空 = 前端 `lib/ai-prompts.ts` 的内置默认模板)。
 4. **路径别名** `@/` → `src/`(tsconfig + vite 均已配置)。
 
 ## 前端约定

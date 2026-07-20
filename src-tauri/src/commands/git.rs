@@ -6,7 +6,7 @@ use tauri::{Emitter, Window};
 use tokio::sync::Semaphore;
 
 use crate::error::{AppError, AppResult};
-use crate::models::{GitBranches, GitCommitContext, GitCommitInfo, GitPullResult, GitStatus};
+use crate::models::{GitBranches, GitCommitContext, GitCommitInfo, GitPullResult, GitStatus, GitUser};
 
 /// 后台 fetch 并发上限(超出排队)
 static FETCH_PERMITS: OnceLock<Semaphore> = OnceLock::new();
@@ -361,6 +361,7 @@ pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
 }
 
 /// 读取提交记录(日报生成用),按时间倒序。
+/// author 传入时按 git --author 语义过滤(匹配 "Name <email>")。
 /// 非 git 仓库或尚无提交时返回空数组而非报错(多项目汇总时容错)
 #[tauri::command]
 pub fn git_log(
@@ -368,6 +369,7 @@ pub fn git_log(
     since: Option<String>,
     until: Option<String>,
     max_count: Option<u32>,
+    author: Option<String>,
 ) -> AppResult<Vec<GitCommitInfo>> {
     let mut args: Vec<String> = vec![
         "log".into(),
@@ -381,6 +383,9 @@ pub fn git_log(
     }
     if let Some(u) = until.filter(|u| !u.trim().is_empty()) {
         args.push(format!("--until={u}"));
+    }
+    if let Some(a) = author.filter(|a| !a.trim().is_empty()) {
+        args.push(format!("--author={a}"));
     }
     let limit = max_count.unwrap_or(200).min(1000);
     args.push(format!("--max-count={limit}"));
@@ -424,6 +429,29 @@ pub fn git_log(
         })
         .collect();
     Ok(commits)
+}
+
+/// 读取仓库当前 git 用户身份(日报"仅自己"过滤用)。
+/// `git config user.name/email` 本身含全局配置回退;非仓库或未配置时返回空串而非报错
+#[tauri::command]
+pub fn git_current_user(path: String) -> AppResult<GitUser> {
+    let read = |key: &str| -> String {
+        git_command(&path)
+            .args(["config", key])
+            .output()
+            .map(|o| {
+                if o.status.success() {
+                    String::from_utf8_lossy(&o.stdout).trim().to_string()
+                } else {
+                    String::new()
+                }
+            })
+            .unwrap_or_default()
+    };
+    Ok(GitUser {
+        name: read("user.name"),
+        email: read("user.email"),
+    })
 }
 
 #[cfg(test)]
@@ -780,17 +808,54 @@ mod tests {
         git(&dir, &["commit", "-m", "feat: first"]);
         fs::write(dir.join("a.txt"), "a2").unwrap();
         git(&dir, &["commit", "-am", "fix: second"]);
+        // 另一条作者的提交,验证 --author 过滤
+        fs::write(dir.join("b.txt"), "b").unwrap();
+        git(&dir, &["add", "b.txt"]);
+        git(
+            &dir,
+            &[
+                "-c",
+                "user.name=other",
+                "-c",
+                "user.email=other@example.com",
+                "commit",
+                "-m",
+                "docs: third",
+            ],
+        );
 
-        let all = git_log(dir.to_str().unwrap().to_string(), None, None, None).unwrap();
-        assert_eq!(all.len(), 2);
+        let all = git_log(dir.to_str().unwrap().to_string(), None, None, None, None).unwrap();
+        assert_eq!(all.len(), 3);
         // 时间倒序:最新在前
-        assert_eq!(all[0].subject, "fix: second");
-        assert_eq!(all[1].subject, "feat: first");
-        assert_eq!(all[0].author, "test");
+        assert_eq!(all[0].subject, "docs: third");
+        assert_eq!(all[1].subject, "fix: second");
+        assert_eq!(all[2].subject, "feat: first");
+        assert_eq!(all[1].author, "test");
         assert!(!all[0].hash.is_empty());
 
+        // author 过滤:仅含匹配作者的提交
+        let mine = git_log(
+            dir.to_str().unwrap().to_string(),
+            None,
+            None,
+            None,
+            Some("test".into()),
+        )
+        .unwrap();
+        assert_eq!(mine.len(), 2);
+        assert!(mine.iter().all(|c| c.author == "test"));
+        let nobody = git_log(
+            dir.to_str().unwrap().to_string(),
+            None,
+            None,
+            None,
+            Some("no-such-author".into()),
+        )
+        .unwrap();
+        assert!(nobody.is_empty());
+
         // max_count 截断
-        let one = git_log(dir.to_str().unwrap().to_string(), None, None, Some(1)).unwrap();
+        let one = git_log(dir.to_str().unwrap().to_string(), None, None, Some(1), None).unwrap();
         assert_eq!(one.len(), 1);
 
         // until 远早于提交时间 → 空
@@ -799,14 +864,31 @@ mod tests {
             None,
             Some("2000-01-01".into()),
             None,
+            None,
         )
         .unwrap();
         assert!(none.is_empty());
 
         // 非仓库 → 空数组而非报错
         let plain = temp_dir("log-plain");
-        let res = git_log(plain.to_str().unwrap().to_string(), None, None, None).unwrap();
+        let res = git_log(plain.to_str().unwrap().to_string(), None, None, None, None).unwrap();
         assert!(res.is_empty());
+
+        let _ = fs::remove_dir_all(&dir);
+        let _ = fs::remove_dir_all(&plain);
+    }
+
+    #[test]
+    fn git_current_user_reads_config() {
+        let dir = temp_dir("user");
+        init_repo(&dir);
+        let user = git_current_user(dir.to_str().unwrap().to_string()).unwrap();
+        assert_eq!(user.name, "test");
+        assert_eq!(user.email, "test@example.com");
+
+        // 非仓库:不报错即可(字段取决于全局配置,内容不可断言)
+        let plain = temp_dir("user-plain");
+        git_current_user(plain.to_str().unwrap().to_string()).unwrap();
 
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_dir_all(&plain);

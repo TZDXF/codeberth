@@ -7,7 +7,7 @@ use db::Db;
 use tauri::Manager;
 
 /// 应用数据目录名(位于用户主目录下)
-const APP_DATA_DIR_NAME: &str = ".pm";
+pub(crate) const APP_DATA_DIR_NAME: &str = ".pm";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -44,8 +44,12 @@ pub fn run() {
             commands::git::git_push,
             commands::git::git_commit_context,
             commands::git::git_log,
+            commands::git::git_current_user,
             commands::open::open_with,
             commands::open::detect_vscode,
+            commands::prompt::get_ai_prompts,
+            commands::prompt::set_ai_prompts,
+            commands::prompt::open_prompts_dir,
             commands::tag::list_tags,
             commands::tag::create_tag,
             commands::tag::update_tag,

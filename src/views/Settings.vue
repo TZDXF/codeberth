@@ -2,13 +2,21 @@
 import { computed, ref, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { Archive, ArrowLeft, SlidersHorizontal, Sparkles, Tags } from "@lucide/vue";
+import {
+  Archive,
+  ArrowLeft,
+  MessageSquareText,
+  SlidersHorizontal,
+  Sparkles,
+  Tags,
+} from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import GeneralSettings from "@/components/settings/GeneralSettings.vue";
 import TagSettings from "@/components/settings/TagSettings.vue";
 import ArchiveSettings from "@/components/settings/ArchiveSettings.vue";
 import AiSettings from "@/components/settings/AiSettings.vue";
+import PromptSettings from "@/components/settings/PromptSettings.vue";
 
 const { t } = useI18n();
 interface Category {
@@ -33,6 +41,12 @@ const categories: Category[] = [
     component: ArchiveSettings,
   },
   { id: "ai", labelKey: "settings.categories.ai", icon: Sparkles, component: AiSettings },
+  {
+    id: "prompts",
+    labelKey: "settings.categories.prompts",
+    icon: MessageSquareText,
+    component: PromptSettings,
+  },
 ];
 
 const router = useRouter();
