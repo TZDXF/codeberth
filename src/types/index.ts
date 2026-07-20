@@ -101,4 +101,3 @@ export interface GitUpdatedPayload {
   remote_ahead: number;
   last_fetch_at: number;
 }
-

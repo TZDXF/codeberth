@@ -104,10 +104,7 @@ async function remove(id: number, name: string) {
             class="flex items-center justify-between rounded-md px-2 py-1.5 hover:bg-accent"
           >
             <span class="flex items-center gap-2 text-sm">
-              <span
-                class="h-3 w-3 rounded-full"
-                :style="{ backgroundColor: tag.color }"
-              />
+              <span class="h-3 w-3 rounded-full" :style="{ backgroundColor: tag.color }" />
               {{ tag.name }}
             </span>
             <Button
@@ -120,10 +117,7 @@ async function remove(id: number, name: string) {
               <Trash2 class="h-3.5 w-3.5" />
             </Button>
           </div>
-          <p
-            v-if="!store.tags.length"
-            class="py-6 text-center text-xs text-muted-foreground"
-          >
+          <p v-if="!store.tags.length" class="py-6 text-center text-xs text-muted-foreground">
             {{ t("tags.manager.empty") }}
           </p>
         </div>

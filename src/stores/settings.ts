@@ -27,8 +27,7 @@ export const useSettingsStore = defineStore("settings", () => {
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
 
   function applyTheme() {
-    const dark =
-      theme.value === "dark" || (theme.value === "system" && systemDark.matches);
+    const dark = theme.value === "dark" || (theme.value === "system" && systemDark.matches);
     const root = document.documentElement;
     root.classList.toggle("dark", dark);
     if (themeSkin.value === "island") {

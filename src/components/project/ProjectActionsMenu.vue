@@ -56,7 +56,13 @@ async function archive() {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-      <Button variant="ghost" size="icon" class="h-7 w-7" :title="t('projects.actions.more')" @click.stop>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="h-7 w-7"
+        :title="t('projects.actions.more')"
+        @click.stop
+      >
         <MoreHorizontal class="h-3.5 w-3.5" />
       </Button>
     </DropdownMenuTrigger>

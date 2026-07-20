@@ -65,11 +65,7 @@ async function openIn(kind: EditorKind) {
         </ScrollArea>
       </div>
       <DialogFooter class="gap-2">
-        <Button
-          variant="outline"
-          :disabled="vscodeAvailable === false"
-          @click="openIn('vscode')"
-        >
+        <Button variant="outline" :disabled="vscodeAvailable === false" @click="openIn('vscode')">
           <Code class="h-4 w-4" />
           {{ t("git.conflict.openVscode") }}
         </Button>

@@ -18,9 +18,19 @@ interface Category {
 }
 
 const categories: Category[] = [
-  { id: "general", labelKey: "settings.categories.general", icon: SlidersHorizontal, component: GeneralSettings },
+  {
+    id: "general",
+    labelKey: "settings.categories.general",
+    icon: SlidersHorizontal,
+    component: GeneralSettings,
+  },
   { id: "tags", labelKey: "settings.categories.tags", icon: Tags, component: TagSettings },
-  { id: "archive", labelKey: "settings.categories.archive", icon: Archive, component: ArchiveSettings },
+  {
+    id: "archive",
+    labelKey: "settings.categories.archive",
+    icon: Archive,
+    component: ArchiveSettings,
+  },
 ];
 
 const router = useRouter();

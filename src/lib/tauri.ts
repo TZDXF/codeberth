@@ -8,10 +8,7 @@ export function cmd<T>(name: string, args?: Record<string, unknown>): Promise<T>
 }
 
 /** 监听后端事件 */
-export function onListen<T>(
-  event: string,
-  handler: (payload: T) => void,
-): Promise<UnlistenFn> {
+export function onListen<T>(event: string, handler: (payload: T) => void): Promise<UnlistenFn> {
   return listen<T>(event, (e) => handler(e.payload));
 }
 

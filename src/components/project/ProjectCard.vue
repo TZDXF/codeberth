@@ -23,17 +23,11 @@ function open() {
   >
     <div class="flex items-center justify-between gap-2">
       <span class="truncate text-sm font-medium">{{ project.name }}</span>
-      <div
-        class="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100"
-      >
+      <div class="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
         <ProjectActionsMenu :project="project" />
       </div>
     </div>
-    <p
-      v-if="project.description"
-      class="mt-0.5 truncate text-xs"
-      :title="project.description"
-    >
+    <p v-if="project.description" class="mt-0.5 truncate text-xs" :title="project.description">
       {{ project.description }}
     </p>
     <p class="truncate text-xs text-muted-foreground" :title="project.path">
@@ -47,16 +41,14 @@ function open() {
         <GitBranch class="h-3 w-3 shrink-0" />
         <span class="truncate">{{ project.git.branch ?? t("common.unknown") }}</span>
       </span>
-      <span v-if="project.git.staged" class="text-emerald-600">
-        +{{ project.git.staged }}
-      </span>
-      <span v-if="project.git.modified" class="text-amber-600">
-        ~{{ project.git.modified }}
-      </span>
-      <span v-if="project.git.untracked" class="text-sky-600">
-        ?{{ project.git.untracked }}
-      </span>
-      <span v-if="project.git.remote_ahead" class="text-amber-600" :title="t('projects.card.remoteAhead')">
+      <span v-if="project.git.staged" class="text-emerald-600"> +{{ project.git.staged }} </span>
+      <span v-if="project.git.modified" class="text-amber-600"> ~{{ project.git.modified }} </span>
+      <span v-if="project.git.untracked" class="text-sky-600"> ?{{ project.git.untracked }} </span>
+      <span
+        v-if="project.git.remote_ahead"
+        class="text-amber-600"
+        :title="t('projects.card.remoteAhead')"
+      >
         ↓{{ project.git.remote_ahead }}
       </span>
     </div>

@@ -73,7 +73,12 @@ async function submit() {
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">{{ t("projects.add.pathLabel") }}</label>
           <div class="flex gap-2">
-            <Input v-model="path" :placeholder="t('projects.add.pathPlaceholder')" readonly class="flex-1" />
+            <Input
+              v-model="path"
+              :placeholder="t('projects.add.pathPlaceholder')"
+              readonly
+              class="flex-1"
+            />
             <Button type="button" variant="outline" @click="pickFolder">
               <FolderOpen class="h-4 w-4" />
               {{ t("projects.add.browse") }}

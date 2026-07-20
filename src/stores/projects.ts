@@ -83,9 +83,7 @@ export const useProjectsStore = defineStore("projects", () => {
   /** 触发单个项目的后台远端 fetch(后端限流,结果走 git://updated 事件) */
   function triggerRemoteFetch(project: Project) {
     if (project.git?.is_repo) {
-      cmd("fetch_git_remote_async", { projectId: project.id, path: project.path }).catch(
-        () => {},
-      );
+      cmd("fetch_git_remote_async", { projectId: project.id, path: project.path }).catch(() => {});
     }
   }
 

@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "vue", "import"],
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error",
+    "style": "warn"
+  },
+  "env": {
+    "browser": true,
+    "node": true
+  },
+  "ignorePatterns": [
+    "dist/**",
+    "node_modules/**",
+    "src-tauri/**",
+    "scripts/**",
+    ".zcode/**"
+  ],
+  "rules": {
+    "no-shadow": "off",
+    "sort-imports": "off",
+    "sort-keys": "off",
+    "id-length": "off",
+    "func-style": "off",
+    "no-magic-numbers": "off",
+    "no-ternary": "off",
+    "no-duplicate-imports": "off",
+    "max-statements": "off",
+    "capitalized-comments": "off",
+    "init-declarations": "off",
+    "no-continue": "off",
+    "prefer-destructuring": "off",
+    "no-implicit-coercion": "off",
+    "arrow-body-style": "off",
+    "import/no-unassigned-import": "off",
+    "import/no-named-export": "off",
+    "import/group-exports": "off",
+    "import/consistent-type-specifier-style": "off",
+    "import/prefer-default-export": "off",
+    "import/exports-last": "off",
+    "import/no-anonymous-default-export": "off",
+    "import/no-nodejs-modules": "off",
+    "vue/define-props-destructuring": "off",
+    "vue/next-tick-style": "off"
+  }
+}

@@ -22,9 +22,19 @@ const props = withDefaults(defineProps<{ project: Project; compact?: boolean }>(
 const settings = useSettingsStore();
 
 const OPTIONS: { kind: EditorKind; icon: Component; labelKey: string; descKey: string }[] = [
-  { kind: "explorer", icon: FolderOpen, labelKey: "openWith.explorer", descKey: "openWith.openInExplorer" },
+  {
+    kind: "explorer",
+    icon: FolderOpen,
+    labelKey: "openWith.explorer",
+    descKey: "openWith.openInExplorer",
+  },
   { kind: "vscode", icon: Code, labelKey: "openWith.vscode", descKey: "openWith.openInVscode" },
-  { kind: "terminal", icon: Terminal, labelKey: "openWith.terminal", descKey: "openWith.openInTerminal" },
+  {
+    kind: "terminal",
+    icon: Terminal,
+    labelKey: "openWith.terminal",
+    descKey: "openWith.openInTerminal",
+  },
 ];
 
 const current = computed(

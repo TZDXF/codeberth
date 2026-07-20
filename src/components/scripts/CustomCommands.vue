@@ -147,7 +147,9 @@ async function run(c: CustomCommand) {
   <Dialog v-model:open="dialogOpen">
     <DialogContent>
       <DialogHeader>
-        <DialogTitle>{{ editingId == null ? t("scripts.custom.dialogNew") : t("scripts.custom.dialogEdit") }}</DialogTitle>
+        <DialogTitle>{{
+          editingId == null ? t("scripts.custom.dialogNew") : t("scripts.custom.dialogEdit")
+        }}</DialogTitle>
       </DialogHeader>
       <form class="flex flex-col gap-3" @submit.prevent="submit">
         <div class="flex flex-col gap-1.5">
@@ -156,11 +158,18 @@ async function run(c: CustomCommand) {
         </div>
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">{{ t("scripts.custom.commandLabel") }}</label>
-          <Input v-model="formCommand" :placeholder="t('scripts.custom.commandPlaceholder')" class="font-mono" />
+          <Input
+            v-model="formCommand"
+            :placeholder="t('scripts.custom.commandPlaceholder')"
+            class="font-mono"
+          />
         </div>
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">{{ t("scripts.custom.descriptionLabel") }}</label>
-          <Input v-model="formDescription" :placeholder="t('scripts.custom.descriptionPlaceholder')" />
+          <Input
+            v-model="formDescription"
+            :placeholder="t('scripts.custom.descriptionPlaceholder')"
+          />
         </div>
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">{{ t("scripts.custom.iconLabel") }}</label>
@@ -169,9 +178,7 @@ async function run(c: CustomCommand) {
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-md border text-muted-foreground transition-colors hover:bg-accent"
               :class="
-                formIcon === ''
-                  ? 'border-primary bg-accent text-foreground'
-                  : 'border-transparent'
+                formIcon === '' ? 'border-primary bg-accent text-foreground' : 'border-transparent'
               "
               :title="t('scripts.custom.noIcon')"
               @click="formIcon = ''"
@@ -196,10 +203,7 @@ async function run(c: CustomCommand) {
           </div>
         </div>
         <DialogFooter>
-          <Button
-            type="submit"
-            :disabled="!formName.trim() || !formCommand.trim() || submitting"
-          >
+          <Button type="submit" :disabled="!formName.trim() || !formCommand.trim() || submitting">
             {{ submitting ? t("common.saving") : t("common.save") }}
           </Button>
         </DialogFooter>

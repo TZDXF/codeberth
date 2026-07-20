@@ -50,7 +50,8 @@ async function remove(id: number, name: string) {
           <div class="min-w-0 flex-1">
             <p class="truncate text-sm font-medium">{{ p.name }}</p>
             <p class="truncate text-xs text-muted-foreground" :title="p.path">
-              {{ p.path }} · {{ t("settings.archive.archivedAt", { time: formatRelativeTime(p.archived_at) }) }}
+              {{ p.path }} ·
+              {{ t("settings.archive.archivedAt", { time: formatRelativeTime(p.archived_at) }) }}
             </p>
           </div>
           <span

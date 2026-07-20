@@ -198,6 +198,8 @@ async function saveDesc() {
     class="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground"
   >
     <p>{{ t("projects.detail.notFound") }}</p>
-    <Button variant="outline" size="sm" @click="router.push('/')">{{ t("projects.detail.backToListShort") }}</Button>
+    <Button variant="outline" size="sm" @click="router.push('/')">{{
+      t("projects.detail.backToListShort")
+    }}</Button>
   </div>
 </template>

@@ -2,7 +2,17 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { ArrowDownUp, LayoutGrid, List, Plus, Search, Settings, Settings2, Tags, X } from "@lucide/vue";
+import {
+  ArrowDownUp,
+  LayoutGrid,
+  List,
+  Plus,
+  Search,
+  Settings,
+  Settings2,
+  Tags,
+  X,
+} from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -79,7 +89,11 @@ const sortedProjects = computed(() => {
         <Search
           class="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
         />
-        <Input v-model="searchInput" :placeholder="t('projects.home.searchPlaceholder')" class="h-8 pl-8 text-sm" />
+        <Input
+          v-model="searchInput"
+          :placeholder="t('projects.home.searchPlaceholder')"
+          class="h-8 pl-8 text-sm"
+        />
       </div>
       <div class="flex flex-wrap items-center gap-1.5">
         <DropdownMenu>
@@ -110,11 +124,7 @@ const sortedProjects = computed(() => {
             </template>
             <DropdownMenuSeparator />
             <TagManager @refresh-projects="store.fetchProjects()">
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-7 w-full justify-start gap-2 px-2 text-xs"
-              >
+              <Button variant="ghost" size="sm" class="h-7 w-full justify-start gap-2 px-2 text-xs">
                 <Settings2 class="h-3.5 w-3.5" />
                 {{ t("tags.picker.manage") }}
               </Button>
@@ -144,9 +154,15 @@ const sortedProjects = computed(() => {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuRadioGroup v-model="sortKey">
-              <DropdownMenuRadioItem value="name">{{ t("projects.home.sortByName") }}</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="updated">{{ t("projects.home.sortByUpdated") }}</DropdownMenuRadioItem>
-              <DropdownMenuRadioItem value="created">{{ t("projects.home.sortByCreated") }}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="name">{{
+                t("projects.home.sortByName")
+              }}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="updated">{{
+                t("projects.home.sortByUpdated")
+              }}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="created">{{
+                t("projects.home.sortByCreated")
+              }}</DropdownMenuRadioItem>
             </DropdownMenuRadioGroup>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -198,10 +214,7 @@ const sortedProjects = computed(() => {
         <ProjectCard v-for="p in sortedProjects" :key="p.id" :project="p" />
       </div>
       <ProjectTable v-else :projects="sortedProjects" />
-      <p
-        v-if="!sortedProjects.length"
-        class="py-16 text-center text-sm text-muted-foreground"
-      >
+      <p v-if="!sortedProjects.length" class="py-16 text-center text-sm text-muted-foreground">
         {{
           store.query || store.selectedTagIds.length
             ? t("projects.home.emptyFiltered")

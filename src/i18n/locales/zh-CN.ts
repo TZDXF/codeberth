@@ -44,7 +44,7 @@ export default {
       addProject: "添加项目",
       settings: "设置",
       emptyFiltered: "没有匹配的项目",
-      emptyAll: '还没有项目,点击右上角「添加项目」',
+      emptyAll: "还没有项目,点击右上角「添加项目」",
     },
     table: {
       name: "名称",
@@ -68,7 +68,7 @@ export default {
       browse: "浏览",
       nameLabel: "项目名称",
       namePlaceholder: "输入项目名称",
-      added: '已添加项目「{name}」',
+      added: "已添加项目「{name}」",
     },
     actions: {
       more: "更多操作",
@@ -77,7 +77,7 @@ export default {
       openInTerminal: "在终端中打开",
       archive: "归档项目",
       archiveConfirm: "确定归档项目「{name}」吗?\n归档后将不再显示,历史数据会保留。",
-      archiveSuccess: '已归档项目「{name}」',
+      archiveSuccess: "已归档项目「{name}」",
     },
     detail: {
       backToList: "返回项目列表",
@@ -206,7 +206,7 @@ export default {
       updated: "命令已更新",
       deleted: "命令已删除",
       deleteConfirm: "确定删除命令「{name}」吗?",
-      started: '已在终端启动「{name}」',
+      started: "已在终端启动「{name}」",
     },
     item: {
       runTitle: "在终端运行: {command}",
@@ -312,8 +312,8 @@ export default {
       restore: "恢复项目",
       permanentDelete: "彻底删除",
       empty: "没有已归档的项目",
-      restored: '已恢复项目「{name}」',
-      deleted: '已删除项目「{name}」',
+      restored: "已恢复项目「{name}」",
+      deleted: "已删除项目「{name}」",
       deleteConfirm:
         "确定彻底删除项目「{name}」吗?此操作不可恢复,标签指派、自定义命令等历史数据将一并删除。(不会删除磁盘文件)",
     },

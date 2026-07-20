@@ -6,11 +6,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ChevronRight, Container, FileCode, Play, RefreshCw, RotateCw, Square } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { ComposeFile, ComposeServiceState, Project } from "@/types";

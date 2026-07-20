@@ -9,7 +9,11 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "start": "tauri dev",
-    "build:desktop": "tauri build"
+    "build:desktop": "tauri build",
+    "lint": "oxlint .",
+    "lint:fix": "oxlint . --fix",
+    "format": "oxfmt --write src/",
+    "format:check": "oxfmt --check src/"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
@@ -44,6 +48,8 @@
     "@tauri-apps/cli": "^2.11.4",
     "@types/node": "^26.1.1",
     "@vitejs/plugin-vue": "^6.0.8",
+    "oxfmt": "^0.59.0",
+    "oxlint": "^1.74.0",
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",
     "vite": "^8.1.5",

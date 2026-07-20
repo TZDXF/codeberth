@@ -146,11 +146,7 @@ async function createBranch() {
         <DialogTitle>{{ t("git.branch.createTitle") }}</DialogTitle>
       </DialogHeader>
       <form class="flex flex-col gap-4" @submit.prevent="createBranch">
-        <Input
-          v-model="newBranch"
-          :placeholder="t('git.branch.createPlaceholder')"
-          autofocus
-        />
+        <Input v-model="newBranch" :placeholder="t('git.branch.createPlaceholder')" autofocus />
         <DialogFooter>
           <Button type="submit" :disabled="!newBranch.trim() || creating">
             {{ creating ? t("git.branch.creating") : t("common.create") }}

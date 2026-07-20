@@ -7,15 +7,25 @@ const { t } = useI18n();
 const store = useSettingsStore();
 
 const OPTIONS: { value: Language; labelKey: string; nativeLabelKey: string }[] = [
-  { value: "zh-CN", labelKey: "settings.language.zhCN", nativeLabelKey: "settings.language.zhCNNative" },
-  { value: "en-US", labelKey: "settings.language.enUS", nativeLabelKey: "settings.language.enUSNative" },
+  {
+    value: "zh-CN",
+    labelKey: "settings.language.zhCN",
+    nativeLabelKey: "settings.language.zhCNNative",
+  },
+  {
+    value: "en-US",
+    labelKey: "settings.language.enUS",
+    nativeLabelKey: "settings.language.enUSNative",
+  },
 ];
 </script>
 
 <template>
   <section>
     <h2 class="text-base font-semibold">{{ t("settings.general.language") }}</h2>
-    <p class="mt-1 text-sm text-muted-foreground">{{ t("settings.general.languageDescription") }}</p>
+    <p class="mt-1 text-sm text-muted-foreground">
+      {{ t("settings.general.languageDescription") }}
+    </p>
     <div class="mt-4 flex flex-col gap-2">
       <button
         v-for="opt in OPTIONS"

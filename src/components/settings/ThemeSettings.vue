@@ -8,16 +8,42 @@ const { t } = useI18n();
 const store = useSettingsStore();
 
 const OPTIONS: { value: ThemeMode; labelKey: string; descriptionKey: string; icon: Component }[] = [
-  { value: "system", labelKey: "settings.theme.system", descriptionKey: "settings.theme.systemDesc", icon: Monitor },
-  { value: "light", labelKey: "settings.theme.light", descriptionKey: "settings.theme.lightDesc", icon: Sun },
-  { value: "dark", labelKey: "settings.theme.dark", descriptionKey: "settings.theme.darkDesc", icon: Moon },
+  {
+    value: "system",
+    labelKey: "settings.theme.system",
+    descriptionKey: "settings.theme.systemDesc",
+    icon: Monitor,
+  },
+  {
+    value: "light",
+    labelKey: "settings.theme.light",
+    descriptionKey: "settings.theme.lightDesc",
+    icon: Sun,
+  },
+  {
+    value: "dark",
+    labelKey: "settings.theme.dark",
+    descriptionKey: "settings.theme.darkDesc",
+    icon: Moon,
+  },
 ];
 
 // 色点顺序: 背景 / 主色 / 文字
-const SKINS: { value: ThemeSkin; labelKey: string; descriptionKey: string; swatches: string[] }[] = [
-  { value: "default", labelKey: "settings.skin.default", descriptionKey: "settings.skin.defaultDesc", swatches: ["#ffffff", "#171717", "#525252"] },
-  { value: "island", labelKey: "settings.skin.island", descriptionKey: "settings.skin.islandDesc", swatches: ["#f8f8f0", "#19c8b9", "#794f27"] },
-];
+const SKINS: { value: ThemeSkin; labelKey: string; descriptionKey: string; swatches: string[] }[] =
+  [
+    {
+      value: "default",
+      labelKey: "settings.skin.default",
+      descriptionKey: "settings.skin.defaultDesc",
+      swatches: ["#ffffff", "#171717", "#525252"],
+    },
+    {
+      value: "island",
+      labelKey: "settings.skin.island",
+      descriptionKey: "settings.skin.islandDesc",
+      swatches: ["#f8f8f0", "#19c8b9", "#794f27"],
+    },
+  ];
 </script>
 
 <template>

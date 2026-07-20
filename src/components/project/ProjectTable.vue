@@ -51,10 +51,7 @@ function open(id: number) {
           </span>
         </td>
         <td class="px-3 py-2">
-          <span
-            v-if="p.git?.is_repo"
-            class="flex items-center gap-1 whitespace-nowrap text-xs"
-          >
+          <span v-if="p.git?.is_repo" class="flex items-center gap-1 whitespace-nowrap text-xs">
             <GitBranch class="h-3 w-3 shrink-0 text-muted-foreground" />
             <span class="max-w-28 truncate" :title="p.git.branch ?? ''">
               {{ p.git.branch ?? t("common.unknown") }}
@@ -67,7 +64,11 @@ function open(id: number) {
             <span v-if="p.git.staged" class="text-emerald-600">+{{ p.git.staged }}</span>
             <span v-if="p.git.modified" class="text-amber-600">~{{ p.git.modified }}</span>
             <span v-if="p.git.untracked" class="text-sky-600">?{{ p.git.untracked }}</span>
-            <span v-if="p.git.remote_ahead" class="text-amber-600" :title="t('projects.table.remoteAhead')">
+            <span
+              v-if="p.git.remote_ahead"
+              class="text-amber-600"
+              :title="t('projects.table.remoteAhead')"
+            >
               ↓{{ p.git.remote_ahead }}
             </span>
             <span

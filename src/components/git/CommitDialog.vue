@@ -29,11 +29,7 @@ const untrackedCount = computed(() => git.value?.untracked ?? 0);
 /** 本次实际会提交的变更数(未跟踪文件仅在勾选时计入) */
 const committable = computed(() => {
   if (!git.value) return 0;
-  return (
-    git.value.staged +
-    git.value.modified +
-    (includeUntracked.value ? git.value.untracked : 0)
-  );
+  return git.value.staged + git.value.modified + (includeUntracked.value ? git.value.untracked : 0);
 });
 
 // 每次打开时重置为初始状态

@@ -274,7 +274,8 @@ export default {
     },
     mdTheme: {
       title: "Markdown theme",
-      description: "Rendering style for README and other Markdown content, adapts to light/dark mode",
+      description:
+        "Rendering style for README and other Markdown content, adapts to light/dark mode",
       default: "Follow app",
       defaultDesc: "Matches the app's interface theme",
       github: "GitHub",

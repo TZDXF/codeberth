@@ -18,8 +18,12 @@ Tauri 2 + Vue 3 + TypeScript 桌面应用(项目名称 `tauri-appproject-dev`):�
 | `pnpm dev` | 仅 Vite 前端(固定端口 1420,strictPort) |
 | `pnpm build` | `vue-tsc --noEmit && vite build`,**唯一的类型检查手段** |
 | `pnpm build:desktop` | `tauri build` 打包 |
+| `pnpm lint` | `oxlint .` 静态检查(correctness/suspicious/perf 报错,style 仅告警) |
+| `pnpm lint:fix` | `oxlint . --fix` 自动修复可修问题 |
+| `pnpm format` | `oxfmt --write src/` 格式化 src/ 下 TS/Vue |
+| `pnpm format:check` | `oxfmt --check src/` 仅检查不改(CI 用) |
 
-仓库**没有配置 lint 和测试框架**;改动后用 `pnpm build`(或 `npx vue-tsc --noEmit`)验证。Rust 侧用 `cargo check`(在 `src-tauri/` 下)。
+仓库**已配置 oxlint(静态检查)与 oxfmt(代码格式化),未配置测试框架**;改动后建议 `pnpm lint` + `pnpm build` 验证。Rust 侧用 `cargo check`(在 `src-tauri/` 下)。
 
 ## 架构与分层
 
@@ -53,6 +57,7 @@ src-tauri/migrations/ SQL 迁移,NNN_name.sql
 - **Markdown 渲染**:用 `vue-stream-markdown`(Shiki 高亮);MD 主题经根节点 `data-md-theme` 属性切换(default/github/notion/serif);自定义图片/链接渲染器要保留本地 `asset:` 协议与系统打开行为(Cargo.toml 已启用 `protocol-asset` feature)。
 - **i18n**:所有用户可见文案走 `vue-i18n`,键定义在 `src/i18n/locales/zh-CN.ts` 与 `en-US.ts`,新增键两语言必须同时补。仓库有专用翻译子代理(`.zcode/skills/i18n-translator/`,用法见 `docs/i18n-translator.md`),批量翻译/审计时优先调用它。Rust 侧错误文案(error.rs)目前是硬编码中文,属已知现状。
 - **TS 严格模式**:`noUnusedLocals` / `noUnusedParameters` 开启,未用变量会导致 build 失败。
+- **代码规范**:oxlint 配置在 `.oxlintrc.json`(plugins: typescript/vue/import;correctness/suspicious/perf = error、style = warn;`rules` 中关闭了若干与本项目约定冲突的高噪规则,如 `sort-imports`/`sort-keys`/`id-length`/`func-style`/`no-shadow`/`import/no-unassigned-import`,新增告警前先看现有 `rules` 注释)。oxfmt 配置在 `.oxfmtrc.json`(双引号、分号、2 空格、`trailingComma: all`、`printWidth: 100`、`endOfLine: lf`),**只格式化 `src/`**,根目录配置文件与 `src-tauri/` 不在范围。VS Code 用 Oxc 扩展(`oxc.oxc-vscode`,lint + format 一体),保存自动格式化见 `.vscode/settings.json`。`src/components/ui/`(shadcn-vue 生成文件)会被 oxfmt 一并格式化属正常,**但不要手改其结构**。
 
 ## 注意事项(Gotchas)
 

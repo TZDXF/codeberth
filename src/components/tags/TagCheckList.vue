@@ -31,9 +31,7 @@ onMounted(() => {
 <template>
   <div class="px-1 pb-1">
     <div class="relative">
-      <Search
-        class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
-      />
+      <Search class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
       <input
         ref="searchInput"
         v-model="keyword"
@@ -51,19 +49,13 @@ onMounted(() => {
       @update:model-value="emit('toggle', tag.id)"
       @select.prevent
     >
-      <span
-        class="mr-1 h-2.5 w-2.5 rounded-full"
-        :style="{ backgroundColor: tag.color }"
-      />
+      <span class="mr-1 h-2.5 w-2.5 rounded-full" :style="{ backgroundColor: tag.color }" />
       {{ tag.name }}
     </DropdownMenuCheckboxItem>
     <p v-if="!tags.length" class="px-2 py-1.5 text-xs text-muted-foreground">
       {{ t("tags.checkList.empty") }}
     </p>
-    <p
-      v-else-if="!filtered.length"
-      class="px-2 py-1.5 text-xs text-muted-foreground"
-    >
+    <p v-else-if="!filtered.length" class="px-2 py-1.5 text-xs text-muted-foreground">
       {{ t("tags.checkList.noMatch") }}
     </p>
   </div>

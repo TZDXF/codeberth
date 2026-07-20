@@ -9,9 +9,19 @@ const { t } = useI18n();
 const store = useSettingsStore();
 
 const OPTIONS: { value: EditorKind; icon: Component; labelKey: string; descKey: string }[] = [
-  { value: "explorer", icon: FolderOpen, labelKey: "openWith.explorer", descKey: "openWith.openInExplorer" },
+  {
+    value: "explorer",
+    icon: FolderOpen,
+    labelKey: "openWith.explorer",
+    descKey: "openWith.openInExplorer",
+  },
   { value: "vscode", icon: Code, labelKey: "openWith.vscode", descKey: "openWith.openInVscode" },
-  { value: "terminal", icon: Terminal, labelKey: "openWith.terminal", descKey: "openWith.openInTerminal" },
+  {
+    value: "terminal",
+    icon: Terminal,
+    labelKey: "openWith.terminal",
+    descKey: "openWith.openInTerminal",
+  },
 ];
 </script>
 

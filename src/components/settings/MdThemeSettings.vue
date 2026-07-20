@@ -8,10 +8,30 @@ const { t } = useI18n();
 const store = useSettingsStore();
 
 const OPTIONS: { value: MdTheme; labelKey: string; descriptionKey: string; icon: Component }[] = [
-  { value: "default", labelKey: "settings.mdTheme.default", descriptionKey: "settings.mdTheme.defaultDesc", icon: Blend },
-  { value: "github", labelKey: "settings.mdTheme.github", descriptionKey: "settings.mdTheme.githubDesc", icon: FileText },
-  { value: "notion", labelKey: "settings.mdTheme.notion", descriptionKey: "settings.mdTheme.notionDesc", icon: NotebookText },
-  { value: "serif", labelKey: "settings.mdTheme.serif", descriptionKey: "settings.mdTheme.serifDesc", icon: BookOpenText },
+  {
+    value: "default",
+    labelKey: "settings.mdTheme.default",
+    descriptionKey: "settings.mdTheme.defaultDesc",
+    icon: Blend,
+  },
+  {
+    value: "github",
+    labelKey: "settings.mdTheme.github",
+    descriptionKey: "settings.mdTheme.githubDesc",
+    icon: FileText,
+  },
+  {
+    value: "notion",
+    labelKey: "settings.mdTheme.notion",
+    descriptionKey: "settings.mdTheme.notionDesc",
+    icon: NotebookText,
+  },
+  {
+    value: "serif",
+    labelKey: "settings.mdTheme.serif",
+    descriptionKey: "settings.mdTheme.serifDesc",
+    icon: BookOpenText,
+  },
 ];
 </script>
 

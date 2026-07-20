@@ -33,4 +33,3 @@ export const useTagsStore = defineStore("tags", () => {
 
   return { tags, fetchTags, createTag, updateTag, deleteTag, setProjectTags };
 });
-

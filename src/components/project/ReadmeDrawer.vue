@@ -3,11 +3,7 @@ import { provide, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { openPath, openUrl } from "@tauri-apps/plugin-opener";
 import { BookOpen, X } from "@lucide/vue";
-import {
-  Markdown,
-  type ControlsConfig,
-  type NodeRenderers,
-} from "vue-stream-markdown";
+import { Markdown, type ControlsConfig, type NodeRenderers } from "vue-stream-markdown";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import MdImage from "@/components/markdown/MdImage.vue";
@@ -104,11 +100,7 @@ async function onBodyClick(e: MouseEvent) {
 <template>
   <Teleport to="body">
     <Transition name="fade">
-      <div
-        v-if="open"
-        class="fixed inset-0 z-40 bg-black/50"
-        @click="open = false"
-      />
+      <div v-if="open" class="fixed inset-0 z-40 bg-black/50" @click="open = false" />
     </Transition>
 
     <Transition name="slide">

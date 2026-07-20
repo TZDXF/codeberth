@@ -21,6 +21,7 @@
 | 渲染 | vue-stream-markdown(Shiki) |
 | 后端 | Tauri 2(Rust)、rusqlite(bundled SQLite)、tokio |
 | 国际化 | vue-i18n(zh-CN 默认 / en-US 回退) |
+| 工具链 | oxlint(静态检查)、oxfmt(代码格式化) |
 
 ## 开发环境
 
@@ -36,9 +37,13 @@ pnpm start          # tauri dev:完整桌面端开发(前端 + Rust 热更新)
 pnpm dev            # 仅 Vite 前端(端口 1420)
 pnpm build          # 类型检查(vue-tsc)+ 前端构建
 pnpm build:desktop  # 打包桌面安装包(Windows NSIS)
+pnpm lint           # oxlint 静态检查
+pnpm lint:fix       # 自动修复可修 lint 问题
+pnpm format         # oxfmt 格式化 src/
+pnpm format:check   # 仅检查格式(CI 用)
 ```
 
-> 仓库未配置 lint 与测试框架,提交前请至少跑一遍 `pnpm build` 验证类型。
+> 已配置 oxlint(静态检查)与 oxfmt(代码格式化),测试框架暂未配置;提交前建议 `pnpm lint` + `pnpm build`。
 
 ## 目录结构
 
@@ -65,4 +70,4 @@ src-tauri/
 
 ## 推荐 IDE 配置
 
-[VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+[VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) + [Oxc](https://marketplace.visualstudio.com/items?itemName=oxc.oxc-vscode)(oxlint + oxfmt 一体)
