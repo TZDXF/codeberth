@@ -117,6 +117,36 @@ const commitOpen = ref<Record<string, boolean>>({});
 
 const totalCommits = computed(() => commitData.value.reduce((sum, d) => sum + d.commits.length, 0));
 
+/** 所选项目解析出的 git 用户名(项目 id → 显示名),驱动"仅我自己"按钮展示实际名称 */
+const selfNames = ref<Record<number, string>>({});
+/** 勾选快速变化时防止旧请求覆盖新结果 */
+let selfNamesToken = 0;
+
+/** 去重后的 git 用户名,多个以顿号连接(不同仓库可能配置了不同身份) */
+const selfLabel = computed(() => {
+  const names = [...new Set(Object.values(selfNames.value).filter(Boolean))];
+  return names.join("、");
+});
+
+async function resolveSelfNames(ids: number[]) {
+  const token = ++selfNamesToken;
+  const targets = activeProjects.value.filter((p) => ids.includes(p.id));
+  const entries = await Promise.all(
+    targets.map(async (p) => {
+      const user = await cmd<GitUser>("git_current_user", { path: p.path }).catch(() => null);
+      return [p.id, user?.name || user?.email || ""] as const;
+    }),
+  );
+  if (token !== selfNamesToken) return;
+  selfNames.value = Object.fromEntries(entries);
+}
+
+// 勾选变化时重新解析所选项目的 git 用户名
+watch(
+  () => [...selectedIds.value].sort((a, b) => a - b).join(","),
+  () => void resolveSelfNames(selectedIds.value),
+);
+
 // 表格/代码复制导出控件,与 ReadmeDrawer 保持一致
 const controls: ControlsConfig = {
   table: { copy: true, download: true, fullscreen: true },
@@ -188,6 +218,9 @@ watch(open, (v) => {
   filterTagIds.value = [];
   if (!tagsStore.tags.length) void tagsStore.fetchTags();
   selectedIds.value = props.presetProjectId != null ? [props.presetProjectId] : [];
+  // 锁定单项目时 selectedIds 可能与上次相同而不触发上面的 watch,这里显式解析一次
+  selfNames.value = {};
+  void resolveSelfNames(selectedIds.value);
 });
 
 function toggleProject(id: number) {
@@ -415,10 +448,16 @@ async function copyResult() {
               :key="opt.value"
               size="sm"
               :variant="authorMode === opt.value ? 'default' : 'outline'"
-              class="h-7 px-2.5 text-xs"
+              class="h-7 max-w-64 px-2.5 text-xs"
               @click="authorMode = opt.value"
             >
-              {{ t(opt.labelKey) }}
+              <span class="truncate">
+                {{
+                  opt.value === "me" && selfLabel
+                    ? t("report.authorMeNamed", { name: selfLabel })
+                    : t(opt.labelKey)
+                }}
+              </span>
             </Button>
           </div>
         </div>
