@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, shallowRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import { getLocalTimeZone, today as calendarToday } from "@internationalized/date";
 import type { RangeCalendarRootProps } from "reka-ui";
@@ -8,6 +9,7 @@ import {
   Calendar as CalendarIcon,
   Copy,
   ChevronRight,
+  History,
   Loader2,
   Search,
   Sparkles,
@@ -62,6 +64,7 @@ const AUTHOR_OPTIONS: { value: AuthorMode; labelKey: string }[] = [
 ];
 
 const { t } = useI18n();
+const router = useRouter();
 const props = defineProps<{ presetProjectId?: number }>();
 const open = defineModel<boolean>("open", { required: true });
 
@@ -111,6 +114,7 @@ const maxDate = calendarToday(getLocalTimeZone()) as unknown as RangeDateValue;
 const authorMode = ref<AuthorMode>("me");
 const generating = ref(false);
 const result = ref("");
+const savedHistoryId = ref<number | null>(null);
 /** 本次拉取到的提交记录(驱动提交条数与可展开列表;生成前展示,AI 失败也保留) */
 const commitData = ref<ProjectCommits[]>([]);
 /** 各项目提交列表展开状态,key 为项目名 */
@@ -210,6 +214,7 @@ const range = computed<{ from: Date; to: Date }>(() => {
 watch(open, (v) => {
   if (!v) return;
   result.value = "";
+  savedHistoryId.value = null;
   rangeKey.value = "today";
   customRange.value = { start: undefined, end: undefined };
   authorMode.value = "me";
@@ -310,12 +315,36 @@ async function generate() {
     return;
   }
   generating.value = true;
+  savedHistoryId.value = null;
   try {
     const rangeLabel = t("report.rangeLabel", {
       from: fmt(range.value.from),
       to: fmt(range.value.to),
     });
     result.value = await generateDailyReport(data, rangeLabel, settings.language);
+
+    // 生成成功后自动保存到日报历史
+    const dateFrom = fmt(range.value.from);
+    const dateTo = fmt(range.value.to);
+    const commitDataForSave = data.map((d) => {
+      const project = activeProjects.value.find((p) => p.name === d.projectName);
+      return {
+        projectId: project?.id ?? null,
+        projectName: d.projectName,
+        projectDescription: d.projectDescription,
+        commits: d.commits,
+      };
+    });
+    savedHistoryId.value = await cmd<number>("save_report_history", {
+      projectIds: ids,
+      dateFrom,
+      dateTo,
+      rangeLabel,
+      authorMode: authorMode.value,
+      language: settings.language,
+      result: result.value,
+      commitData: commitDataForSave,
+    });
   } catch (e) {
     toast.error(e instanceof Error ? e.message : String(e));
   } finally {
@@ -596,17 +625,36 @@ async function copyResult() {
 
         <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-md border">
           <div class="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
-            <span class="text-xs text-muted-foreground">Markdown</span>
-            <Button
-              v-if="result"
-              variant="ghost"
-              size="sm"
-              class="h-6 gap-1 px-2 text-xs"
-              @click="copyResult"
-            >
-              <Copy class="h-3 w-3" />
-              {{ t("report.copy") }}
-            </Button>
+            <div class="flex items-center gap-1">
+              <span class="text-xs text-muted-foreground">Markdown</span>
+              <span
+                v-if="savedHistoryId"
+                class="rounded bg-green-100 px-1.5 py-px text-[10px] text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              >
+                {{ t("report.saved") }}
+              </span>
+            </div>
+            <div class="flex items-center gap-1">
+              <Button
+                v-if="result"
+                variant="ghost"
+                size="sm"
+                class="h-6 gap-1 px-2 text-xs"
+                @click="copyResult"
+              >
+                <Copy class="h-3 w-3" />
+                {{ t("report.copy") }}
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="h-6 gap-1 px-2 text-xs"
+                @click="router.push('/report-history')"
+              >
+                <History class="h-3 w-3" />
+                {{ t("report.history") }}
+              </Button>
+            </div>
           </div>
           <ScrollArea class="min-h-0 flex-1">
             <p v-if="!result" class="p-4 text-sm text-muted-foreground">

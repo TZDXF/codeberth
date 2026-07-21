@@ -2,9 +2,14 @@ mod commands;
 mod db;
 mod error;
 mod models;
+mod scheduler;
+mod workday;
+
+use std::sync::Arc;
 
 use db::Db;
 use tauri::Manager;
+use tokio::sync::Notify;
 
 /// 应用数据目录名(位于用户主目录下)
 pub(crate) const APP_DATA_DIR_NAME: &str = ".pm";
@@ -23,6 +28,17 @@ pub fn run() {
             let dir = app.path().home_dir()?.join(APP_DATA_DIR_NAME);
             let db = Db::open(&dir.join("projects.db"))?;
             app.manage(db);
+
+            // 调度通知:用于定时任务变更时唤醒后台 scheduler
+            let notify = Arc::new(Notify::new());
+            app.manage(commands::report::ScheduleNotify(notify));
+
+            // 启动日报定时调度器(后台 tokio 任务,仅 App 运行时生效)
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                scheduler::run(handle).await;
+            });
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -64,6 +80,12 @@ pub fn run() {
             commands::files::read_readme,
             commands::files::scan_compose_files,
             commands::docker::compose_ps,
+            commands::report::save_report_history,
+            commands::report::list_report_history,
+            commands::report::get_report_history,
+            commands::report::delete_report_history,
+            commands::report::list_report_schedules,
+            commands::report::save_report_schedules,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

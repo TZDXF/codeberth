@@ -5,6 +5,7 @@ import { useRouter } from "vue-router";
 import {
   Archive,
   ArrowLeft,
+  CalendarClock,
   MessageSquareText,
   SlidersHorizontal,
   Sparkles,
@@ -17,6 +18,7 @@ import TagSettings from "@/components/settings/TagSettings.vue";
 import ArchiveSettings from "@/components/settings/ArchiveSettings.vue";
 import AiSettings from "@/components/settings/AiSettings.vue";
 import PromptSettings from "@/components/settings/PromptSettings.vue";
+import ReportScheduleSettings from "@/components/settings/ReportScheduleSettings.vue";
 
 const { t } = useI18n();
 interface Category {
@@ -46,6 +48,12 @@ const categories: Category[] = [
     labelKey: "settings.categories.prompts",
     icon: MessageSquareText,
     component: PromptSettings,
+  },
+  {
+    id: "schedule",
+    labelKey: "settings.categories.schedule",
+    icon: CalendarClock,
+    component: ReportScheduleSettings,
   },
 ];
 

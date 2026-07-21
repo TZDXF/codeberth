@@ -64,7 +64,7 @@ pub struct GitCommitContext {
 }
 
 /// 一条 git 提交记录(日报生成用)
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GitCommitInfo {
     pub hash: String,
     pub author: String,

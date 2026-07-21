@@ -154,3 +154,70 @@ export interface GitUpdatedPayload {
   remote_ahead: number;
   last_fetch_at: number;
 }
+
+/** 日报历史列表项 */
+export interface ReportHistoryItem {
+  id: number;
+  projectIds: number[];
+  dateFrom: string;
+  dateTo: string;
+  rangeLabel: string;
+  authorMode: string;
+  language: string;
+  createdAt: number;
+  projectNames: string[];
+  totalCommits: number;
+}
+
+/** 日报历史详情(含 Markdown 正文与各项目提交记录) */
+export interface ReportHistoryDetail {
+  id: number;
+  projectIds: number[];
+  dateFrom: string;
+  dateTo: string;
+  rangeLabel: string;
+  authorMode: string;
+  language: string;
+  createdAt: number;
+  projectNames: string[];
+  totalCommits: number;
+  result: string;
+  commits: ReportCommitItem[];
+}
+
+/** 日报历史中单个项目的提交记录 */
+export interface ReportCommitItem {
+  projectId: number | null;
+  projectName: string;
+  projectDescription: string;
+  commits: GitCommitInfo[];
+}
+
+/** 保存日报时传入的提交数据 */
+export interface SaveReportCommit {
+  projectId: number | null;
+  projectName: string;
+  projectDescription?: string;
+  commits: GitCommitInfo[];
+}
+
+/** 定时任务配置 */
+export interface ReportSchedule {
+  id: string;
+  name: string;
+  enabled: boolean;
+  projectIds: number[];
+  authorMode: "me" | "all";
+  timeOfDay: string;
+  weekdaysOnly: boolean;
+  chineseWorkdayOnly: boolean;
+  lastRunAt: number | null;
+}
+
+/** 定时任务触发后发送给前端的通知 */
+export interface ReportGeneratedPayload {
+  scheduleName: string;
+  historyId: number;
+  dateFrom: string;
+  dateTo: string;
+}

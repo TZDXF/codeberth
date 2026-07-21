@@ -31,6 +31,7 @@ ignore = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", features = ["serde"] }
+reqwest = { version = "0.12", features = ["json", "blocking"] }
 thiserror = "1"
 anyhow = "1"
 

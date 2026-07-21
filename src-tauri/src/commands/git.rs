@@ -23,7 +23,7 @@ pub struct GitUpdatedPayload {
     pub last_fetch_at: i64,
 }
 
-fn git_command(path: &str) -> Command {
+pub(crate) fn git_command(path: &str) -> Command {
     let mut cmd = Command::new("git");
     cmd.arg("-C").arg(path);
     // 禁止 git 在终端交互式询问凭据(GUI 应用无人应答会挂起);
@@ -511,10 +511,26 @@ pub fn git_log(
     max_count: Option<u32>,
     author: Option<String>,
 ) -> AppResult<Vec<GitCommitInfo>> {
+    run_git_log(
+        &path,
+        since.as_deref(),
+        until.as_deref(),
+        max_count,
+        author.as_deref(),
+    )
+}
+
+/// git_log 核心逻辑,供 scheduler 等内部模块复用;参数均为引用以避免不必要的 clone
+pub(crate) fn run_git_log(
+    path: &str,
+    since: Option<&str>,
+    until: Option<&str>,
+    max_count: Option<u32>,
+    author: Option<&str>,
+) -> AppResult<Vec<GitCommitInfo>> {
     let mut args: Vec<String> = vec![
         "log".into(),
         "--no-merges".into(),
-        // 单元分隔符,避免 subject 中的空格/竖线干扰解析
         "--pretty=format:%h%x1f%an%x1f%ad%x1f%s".into(),
         "--date=format:%Y-%m-%d %H:%M".into(),
     ];
@@ -531,7 +547,7 @@ pub fn git_log(
     args.push(format!("--max-count={limit}"));
 
     let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-    let output = git_command(&path).args(&arg_refs).output()?;
+    let output = git_command(path).args(&arg_refs).output()?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         let benign = stderr.contains("not a git repository")
@@ -575,8 +591,12 @@ pub fn git_log(
 /// `git config user.name/email` 本身含全局配置回退;非仓库或未配置时返回空串而非报错
 #[tauri::command]
 pub fn git_current_user(path: String) -> AppResult<GitUser> {
+    run_git_current_user(&path)
+}
+
+pub(crate) fn run_git_current_user(path: &str) -> AppResult<GitUser> {
     let read = |key: &str| -> String {
-        git_command(&path)
+        git_command(path)
             .args(["config", key])
             .output()
             .map(|o| {

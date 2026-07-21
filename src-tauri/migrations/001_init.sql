@@ -41,3 +41,29 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE INDEX IF NOT EXISTS idx_custom_commands_project ON custom_commands(project_id);
 
+CREATE TABLE IF NOT EXISTS report_history (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    project_ids TEXT NOT NULL,
+    date_from   TEXT NOT NULL,
+    date_to     TEXT NOT NULL,
+    range_label TEXT NOT NULL DEFAULT '',
+    author_mode TEXT NOT NULL DEFAULT 'me',
+    language    TEXT NOT NULL DEFAULT 'zh-CN',
+    result      TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS report_commits (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_id           INTEGER NOT NULL,
+    project_id          INTEGER,
+    project_name        TEXT NOT NULL,
+    project_description TEXT NOT NULL DEFAULT '',
+    commit_data         TEXT NOT NULL,
+    FOREIGN KEY (report_id) REFERENCES report_history(id) ON DELETE CASCADE,
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_report_history_created ON report_history(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_report_commits_report ON report_commits(report_id);
+
