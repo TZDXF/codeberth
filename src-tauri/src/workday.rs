@@ -30,7 +30,7 @@ struct ChineseDaysData {
 
 /// 加载工作日数据:优先读缓存,过期或不存在时从 CDN 拉取并写入缓存。
 /// 返回 holidays 与 workdays 两个日期集合(均为 "YYYY-MM-DD" 格式)。
-fn load_data(data_dir: &PathBuf) -> AppResult<(HashSet<String>, HashSet<String>)> {
+pub fn load_data(data_dir: &PathBuf) -> AppResult<(HashSet<String>, HashSet<String>)> {
     let cache_path = data_dir.join(CACHE_FILE);
 
     // 缓存存在且未过期,直接读取

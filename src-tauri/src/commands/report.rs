@@ -4,10 +4,12 @@
 //! * 定时任务配置存 ~/.pm/report-schedules.json
 //! * 定时任务变更时通过 Notify 唤醒后台 scheduler
 
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use chrono::NaiveDate;
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -16,6 +18,7 @@ use tokio::sync::Notify;
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::GitCommitInfo;
+use crate::workday;
 use crate::APP_DATA_DIR_NAME;
 
 const SCHEDULES_FILE: &str = "report-schedules.json";
@@ -297,6 +300,231 @@ pub fn delete_report_history(
     Ok(())
 }
 
+// ── calendar meta ──────────────────────────────────────────────────────
+
+/// 日历标注数据：某月每天的报告数量 + 节假日/调休列表。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CalendarMeta {
+    pub dates: HashMap<String, i64>,
+    pub holidays: Vec<String>,
+    pub workdays: Vec<String>,
+}
+
+/// 返回某月的日历标注数据（每天报告数 + 节假日/调休），供前端日历渲染。
+#[tauri::command]
+pub fn get_calendar_meta(
+    db: State<'_, Db>,
+    app: AppHandle,
+    year: i32,
+    month: u32,
+    project_ids: Vec<i64>,
+    tag_ids: Vec<i64>,
+) -> AppResult<CalendarMeta> {
+    let conn = db.0.lock().unwrap();
+    let mut dates: HashMap<String, i64> = HashMap::new();
+    let has_projects = !project_ids.is_empty();
+    let has_tags = !tag_ids.is_empty();
+
+    // 生成当月所有日期
+    let start = NaiveDate::from_ymd_opt(year, month, 1)
+        .ok_or_else(|| AppError::External("无效的年月".into()))?;
+    let days_in_month = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+    }
+    .ok_or_else(|| AppError::External("无效的年月".into()))?
+    .signed_duration_since(start)
+    .num_days() as u32;
+
+    for d in 0..days_in_month {
+        let date = start + chrono::Duration::days(d as i64);
+        let ds = date.format("%Y-%m-%d").to_string();
+
+        if !has_projects && !has_tags {
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM report_history
+                 WHERE date(created_at, 'unixepoch') = ?1",
+                params![ds],
+                |r| r.get(0),
+            )?;
+            if count > 0 { dates.insert(ds, count); }
+            continue;
+        }
+
+        // 动态构建 WHERE 条件
+        let mut conditions = vec!["date(h.created_at, 'unixepoch') = ?1".to_string()];
+        let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(ds.clone())];
+        let mut param_idx = 2;
+
+        if has_projects {
+            let placeholders: Vec<String> = (0..project_ids.len()).map(|i| format!("?{}", param_idx + i)).collect();
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM json_each(h.project_ids) WHERE CAST(value AS INTEGER) IN ({}))",
+                placeholders.join(",")
+            ));
+            for pid in &project_ids {
+                params_vec.push(Box::new(*pid));
+            }
+            param_idx += project_ids.len();
+        }
+
+        if has_tags {
+            let placeholders: Vec<String> = (0..tag_ids.len()).map(|i| format!("?{}", param_idx + i)).collect();
+            let having_param = format!("?{}", param_idx + tag_ids.len());
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM json_each(h.project_ids) j \
+                 WHERE CAST(j.value AS INTEGER) IN ( \
+                     SELECT pt.project_id FROM project_tags pt \
+                     WHERE pt.tag_id IN ({}) \
+                     GROUP BY pt.project_id \
+                     HAVING COUNT(DISTINCT pt.tag_id) = {} \
+                 ))",
+                placeholders.join(","),
+                having_param,
+            ));
+            for tid in &tag_ids {
+                params_vec.push(Box::new(*tid));
+            }
+            params_vec.push(Box::new(tag_ids.len() as i64));
+        }
+
+        let sql = format!(
+            "SELECT COUNT(*) FROM report_history h WHERE {}",
+            conditions.join(" AND ")
+        );
+
+        let count: i64 = conn.query_row(&sql, rusqlite::params_from_iter(params_vec), |r| r.get(0))?;
+        if count > 0 {
+            dates.insert(ds, count);
+        }
+    }
+
+    // 节假日/调休数据
+    let data_dir = app
+        .path()
+        .home_dir()
+        .map_err(|e| AppError::External(e.to_string()))?
+        .join(APP_DATA_DIR_NAME);
+    let (holidays, workdays) = workday::load_data(&data_dir).unwrap_or_default();
+    let holidays: Vec<String> = holidays.into_iter().collect();
+    let workdays: Vec<String> = workdays.into_iter().collect();
+
+    Ok(CalendarMeta {
+        dates,
+        holidays,
+        workdays,
+    })
+}
+
+/// 查询指定生成日期的所有日报详情（含提交记录和 Markdown 正文）。
+#[tauri::command]
+pub fn get_reports_by_date(
+    db: State<'_, Db>,
+    date: String,
+    project_ids: Vec<i64>,
+    tag_ids: Vec<i64>,
+) -> AppResult<Vec<ReportHistoryDetail>> {
+    let conn = db.0.lock().unwrap();
+    let has_projects = !project_ids.is_empty();
+    let has_tags = !tag_ids.is_empty();
+
+    let rows: Vec<(ReportHistoryItem, Vec<i64>, String)> = if !has_projects && !has_tags {
+        let sql = "SELECT id, project_ids, date_from, date_to, range_label,
+                          author_mode, language, created_at, result
+                   FROM report_history
+                   WHERE date(created_at, 'unixepoch') = ?1
+                   ORDER BY created_at DESC";
+        let mut stmt = conn.prepare(sql)?;
+        let rows = stmt.query_map(params![date], map_detail_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    } else {
+        let mut conditions = vec!["date(h.created_at, 'unixepoch') = ?1".to_string()];
+        let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(date.clone())];
+        let mut param_idx = 2;
+
+        if has_projects {
+            let placeholders: Vec<String> = (0..project_ids.len()).map(|i| format!("?{}", param_idx + i)).collect();
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM json_each(h.project_ids) WHERE CAST(value AS INTEGER) IN ({}))",
+                placeholders.join(",")
+            ));
+            for pid in &project_ids {
+                params_vec.push(Box::new(*pid));
+            }
+            param_idx += project_ids.len();
+        }
+
+        if has_tags {
+            let placeholders: Vec<String> = (0..tag_ids.len()).map(|i| format!("?{}", param_idx + i)).collect();
+            let having_param = format!("?{}", param_idx + tag_ids.len());
+            conditions.push(format!(
+                "EXISTS (SELECT 1 FROM json_each(h.project_ids) j \
+                 WHERE CAST(j.value AS INTEGER) IN ( \
+                     SELECT pt.project_id FROM project_tags pt \
+                     WHERE pt.tag_id IN ({}) \
+                     GROUP BY pt.project_id \
+                     HAVING COUNT(DISTINCT pt.tag_id) = {} \
+                 ))",
+                placeholders.join(","),
+                having_param,
+            ));
+            for tid in &tag_ids {
+                params_vec.push(Box::new(*tid));
+            }
+            params_vec.push(Box::new(tag_ids.len() as i64));
+        }
+
+        let sql = format!(
+            "SELECT id, project_ids, date_from, date_to, range_label,
+                    author_mode, language, created_at, result
+             FROM report_history h
+             WHERE {}
+             ORDER BY h.created_at DESC",
+            conditions.join(" AND ")
+        );
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt.query_map(rusqlite::params_from_iter(params_vec), map_detail_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        rows
+    };
+
+    // 为每条记录补全 project_names、total_commits 和 commits
+    let mut results = Vec::with_capacity(rows.len());
+    for (mut item, ids, result) in rows {
+        item.project_names = resolve_project_names(&conn, &ids)?;
+        item.total_commits = count_commits(&conn, item.id)?;
+
+        let mut stmt = conn.prepare(
+            "SELECT project_id, project_name, project_description, commit_data
+             FROM report_commits WHERE report_id = ?1",
+        )?;
+        let commits = stmt
+            .query_map(params![item.id], |r| {
+                let data_json: String = r.get(3)?;
+                let commits: Vec<GitCommitInfo> =
+                    serde_json::from_str(&data_json).unwrap_or_default();
+                Ok(ReportCommitItem {
+                    project_id: r.get(0)?,
+                    project_name: r.get(1)?,
+                    project_description: r.get(2)?,
+                    commits,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        results.push(ReportHistoryDetail {
+            item,
+            result,
+            commits,
+        });
+    }
+
+    Ok(results)
+}
+
 // ── commands: schedules ────────────────────────────────────────────────
 
 /// 读取定时任务配置列表。
@@ -379,6 +607,30 @@ fn count_commits(
         |r| r.get(0),
     )?;
     Ok(count)
+}
+
+/// 映射 get_reports_by_date 的查询行
+fn map_detail_row(
+    r: &rusqlite::Row<'_>,
+) -> rusqlite::Result<(ReportHistoryItem, Vec<i64>, String)> {
+    let ids_json: String = r.get(1)?;
+    let ids: Vec<i64> = serde_json::from_str(&ids_json).unwrap_or_default();
+    Ok((
+        ReportHistoryItem {
+            id: r.get(0)?,
+            project_ids: ids.clone(),
+            date_from: r.get(2)?,
+            date_to: r.get(3)?,
+            range_label: r.get(4)?,
+            author_mode: r.get(5)?,
+            language: r.get(6)?,
+            created_at: r.get(7)?,
+            project_names: Vec::new(),
+            total_commits: 0,
+        },
+        ids,
+        r.get::<_, String>(8)?,
+    ))
 }
 
 // ── scheduler helper (used by scheduler.rs) ────────────────────────────

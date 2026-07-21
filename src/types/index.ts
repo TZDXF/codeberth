@@ -221,3 +221,10 @@ export interface ReportGeneratedPayload {
   dateFrom: string;
   dateTo: string;
 }
+
+/** 日历标注数据：某月每天报告数 + 节假日/调休 */
+export interface CalendarMeta {
+  dates: Record<string, number>;
+  holidays: string[];
+  workdays: string[];
+}

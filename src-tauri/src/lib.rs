@@ -84,6 +84,8 @@ pub fn run() {
             commands::report::list_report_history,
             commands::report::get_report_history,
             commands::report::delete_report_history,
+            commands::report::get_calendar_meta,
+            commands::report::get_reports_by_date,
             commands::report::list_report_schedules,
             commands::report::save_report_schedules,
         ])

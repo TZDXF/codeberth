@@ -5,10 +5,13 @@ import { useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import {
   ArrowLeft,
+  CalendarIcon,
   ChevronRight,
+  FolderGit2,
   Loader2,
+  Search,
+  Tags,
   Trash2,
-  X,
 } from "@lucide/vue";
 import { Markdown, type ControlsConfig } from "vue-stream-markdown";
 import { Badge } from "@/components/ui/badge";
@@ -18,28 +21,119 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import ReportCalendar from "@/components/report/ReportCalendar.vue";
+import TagCheckList from "@/components/tags/TagCheckList.vue";
 import { cmd } from "@/lib/tauri";
 import { formatCommitTime } from "@/lib/format";
 import { useSettingsStore } from "@/stores/settings";
 import { useProjectsStore } from "@/stores/projects";
-import type { ReportHistoryDetail, ReportHistoryItem } from "@/types";
+import { useTagsStore } from "@/stores/tags";
+import type { CalendarMeta, ReportHistoryDetail } from "@/types";
 
 const { t } = useI18n();
 const router = useRouter();
 const settings = useSettingsStore();
 const projectStore = useProjectsStore();
+const tagsStore = useTagsStore();
 
-const items = ref<ReportHistoryItem[]>([]);
-const loading = ref(false);
-const selectedId = ref<number | null>(null);
-const detail = ref<ReportHistoryDetail | null>(null);
-const detailLoading = ref(false);
+// ── calendar ────────────────────────────────────────────────────────────
 
-// filter
-const filterProjectId = ref<number | null>(null);
+const calendarYear = ref(new Date().getFullYear());
+const calendarMonth = ref(new Date().getMonth() + 1);
+const calendarData = ref<CalendarMeta | null>(null);
+const calendarLoading = ref(false);
+
+// ── selection ───────────────────────────────────────────────────────────
+
+const todayStr = (() => {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+})();
+
+const selectedDate = ref<string | null>(todayStr);
+const filterProjectIds = ref<number[]>([]);
+const filterTagIds = ref<number[]>([]);
+const projectKeyword = ref("");
+
+const filteredProjects = computed(() => {
+  const kw = projectKeyword.value.trim().toLowerCase();
+  if (!kw) return activeProjects.value;
+  return activeProjects.value.filter(
+    (p) => p.name.toLowerCase().includes(kw) || p.path.toLowerCase().includes(kw),
+  );
+});
+
+function toggleProjectFilter(id: number) {
+  filterProjectIds.value = filterProjectIds.value.includes(id)
+    ? filterProjectIds.value.filter((x) => x !== id)
+    : [...filterProjectIds.value, id];
+}
+
+function toggleTagFilter(id: number) {
+  filterTagIds.value = filterTagIds.value.includes(id)
+    ? filterTagIds.value.filter((x) => x !== id)
+    : [...filterTagIds.value, id];
+}
+
+/** 已选标签对象列表 */
+const selectedTags = computed(() =>
+  tagsStore.tags.filter((t) => filterTagIds.value.includes(t.id)),
+);
+
+/** 已选项目对象列表 */
+const selectedProjects = computed(() =>
+  activeProjects.value.filter((p) => filterProjectIds.value.includes(p.id)),
+);
+
+const reports = ref<ReportHistoryDetail[]>([]);
+const reportsLoading = ref(false);
+
+// ── expand state ────────────────────────────────────────────────────────
+
+const expandedReportId = ref<number | null>(null);
+const commitOpen = ref<Record<string, boolean>>({});
+
+// ── derived ─────────────────────────────────────────────────────────────
 
 const activeProjects = computed(() => projectStore.projects.filter((p) => !p.archived_at));
+
+/** 选中日期的格式化描述（使用浏览器 Intl API，避免 i18n 数组不可靠） */
+const dateLabel = computed(() => {
+  if (!selectedDate.value) return "";
+  const date = new Date(selectedDate.value + "T00:00:00");
+  if (isNaN(date.getTime())) return "";
+  const lang = settings.language;
+  const y = date.getFullYear();
+  const m = date.getMonth() + 1;
+  const d = date.getDate();
+  const wd = date.toLocaleDateString(lang, { weekday: "short" });
+  // zh-CN: "2026年7月15日 周三", en-US: "July 15, 2026 Wed"
+  if (lang === "zh-CN") {
+    return `${y}年${m}月${d}日 ${wd}`;
+  }
+  return `${date.toLocaleDateString(lang, { month: "long", day: "numeric" })}, ${y} ${wd}`;
+});
+
+const dateBadge = computed(() => {
+  if (!selectedDate.value) return null;
+  const ds = selectedDate.value;
+  if (calendarData.value?.holidays.includes(ds)) return { label: t("reportHistory.holiday"), variant: "secondary" as const };
+  if (calendarData.value?.workdays.includes(ds)) return { label: t("reportHistory.makeupWorkday"), variant: "secondary" as const };
+  const d = new Date(ds + "T00:00:00");
+  if (d.getDay() === 0 || d.getDay() === 6) return { label: t("reportHistory.weekend"), variant: "outline" as const };
+  return null;
+});
+
+// ── Markdown config ─────────────────────────────────────────────────────
 
 const controls: ControlsConfig = {
   table: { copy: true, download: true, fullscreen: true },
@@ -48,37 +142,43 @@ const controls: ControlsConfig = {
 const detachedThemeEl = document.createElement("div");
 const themeElement = () => detachedThemeEl;
 
-// commit collapsible state
-const commitOpen = ref<Record<string, boolean>>({});
+// ── data loading ────────────────────────────────────────────────────────
 
-// ── data loading ───────────────────────────────────────────────────────
-
-async function loadList() {
-  loading.value = true;
+async function loadCalendarMeta(year: number, month: number) {
+  calendarLoading.value = true;
   try {
-    items.value = await cmd<ReportHistoryItem[]>("list_report_history", {
-      limit: 100,
-      offset: 0,
-      ...(filterProjectId.value ? { projectId: filterProjectId.value } : {}),
+    calendarData.value = await cmd<CalendarMeta>("get_calendar_meta", {
+      year,
+      month,
+      projectIds: filterProjectIds.value,
+      tagIds: filterTagIds.value,
     });
   } catch (e) {
-    toast.error(t("reportHistory.loadFailed"));
+    toast.error(t("reportHistory.loadCalendarFailed"));
   } finally {
-    loading.value = false;
+    calendarLoading.value = false;
   }
 }
 
-async function loadDetail(id: number) {
-  detailLoading.value = true;
-  selectedId.value = id;
+async function loadReports(date: string) {
+  reportsLoading.value = true;
+  expandedReportId.value = null;
   commitOpen.value = {};
   try {
-    detail.value = await cmd<ReportHistoryDetail>("get_report_history", { id });
+    reports.value = await cmd<ReportHistoryDetail[]>("get_reports_by_date", {
+      date,
+      projectIds: filterProjectIds.value,
+      tagIds: filterTagIds.value,
+    });
   } catch (e) {
     toast.error(t("reportHistory.loadFailed"));
-    detail.value = null;
+    reports.value = [];
   } finally {
-    detailLoading.value = false;
+    reportsLoading.value = false;
+    // 手风琴模式：默认展开第一条
+    if (reports.value.length > 0) {
+      expandedReportId.value = reports.value[0].id;
+    }
   }
 }
 
@@ -86,41 +186,52 @@ async function deleteReport(id: number) {
   if (!confirm(t("reportHistory.deleteConfirm"))) return;
   try {
     await cmd("delete_report_history", { id });
-    items.value = items.value.filter((i) => i.id !== id);
-    if (selectedId.value === id) {
-      selectedId.value = null;
-      detail.value = null;
-    }
+    reports.value = reports.value.filter((r) => r.id !== id);
     toast.success(t("reportHistory.deleted"));
+    // 刷新日历标注
+    loadCalendarMeta(calendarYear.value, calendarMonth.value);
   } catch (e) {
     toast.error(String(e));
   }
 }
 
-function formatDate(d: string) {
-  const date = new Date(d + "T00:00:00");
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${m}-${day}`;
+function formatDateLabel(from: string, to: string) {
+  if (from === to) return from.slice(5);
+  return `${from.slice(5)} ~ ${to.slice(5)}`;
 }
 
-function formatCreated(ts: number) {
-  const d = new Date(ts * 1000);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${y}-${m}-${day} ${hh}:${mm}`;
+// ── watchers ────────────────────────────────────────────────────────────
+
+function onMonthChange(year: number, month: number) {
+  calendarYear.value = year;
+  calendarMonth.value = month;
 }
 
-function clearFilter() {
-  filterProjectId.value = null;
-}
+watch(
+  () => [calendarYear.value, calendarMonth.value, filterProjectIds.value, filterTagIds.value] as const,
+  ([y, m]) => loadCalendarMeta(y, m),
+  { immediate: true },
+);
 
-// ── init ───────────────────────────────────────────────────────────────
+watch(selectedDate, (date) => {
+  if (date) {
+    loadReports(date);
+  } else {
+    reports.value = [];
+  }
+}, { immediate: true });
 
-watch(filterProjectId, () => loadList(), { immediate: true });
+watch(filterProjectIds, () => {
+  if (selectedDate.value) {
+    loadReports(selectedDate.value);
+  }
+});
+
+watch(filterTagIds, () => {
+  if (selectedDate.value) {
+    loadReports(selectedDate.value);
+  }
+});
 </script>
 
 <template>
@@ -139,165 +250,273 @@ watch(filterProjectId, () => loadList(), { immediate: true });
       <h1 class="text-sm font-semibold">{{ t("reportHistory.title") }}</h1>
     </header>
 
-    <!-- content: left list + right detail -->
+    <!-- body -->
     <div class="flex min-h-0 flex-1">
-      <!-- left: list -->
-      <div class="flex w-80 shrink-0 flex-col border-r">
-        <!-- filter -->
-        <div class="flex items-center gap-1 border-b px-3 py-2">
-          <select
-            v-model="filterProjectId"
-            class="h-7 flex-1 rounded-md border bg-background px-2 text-xs"
-          >
-            <option :value="null">{{ t("reportHistory.allProjects") }}</option>
-            <option v-for="p in activeProjects" :key="p.id" :value="p.id">
-              {{ p.name }}
-            </option>
-          </select>
-          <Button
-            v-if="filterProjectId"
-            variant="ghost"
-            size="icon"
-            class="h-7 w-7"
-            @click="clearFilter"
-          >
-            <X class="h-3 w-3" />
-          </Button>
+      <!-- ── left panel ────────────────────────────────────────────────── -->
+      <div class="flex w-72 shrink-0 flex-col border-r">
+        <!-- filters -->
+        <div class="shrink-0 space-y-2 border-b px-3 py-2.5">
+          <div>
+            <label class="mb-1 block text-[11px] text-muted-foreground">
+              {{ t("reportHistory.searchProject") }}
+            </label>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button variant="outline" size="sm" class="h-7 w-full justify-start gap-1.5 px-2 text-xs font-normal">
+                  <FolderGit2 class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span class="truncate">{{ t("reportHistory.searchProject") }}</span>
+                  <span
+                    v-if="filterProjectIds.length"
+                    class="ml-auto rounded-full bg-primary px-1.5 text-[11px] leading-4 text-primary-foreground"
+                  >{{ filterProjectIds.length }}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" class="w-52">
+                <div class="px-1 pb-1">
+                  <div class="relative">
+                    <Search class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      v-model="projectKeyword"
+                      :placeholder="t('projects.home.searchPlaceholder')"
+                      class="h-7 w-full rounded-md border border-input bg-transparent pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
+                      @keydown="(e: KeyboardEvent) => { if (e.key !== 'Escape') e.stopPropagation() }"
+                    />
+                  </div>
+                </div>
+                <div class="max-h-56 overflow-y-auto">
+                  <div
+                    v-for="p in filteredProjects"
+                    :key="p.id"
+                    class="flex cursor-pointer items-center gap-2 rounded-sm px-2 py-1.5 text-xs hover:bg-accent"
+                    @click="toggleProjectFilter(p.id)"
+                    @keydown.enter="toggleProjectFilter(p.id)"
+                  >
+                    <input
+                      type="checkbox"
+                      class="h-3.5 w-3.5 shrink-0 accent-primary"
+                      :checked="filterProjectIds.includes(p.id)"
+                      @click.stop
+                      @change="toggleProjectFilter(p.id)"
+                    />
+                    <span class="truncate">{{ p.name }}</span>
+                  </div>
+                  <p v-if="!activeProjects.length" class="px-2 py-1.5 text-xs text-muted-foreground">
+                    {{ t("projects.home.emptyAll") }}
+                  </p>
+                  <p v-else-if="!filteredProjects.length" class="px-2 py-1.5 text-xs text-muted-foreground">
+                    {{ t("projects.home.emptyFiltered") }}
+                  </p>
+                </div>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div v-if="selectedProjects.length" class="mt-1.5 flex flex-wrap gap-1">
+              <span
+                v-for="p in selectedProjects"
+                :key="p.id"
+                class="inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[11px] cursor-pointer hover:bg-accent"
+                @click="toggleProjectFilter(p.id)"
+              >
+                {{ p.name }}
+                <span class="ml-0.5 text-muted-foreground">&times;</span>
+              </span>
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] text-muted-foreground">
+              {{ t("reportHistory.filterTag") }}
+            </label>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button variant="outline" size="sm" class="h-7 w-full justify-start gap-1.5 px-2 text-xs font-normal">
+                  <Tags class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span class="truncate">{{ t("reportHistory.filterTag") }}</span>
+                  <span
+                    v-if="filterTagIds.length"
+                    class="ml-auto rounded-full bg-primary px-1.5 text-[11px] leading-4 text-primary-foreground"
+                  >{{ filterTagIds.length }}</span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" class="w-48">
+                <TagCheckList
+                  :tags="tagsStore.tags"
+                  :checked-ids="filterTagIds"
+                  @toggle="toggleTagFilter"
+                />
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <div v-if="selectedTags.length" class="mt-1.5 flex flex-wrap gap-1">
+              <span
+                v-for="tag in selectedTags"
+                :key="tag.id"
+                class="inline-flex items-center gap-1 rounded-full border px-1.5 py-px text-[11px] cursor-pointer hover:bg-accent"
+                :title="t('tags.picker.remove')"
+                @click="toggleTagFilter(tag.id)"
+              >
+                <span class="h-2 w-2 rounded-full" :style="{ backgroundColor: tag.color }" />
+                {{ tag.name }}
+                <span class="ml-0.5 text-muted-foreground">&times;</span>
+              </span>
+            </div>
+          </div>
         </div>
 
-        <!-- list -->
-        <ScrollArea class="min-h-0 flex-1">
-          <div v-if="loading" class="flex items-center justify-center py-12">
+        <!-- calendar -->
+        <div class="relative min-h-0 flex-1">
+          <div
+            v-if="calendarLoading"
+            class="absolute inset-0 z-10 flex items-center justify-center bg-background/60"
+          >
             <Loader2 class="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
-          <div
-            v-else-if="!items.length"
-            class="flex flex-col items-center gap-2 px-4 py-12 text-center text-sm text-muted-foreground"
-          >
-            <p>{{ t("reportHistory.empty") }}</p>
-            <p class="text-xs">{{ t("reportHistory.emptyHint") }}</p>
-          </div>
-          <div v-else class="flex flex-col">
-            <button
-              v-for="item in items"
-              :key="item.id"
-              type="button"
-              class="flex flex-col gap-0.5 border-b px-3 py-2.5 text-left transition-colors hover:bg-accent"
-              :class="selectedId === item.id && 'bg-accent'"
-              @click="loadDetail(item.id)"
-            >
-              <div class="flex items-center justify-between gap-2">
-                <span class="text-sm font-medium">{{ formatCreated(item.createdAt) }}</span>
-                <Badge variant="secondary" class="text-[11px] shrink-0">
-                  {{ t("reportHistory.totalCommits", { count: item.totalCommits }) }}
-                </Badge>
-              </div>
-              <div class="flex flex-wrap gap-1 text-[11px] text-muted-foreground">
-                <span>{{ item.dateFrom === item.dateTo ? formatDate(item.dateFrom) : `${formatDate(item.dateFrom)} ~ ${formatDate(item.dateTo)}` }}</span>
-                <span v-if="item.projectNames.length" class="truncate max-w-48" :title="item.projectNames.join(', ')">
-                  · {{ item.projectNames.slice(0, 2).join(", ")
-                  }}{{ item.projectNames.length > 2 ? ` +${item.projectNames.length - 2}` : "" }}
-                </span>
-              </div>
-            </button>
-          </div>
-        </ScrollArea>
+          <ScrollArea class="h-full">
+            <ReportCalendar
+              v-model="selectedDate"
+              :calendar-data="calendarData"
+              @month-change="onMonthChange"
+            />
+          </ScrollArea>
+        </div>
       </div>
 
-      <!-- right: detail -->
+      <!-- ── right panel ───────────────────────────────────────────────── -->
       <div class="flex min-h-0 min-w-0 flex-1 flex-col">
-        <template v-if="!selectedId">
-          <div class="flex flex-1 items-center justify-center text-sm text-muted-foreground">
-            {{ t("reportHistory.emptyHint") }}
+        <!-- empty: no date selected -->
+        <template v-if="!selectedDate">
+          <div class="flex flex-1 flex-col items-center justify-center gap-3 text-muted-foreground">
+            <CalendarIcon class="h-10 w-10 opacity-30" />
+            <p class="text-sm">{{ t("reportHistory.selectDateHint") }}</p>
           </div>
         </template>
-        <template v-else-if="detailLoading">
+
+        <!-- loading -->
+        <template v-else-if="reportsLoading">
           <div class="flex flex-1 items-center justify-center">
             <Loader2 class="h-5 w-5 animate-spin text-muted-foreground" />
           </div>
         </template>
-        <template v-else-if="detail">
-          <!-- toolbar -->
-          <div class="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
-            <div class="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>{{ t("reportHistory.generatedAt") }}: {{ formatCreated(detail.createdAt) }}</span>
-              <span>{{ detail.dateFrom === detail.dateTo ? formatDate(detail.dateFrom) : `${formatDate(detail.dateFrom)} ~ ${formatDate(detail.dateTo)}` }}</span>
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              class="h-6 gap-1 px-2 text-xs text-destructive hover:text-destructive"
-              @click="deleteReport(detail.id)"
-            >
-              <Trash2 class="h-3 w-3" />
-              {{ t("common.delete") }}
-            </Button>
+
+        <!-- content -->
+        <template v-else>
+          <!-- date header -->
+          <div class="flex shrink-0 items-center gap-2 border-b px-4 py-2">
+            <span class="text-sm font-medium">{{ dateLabel }}</span>
+            <Badge v-if="dateBadge" :variant="dateBadge.variant" class="text-[11px]">
+              {{ dateBadge.label }}
+            </Badge>
+            <Badge v-if="selectedDate === todayStr" variant="secondary" class="text-[11px]">
+              {{ t("reportHistory.today") }}
+            </Badge>
           </div>
 
-          <!-- content: commits left + markdown right -->
-          <div class="flex min-h-0 min-w-0 flex-1 gap-0">
-            <!-- commits panel -->
-            <div class="w-72 shrink-0 overflow-y-auto border-r p-2">
-              <h3 class="mb-2 text-xs font-medium text-muted-foreground">
-                {{ t("reportHistory.commits") }}
-              </h3>
-              <div class="flex flex-col gap-1">
-                <Collapsible
-                  v-for="c in detail.commits"
-                  :key="c.projectName"
-                  v-slot="{ open: expanded }"
-                  :open="commitOpen[c.projectName]"
-                  @update:open="commitOpen[c.projectName] = $event"
+          <!-- no reports -->
+          <div
+            v-if="!reports.length"
+            class="flex flex-1 items-center justify-center text-sm text-muted-foreground"
+          >
+            {{ t("reportHistory.noReportsOnDate") }}
+          </div>
+
+          <!-- reports + commits -->
+          <ScrollArea v-else class="min-h-0 flex-1">
+            <div class="flex flex-col gap-3 p-4">
+              <!-- toolbar -->
+              <div class="flex items-center justify-between">
+                <h3 class="text-xs font-medium text-muted-foreground">
+                  {{ t("reportHistory.reportCount", { count: reports.length }) }}
+                </h3>
+              </div>
+
+              <!-- report cards -->
+              <Collapsible
+                v-for="r in reports"
+                :key="r.id"
+                :open="expandedReportId === r.id"
+                @update:open="expandedReportId = $event ? r.id : null"
+                class="rounded-lg border"
+              >
+                <CollapsibleTrigger
+                  class="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left hover:bg-accent/50 rounded-t-lg"
+                  :class="expandedReportId !== r.id && 'rounded-b-lg'"
                 >
-                  <CollapsibleTrigger
-                    class="flex w-full cursor-pointer items-center gap-1.5 rounded px-1.5 py-1 text-left text-xs hover:bg-accent"
+                  <ChevronRight
+                    class="h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform"
+                    :class="{ 'rotate-90': expandedReportId === r.id }"
+                  />
+                  <span class="min-w-0 flex-1 truncate text-xs">
+                    <span class="font-medium">{{ r.projectNames.slice(0, 3).join(", ")
+                    }}{{ r.projectNames.length > 3 ? ` +${r.projectNames.length - 3}` : "" }}</span>
+                    <span class="ml-2 text-muted-foreground">{{ formatDateLabel(r.dateFrom, r.dateTo) }}</span>
+                  </span>
+                  <Badge variant="secondary" class="text-[11px] shrink-0">
+                    {{ t("reportHistory.totalCommits", { count: r.totalCommits }) }}
+                  </Badge>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-5 w-5 shrink-0 text-muted-foreground hover:text-destructive"
+                    :title="String(t('common.delete'))"
+                    @click.stop="deleteReport(r.id)"
                   >
-                    <ChevronRight
-                      class="h-3 w-3 shrink-0 text-muted-foreground transition-transform"
-                      :class="{ 'rotate-90': expanded }"
-                    />
-                    <span class="min-w-0 flex-1 truncate">{{ c.projectName }}</span>
-                    <span class="shrink-0 text-muted-foreground">{{ c.commits.length }}</span>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <div
-                      v-if="c.commits.length"
-                      class="ml-3 max-h-40 overflow-y-auto border-l"
-                    >
-                      <div
-                        v-for="commit in c.commits"
-                        :key="commit.hash + commit.date"
-                        class="flex min-w-0 items-center gap-1.5 border-b px-2 py-0.5 text-[11px]"
-                      >
-                        <code class="shrink-0 rounded bg-muted px-1 py-px font-mono text-[10px]">
-                          {{ commit.hash }}
-                        </code>
-                        <span class="min-w-0 flex-1 truncate" :title="commit.subject">{{
-                          commit.subject
-                        }}</span>
-                        <span class="shrink-0 text-muted-foreground">{{
-                          formatCommitTime(commit.date)
-                        }}</span>
-                      </div>
+                    <Trash2 class="h-3 w-3" />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <div class="border-t">
+                    <!-- Markdown -->
+                    <div class="px-4 py-3 text-sm">
+                      <Markdown
+                        mode="static"
+                        :content="r.result"
+                        :controls="controls"
+                        :theme-element="themeElement"
+                        :locale="settings.language"
+                      />
                     </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              </div>
+                    <!-- Commits within this report -->
+                    <div v-if="r.commits.length" class="border-t">
+                      <Collapsible
+                        v-for="c in r.commits"
+                        :key="c.projectName"
+                        v-slot="{ open: expanded }"
+                        :open="commitOpen[`${r.id}-${c.projectName}`]"
+                        @update:open="commitOpen[`${r.id}-${c.projectName}`] = $event"
+                      >
+                        <CollapsibleTrigger
+                          class="flex w-full cursor-pointer items-center gap-1.5 px-4 py-1.5 text-left text-xs hover:bg-accent/50"
+                        >
+                          <ChevronRight
+                            class="h-3 w-3 shrink-0 text-muted-foreground transition-transform"
+                            :class="{ 'rotate-90': expanded }"
+                          />
+                          <span class="min-w-0 flex-1 truncate font-medium">{{ c.projectName }}</span>
+                          <span class="shrink-0 text-muted-foreground">{{ c.commits.length }}</span>
+                        </CollapsibleTrigger>
+                        <CollapsibleContent>
+                          <div class="ml-5 max-h-40 overflow-y-auto border-l">
+                            <div
+                              v-for="commit in c.commits"
+                              :key="commit.hash + commit.date"
+                              class="flex min-w-0 items-center gap-1.5 border-b px-2 py-0.5 text-[11px]"
+                            >
+                              <code class="shrink-0 rounded bg-muted px-1 py-px font-mono text-[10px]">
+                                {{ commit.hash }}
+                              </code>
+                              <span class="min-w-0 flex-1 truncate" :title="commit.subject">
+                                {{ commit.subject }}
+                              </span>
+                              <span class="shrink-0 text-muted-foreground">
+                                {{ formatCommitTime(commit.date) }}
+                              </span>
+                            </div>
+                          </div>
+                        </CollapsibleContent>
+                      </Collapsible>
+                    </div>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
             </div>
-
-            <!-- markdown panel -->
-            <ScrollArea class="min-h-0 min-w-0 flex-1">
-              <div class="p-4 text-sm">
-                <Markdown
-                  mode="static"
-                  :content="detail.result"
-                  :controls="controls"
-                  :theme-element="themeElement"
-                  :locale="settings.language"
-                />
-              </div>
-            </ScrollArea>
-          </div>
+          </ScrollArea>
         </template>
       </div>
     </div>
