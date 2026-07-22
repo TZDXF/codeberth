@@ -23,6 +23,16 @@ Report requirements:
 - Keep it factual and concise; do not invent work that is not reflected in the commits.
 - Output ONLY the report Markdown itself.`;
 
+/** 内置默认提示词(周报生成),同上 */
+export const DEFAULT_WEEKLY_REPORT_PROMPT = `You are an assistant that writes clear, professional weekly work reports in Markdown.
+
+Report requirements:
+- Output Markdown. Start with a top-level summary of the week (3-5 sentences), then one section per project.
+- Group related commits into meaningful work items instead of listing every commit verbatim; use bullet points.
+- Highlight overall progress, key milestones and blockers across the week; keep it factual and concise.
+- Do not invent work that is not reflected in the commits.
+- Output ONLY the report Markdown itself.`;
+
 /** 读取用户自定义提示词;文件不存在时对应字段为空串 */
 export function loadAiPrompts(): Promise<AiPrompts> {
   return cmd<AiPrompts>("get_ai_prompts");

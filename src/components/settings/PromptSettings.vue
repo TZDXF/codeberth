@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_COMMIT_PROMPT,
   DEFAULT_REPORT_PROMPT,
+  DEFAULT_WEEKLY_REPORT_PROMPT,
   loadAiPrompts,
   openPromptsDir,
   saveAiPrompts,
@@ -19,12 +20,14 @@ const { t } = useI18n();
 // 本地副本,显式保存后才写入 ~/.pm/prompts/*.md;空串 = 使用内置默认模板
 const commitPrompt = ref("");
 const reportPrompt = ref("");
+const weeklyReportPrompt = ref("");
 
 onMounted(async () => {
   try {
     const prompts = await loadAiPrompts();
     commitPrompt.value = prompts.commit;
     reportPrompt.value = prompts.report;
+    weeklyReportPrompt.value = prompts.reportWeekly;
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     toast.error(t("settings.prompts.loadFailed", { error: message }));
@@ -33,7 +36,11 @@ onMounted(async () => {
 
 async function save() {
   try {
-    await saveAiPrompts({ commit: commitPrompt.value, report: reportPrompt.value });
+    await saveAiPrompts({
+      commit: commitPrompt.value,
+      report: reportPrompt.value,
+      reportWeekly: weeklyReportPrompt.value,
+    });
     toast.success(t("settings.prompts.saved"));
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -115,6 +122,37 @@ async function openDir() {
           id="prompt-report"
           v-model="reportPrompt"
           :placeholder="DEFAULT_REPORT_PROMPT"
+          rows="10"
+          spellcheck="false"
+          class="font-mono text-xs"
+        />
+      </div>
+
+      <Separator />
+
+      <div class="flex flex-col gap-1.5">
+        <div class="flex items-center justify-between">
+          <label class="text-sm font-medium" for="prompt-report-weekly">
+            {{ t("settings.prompts.weeklyReport") }}
+          </label>
+          <Button
+            size="sm"
+            variant="ghost"
+            class="h-7 gap-1 px-2 text-xs text-muted-foreground"
+            :disabled="!weeklyReportPrompt"
+            @click="weeklyReportPrompt = ''"
+          >
+            <RotateCcw class="h-3 w-3" />
+            {{ t("settings.prompts.reset") }}
+          </Button>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          {{ t("settings.prompts.weeklyReportDescription") }}
+        </p>
+        <Textarea
+          id="prompt-report-weekly"
+          v-model="weeklyReportPrompt"
+          :placeholder="DEFAULT_WEEKLY_REPORT_PROMPT"
           rows="10"
           spellcheck="false"
           class="font-mono text-xs"

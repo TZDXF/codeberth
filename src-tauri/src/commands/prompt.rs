@@ -11,6 +11,7 @@ use crate::APP_DATA_DIR_NAME;
 const PROMPTS_DIR_NAME: &str = "prompts";
 const COMMIT_PROMPT_FILE: &str = "commit.md";
 const REPORT_PROMPT_FILE: &str = "report.md";
+const REPORT_WEEKLY_PROMPT_FILE: &str = "report-weekly.md";
 
 /// 用户自定义 AI 提示词(存为 ~/.pm/prompts/*.md);空字符串表示使用内置默认模板
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -18,6 +19,7 @@ const REPORT_PROMPT_FILE: &str = "report.md";
 pub struct AiPrompts {
     pub commit: String,
     pub report: String,
+    pub report_weekly: String,
 }
 
 fn prompts_dir(app: &AppHandle) -> AppResult<PathBuf> {
@@ -54,6 +56,7 @@ pub fn get_ai_prompts(app: AppHandle) -> AppResult<AiPrompts> {
     Ok(AiPrompts {
         commit: read_prompt(&dir, COMMIT_PROMPT_FILE),
         report: read_prompt(&dir, REPORT_PROMPT_FILE),
+        report_weekly: read_prompt(&dir, REPORT_WEEKLY_PROMPT_FILE),
     })
 }
 
@@ -63,6 +66,7 @@ pub fn set_ai_prompts(app: AppHandle, prompts: AiPrompts) -> AppResult<()> {
     fs::create_dir_all(&dir)?;
     write_prompt(&dir, COMMIT_PROMPT_FILE, &prompts.commit)?;
     write_prompt(&dir, REPORT_PROMPT_FILE, &prompts.report)?;
+    write_prompt(&dir, REPORT_WEEKLY_PROMPT_FILE, &prompts.report_weekly)?;
     Ok(())
 }
 

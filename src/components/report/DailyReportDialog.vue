@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { toast } from "vue-sonner";
 import { getLocalTimeZone, today as calendarToday } from "@internationalized/date";
-import type { RangeCalendarRootProps } from "reka-ui";
+import type { CalendarRootProps, RangeCalendarRootProps } from "reka-ui";
 import {
   Calendar as CalendarIcon,
   Copy,
@@ -19,6 +19,7 @@ import {
 import { Markdown, type ControlsConfig } from "vue-stream-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
@@ -39,22 +40,35 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { RangeCalendar } from "@/components/ui/range-calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import TagCheckList from "@/components/tags/TagCheckList.vue";
-import { generateDailyReport, type ProjectCommits } from "@/lib/ai";
+import { generateReport, type ProjectCommits } from "@/lib/ai";
 import { formatCommitTime } from "@/lib/format";
 import { cmd } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
 import { useTagsStore } from "@/stores/tags";
-import type { GitCommitInfo, GitUser } from "@/types";
+import type { GitCommitInfo, GitUser, ReportPeriodType } from "@/types";
 
-type RangeKey = "today" | "yesterday" | "last3" | "last7" | "custom";
+type Mode = ReportPeriodType;
+type DailyRangeKey = "today" | "yesterday" | "custom";
+type WeeklyRangeKey = "thisWeek" | "lastWeek" | "custom";
 type AuthorMode = "me" | "all";
 
-const RANGE_OPTIONS: { value: RangeKey; labelKey: string }[] = [
+const MODE_OPTIONS: { value: Mode; labelKey: string }[] = [
+  { value: "daily", labelKey: "report.modeDaily" },
+  { value: "weekly", labelKey: "report.modeWeekly" },
+];
+
+/** 日报:只能选择 1 天 */
+const DAILY_RANGE_OPTIONS: { value: DailyRangeKey; labelKey: string }[] = [
   { value: "today", labelKey: "report.today" },
   { value: "yesterday", labelKey: "report.yesterday" },
-  { value: "last3", labelKey: "report.last3Days" },
-  { value: "last7", labelKey: "report.last7Days" },
+  { value: "custom", labelKey: "report.custom" },
+];
+
+/** 周报:日期范围,默认本周一~当前日期 */
+const WEEKLY_RANGE_OPTIONS: { value: WeeklyRangeKey; labelKey: string }[] = [
+  { value: "thisWeek", labelKey: "report.thisWeek" },
+  { value: "lastWeek", labelKey: "report.lastWeek" },
   { value: "custom", labelKey: "report.custom" },
 ];
 
@@ -104,13 +118,20 @@ function toggleTagFilter(id: number) {
 // 的 modelValue 类型,保证 v-model / max-value 与 RangeCalendar 期望的类型严格一致
 type RangeModel = NonNullable<RangeCalendarRootProps["modelValue"]>;
 type RangeDateValue = NonNullable<RangeModel["start"]>;
+// Calendar 的 modelValue 含多选数组形式,Exclude 掉后才是单日 DateValue
+type SingleDateValue = Exclude<NonNullable<CalendarRootProps["modelValue"]>, unknown[]>;
 
-const rangeKey = ref<RangeKey>("today");
+const mode = ref<Mode>("daily");
+const dailyKey = ref<DailyRangeKey>("today");
+const weeklyKey = ref<WeeklyRangeKey>("thisWeek");
 /** 自定义范围(reka RangeCalendar 的 DateRange,起止可为空表示未选完) */
 // 用 shallowRef:ref<T> 的 UnwrapRef 会把日期类实例展开成结构类型,破坏名义类型匹配
 const customRange = shallowRef<RangeModel>({ start: undefined, end: undefined });
+/** 日报自定义单日(reka Calendar 的 DateValue) */
+const customDate = shallowRef<SingleDateValue | undefined>(undefined);
 /** 日历可选上限:今天(提交记录不可能来自未来);运行时与 reka 内部日期实现相同,仅类型需断言 */
 const maxDate = calendarToday(getLocalTimeZone()) as unknown as RangeDateValue;
+const maxDateSingle = calendarToday(getLocalTimeZone()) as unknown as SingleDateValue;
 const authorMode = ref<AuthorMode>("me");
 const generating = ref(false);
 const result = ref("");
@@ -174,7 +195,7 @@ function toLocalDate(d: RangeDateValue) {
   return d.toDate(getLocalTimeZone());
 }
 
-/** 自定义范围触发按钮的展示文案 */
+/** 周报自定义范围触发按钮的展示文案 */
 const customRangeLabel = computed(() => {
   const { start, end } = customRange.value;
   if (start && end) return `${fmt(toLocalDate(start))} - ${fmt(toLocalDate(end))}`;
@@ -182,7 +203,13 @@ const customRangeLabel = computed(() => {
   return single ? fmt(toLocalDate(single)) : t("report.pickRange");
 });
 
-/** 当前选择的日期范围(本地时区,起止均为当天) */
+/** 日报自定义单日触发按钮的展示文案 */
+const customDateLabel = computed(() =>
+  customDate.value ? fmt(toLocalDate(customDate.value)) : t("report.pickDate"),
+);
+
+/** 当前选择的日期范围(本地时区,起止均为当天 00:00)。
+ *  日报恒为同一天;周报默认本周一~今天 */
 const range = computed<{ from: Date; to: Date }>(() => {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -191,22 +218,36 @@ const range = computed<{ from: Date; to: Date }>(() => {
     d.setDate(d.getDate() - n);
     return d;
   };
-  switch (rangeKey.value) {
-    case "yesterday":
-      return { from: daysAgo(1), to: daysAgo(1) };
-    case "last3":
-      return { from: daysAgo(2), to: today };
-    case "last7":
-      return { from: daysAgo(6), to: today };
+  if (mode.value === "daily") {
+    switch (dailyKey.value) {
+      case "yesterday":
+        return { from: daysAgo(1), to: daysAgo(1) };
+      case "custom": {
+        const d = customDate.value ? toLocalDate(customDate.value) : today;
+        return { from: d, to: d };
+      }
+      default:
+        return { from: today, to: today };
+    }
+  }
+  // 周报:本周一(getDay 周日=0 需偏移)为范围起点
+  const dow = (today.getDay() + 6) % 7; // 周一=0 .. 周日=6
+  const monday = daysAgo(dow);
+  switch (weeklyKey.value) {
+    case "lastWeek": {
+      const lastMonday = new Date(monday);
+      lastMonday.setDate(lastMonday.getDate() - 7);
+      return { from: lastMonday, to: daysAgo(dow + 1) };
+    }
     case "custom": {
       const { start, end } = customRange.value;
       return {
-        from: start ? toLocalDate(start) : today,
+        from: start ? toLocalDate(start) : monday,
         to: end ? toLocalDate(end) : today,
       };
     }
     default:
-      return { from: today, to: today };
+      return { from: monday, to: today };
   }
 });
 
@@ -215,8 +256,11 @@ watch(open, (v) => {
   if (!v) return;
   result.value = "";
   savedHistoryId.value = null;
-  rangeKey.value = "today";
+  mode.value = "daily";
+  dailyKey.value = "today";
+  weeklyKey.value = "thisWeek";
   customRange.value = { start: undefined, end: undefined };
+  customDate.value = undefined;
   authorMode.value = "me";
   commitData.value = [];
   commitOpen.value = {};
@@ -289,11 +333,12 @@ async function loadCommits() {
   }
 }
 
-// 项目勾选 / 时间范围 / 作者过滤变化时自动刷新提交列表
+// 项目勾选 / 报告类型 / 时间范围 / 作者过滤变化时自动刷新提交列表
 watch(
   () =>
     [
       [...selectedIds.value].sort((a, b) => a - b).join(","),
+      mode.value,
       fmt(range.value.from),
       fmt(range.value.to),
       authorMode.value,
@@ -308,8 +353,9 @@ async function generate() {
     toast.error(t("report.noProjects"));
     return;
   }
-  const data = commitData.value;
-  if (!data.some((d) => d.commits.length)) {
+  // 过滤掉时间范围内没有提交的项目:不进 prompt,也不写入历史
+  const data = commitData.value.filter((d) => d.commits.length);
+  if (!data.length) {
     result.value = "";
     toast.info(t("report.noCommits"));
     return;
@@ -317,15 +363,13 @@ async function generate() {
   generating.value = true;
   savedHistoryId.value = null;
   try {
-    const rangeLabel = t("report.rangeLabel", {
-      from: fmt(range.value.from),
-      to: fmt(range.value.to),
-    });
-    result.value = await generateDailyReport(data, rangeLabel, settings.language);
-
-    // 生成成功后自动保存到日报历史
     const dateFrom = fmt(range.value.from);
     const dateTo = fmt(range.value.to);
+    const rangeLabel =
+      dateFrom === dateTo ? dateFrom : t("report.rangeLabel", { from: dateFrom, to: dateTo });
+    result.value = await generateReport(data, rangeLabel, settings.language, mode.value);
+
+    // 生成成功后自动保存到报告历史(仅含有提交的项目)
     const commitDataForSave = data.map((d) => {
       const project = activeProjects.value.find((p) => p.name === d.projectName);
       return {
@@ -336,12 +380,15 @@ async function generate() {
       };
     });
     savedHistoryId.value = await cmd<number>("save_report_history", {
-      projectIds: ids,
+      projectIds: commitDataForSave
+        .map((c) => c.projectId)
+        .filter((id): id is number => id != null),
       dateFrom,
       dateTo,
       rangeLabel,
       authorMode: authorMode.value,
       language: settings.language,
+      periodType: mode.value,
       result: result.value,
       commitData: commitDataForSave,
     });
@@ -481,19 +528,69 @@ async function copyResult() {
           </div>
 
           <div class="flex flex-col gap-1.5">
-            <label class="text-sm font-medium">{{ t("report.range") }}</label>
-            <div class="flex flex-wrap items-center gap-1.5">
+            <label class="text-sm font-medium">{{ t("report.mode") }}</label>
+            <div class="flex items-center gap-1.5">
               <Button
-                v-for="opt in RANGE_OPTIONS"
+                v-for="opt in MODE_OPTIONS"
                 :key="opt.value"
                 size="sm"
-                :variant="rangeKey === opt.value ? 'default' : 'outline'"
+                :variant="mode === opt.value ? 'default' : 'outline'"
                 class="h-7 px-2.5 text-xs"
-                @click="rangeKey = opt.value"
+                @click="mode = opt.value"
               >
                 {{ t(opt.labelKey) }}
               </Button>
-              <Popover v-if="rangeKey === 'custom'">
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">{{ t("report.range") }}</label>
+            <!-- 日报:只能选择 1 天 -->
+            <div v-if="mode === 'daily'" class="flex flex-wrap items-center gap-1.5">
+              <Button
+                v-for="opt in DAILY_RANGE_OPTIONS"
+                :key="opt.value"
+                size="sm"
+                :variant="dailyKey === opt.value ? 'default' : 'outline'"
+                class="h-7 px-2.5 text-xs"
+                @click="dailyKey = opt.value"
+              >
+                {{ t(opt.labelKey) }}
+              </Button>
+              <Popover v-if="dailyKey === 'custom'">
+                <PopoverTrigger as-child>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="h-7 gap-1.5 px-2.5 text-xs font-normal"
+                    :class="{ 'text-muted-foreground': !customDate }"
+                  >
+                    <CalendarIcon class="h-3.5 w-3.5" />
+                    {{ customDateLabel }}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent class="w-auto p-0" align="start">
+                  <Calendar
+                    v-model="customDate"
+                    :locale="settings.language"
+                    :max-value="maxDateSingle"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <!-- 周报:日期范围,默认本周一~当前日期 -->
+            <div v-else class="flex flex-wrap items-center gap-1.5">
+              <Button
+                v-for="opt in WEEKLY_RANGE_OPTIONS"
+                :key="opt.value"
+                size="sm"
+                :variant="weeklyKey === opt.value ? 'default' : 'outline'"
+                class="h-7 px-2.5 text-xs"
+                @click="weeklyKey = opt.value"
+              >
+                {{ t(opt.labelKey) }}
+              </Button>
+              <Popover v-if="weeklyKey === 'custom'">
                 <PopoverTrigger as-child>
                   <Button
                     variant="outline"
@@ -569,7 +666,11 @@ async function copyResult() {
                   />
                   <span class="min-w-0 flex-1 truncate">{{ d.projectName }}</span>
                   <span class="shrink-0 text-xs whitespace-nowrap text-muted-foreground">
-                    {{ t("report.commitCount", { count: d.commits.length }) }}
+                    {{
+                      d.commits.length
+                        ? t("report.commitCount", { count: d.commits.length })
+                        : t("report.excludedNoCommits")
+                    }}
                   </span>
                 </CollapsibleTrigger>
                 <CollapsibleContent class="min-w-0 overflow-hidden">

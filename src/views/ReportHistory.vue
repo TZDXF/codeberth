@@ -16,11 +16,7 @@ import {
 import { Markdown, type ControlsConfig } from "vue-stream-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -34,7 +30,15 @@ import { formatCommitTime } from "@/lib/format";
 import { useSettingsStore } from "@/stores/settings";
 import { useProjectsStore } from "@/stores/projects";
 import { useTagsStore } from "@/stores/tags";
-import type { CalendarMeta, ReportHistoryDetail } from "@/types";
+import type { CalendarMeta, ReportHistoryDetail, ReportPeriodType } from "@/types";
+
+type TypeFilter = "all" | ReportPeriodType;
+
+const TYPE_OPTIONS: { value: TypeFilter; labelKey: string }[] = [
+  { value: "all", labelKey: "reportHistory.typeAll" },
+  { value: "daily", labelKey: "reportHistory.typeDaily" },
+  { value: "weekly", labelKey: "reportHistory.typeWeekly" },
+];
 
 const { t } = useI18n();
 const router = useRouter();
@@ -62,7 +66,11 @@ const todayStr = (() => {
 const selectedDate = ref<string | null>(todayStr);
 const filterProjectIds = ref<number[]>([]);
 const filterTagIds = ref<number[]>([]);
+const filterType = ref<TypeFilter>("all");
 const projectKeyword = ref("");
+
+/** 传给后端的类型过滤参数("all" 时不过滤) */
+const reportTypeParam = computed(() => (filterType.value === "all" ? null : filterType.value));
 
 const filteredProjects = computed(() => {
   const kw = projectKeyword.value.trim().toLowerCase();
@@ -102,6 +110,12 @@ const reportsLoading = ref(false);
 const expandedReportId = ref<number | null>(null);
 const commitOpen = ref<Record<string, boolean>>({});
 
+/** 当前展开的报告;周报时在日历上高亮整个时间范围 */
+const highlightRange = computed(() => {
+  const r = reports.value.find((x) => x.id === expandedReportId.value);
+  return r && r.periodType === "weekly" ? { start: r.dateFrom, end: r.dateTo } : null;
+});
+
 // ── derived ─────────────────────────────────────────────────────────────
 
 const activeProjects = computed(() => projectStore.projects.filter((p) => !p.archived_at));
@@ -126,10 +140,13 @@ const dateLabel = computed(() => {
 const dateBadge = computed(() => {
   if (!selectedDate.value) return null;
   const ds = selectedDate.value;
-  if (calendarData.value?.holidays.includes(ds)) return { label: t("reportHistory.holiday"), variant: "secondary" as const };
-  if (calendarData.value?.workdays.includes(ds)) return { label: t("reportHistory.makeupWorkday"), variant: "secondary" as const };
+  if (calendarData.value?.holidays.includes(ds))
+    return { label: t("reportHistory.holiday"), variant: "secondary" as const };
+  if (calendarData.value?.workdays.includes(ds))
+    return { label: t("reportHistory.makeupWorkday"), variant: "secondary" as const };
   const d = new Date(ds + "T00:00:00");
-  if (d.getDay() === 0 || d.getDay() === 6) return { label: t("reportHistory.weekend"), variant: "outline" as const };
+  if (d.getDay() === 0 || d.getDay() === 6)
+    return { label: t("reportHistory.weekend"), variant: "outline" as const };
   return null;
 });
 
@@ -152,6 +169,7 @@ async function loadCalendarMeta(year: number, month: number) {
       month,
       projectIds: filterProjectIds.value,
       tagIds: filterTagIds.value,
+      reportType: reportTypeParam.value,
     });
   } catch (e) {
     toast.error(t("reportHistory.loadCalendarFailed"));
@@ -169,6 +187,7 @@ async function loadReports(date: string) {
       date,
       projectIds: filterProjectIds.value,
       tagIds: filterTagIds.value,
+      reportType: reportTypeParam.value,
     });
   } catch (e) {
     toast.error(t("reportHistory.loadFailed"));
@@ -208,18 +227,29 @@ function onMonthChange(year: number, month: number) {
 }
 
 watch(
-  () => [calendarYear.value, calendarMonth.value, filterProjectIds.value, filterTagIds.value] as const,
+  () =>
+    [
+      calendarYear.value,
+      calendarMonth.value,
+      filterProjectIds.value,
+      filterTagIds.value,
+      filterType.value,
+    ] as const,
   ([y, m]) => loadCalendarMeta(y, m),
   { immediate: true },
 );
 
-watch(selectedDate, (date) => {
-  if (date) {
-    loadReports(date);
-  } else {
-    reports.value = [];
-  }
-}, { immediate: true });
+watch(
+  selectedDate,
+  (date) => {
+    if (date) {
+      loadReports(date);
+    } else {
+      reports.value = [];
+    }
+  },
+  { immediate: true },
+);
 
 watch(filterProjectIds, () => {
   if (selectedDate.value) {
@@ -228,6 +258,12 @@ watch(filterProjectIds, () => {
 });
 
 watch(filterTagIds, () => {
+  if (selectedDate.value) {
+    loadReports(selectedDate.value);
+  }
+});
+
+watch(filterType, () => {
   if (selectedDate.value) {
     loadReports(selectedDate.value);
   }
@@ -258,28 +294,56 @@ watch(filterTagIds, () => {
         <div class="shrink-0 space-y-2 border-b px-3 py-2.5">
           <div>
             <label class="mb-1 block text-[11px] text-muted-foreground">
+              {{ t("reportHistory.typeLabel") }}
+            </label>
+            <div class="flex items-center gap-1">
+              <Button
+                v-for="opt in TYPE_OPTIONS"
+                :key="opt.value"
+                size="sm"
+                :variant="filterType === opt.value ? 'default' : 'outline'"
+                class="h-7 flex-1 px-2 text-xs"
+                @click="filterType = opt.value"
+              >
+                {{ t(opt.labelKey) }}
+              </Button>
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block text-[11px] text-muted-foreground">
               {{ t("reportHistory.searchProject") }}
             </label>
             <DropdownMenu>
               <DropdownMenuTrigger as-child>
-                <Button variant="outline" size="sm" class="h-7 w-full justify-start gap-1.5 px-2 text-xs font-normal">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-7 w-full justify-start gap-1.5 px-2 text-xs font-normal"
+                >
                   <FolderGit2 class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span class="truncate">{{ t("reportHistory.searchProject") }}</span>
                   <span
                     v-if="filterProjectIds.length"
                     class="ml-auto rounded-full bg-primary px-1.5 text-[11px] leading-4 text-primary-foreground"
-                  >{{ filterProjectIds.length }}</span>
+                    >{{ filterProjectIds.length }}</span
+                  >
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" class="w-52">
                 <div class="px-1 pb-1">
                   <div class="relative">
-                    <Search class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                    <Search
+                      class="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                    />
                     <input
                       v-model="projectKeyword"
                       :placeholder="t('projects.home.searchPlaceholder')"
                       class="h-7 w-full rounded-md border border-input bg-transparent pl-7 pr-2 text-xs outline-none placeholder:text-muted-foreground focus-visible:ring-1 focus-visible:ring-ring"
-                      @keydown="(e: KeyboardEvent) => { if (e.key !== 'Escape') e.stopPropagation() }"
+                      @keydown="
+                        (e: KeyboardEvent) => {
+                          if (e.key !== 'Escape') e.stopPropagation();
+                        }
+                      "
                     />
                   </div>
                 </div>
@@ -300,10 +364,16 @@ watch(filterTagIds, () => {
                     />
                     <span class="truncate">{{ p.name }}</span>
                   </div>
-                  <p v-if="!activeProjects.length" class="px-2 py-1.5 text-xs text-muted-foreground">
+                  <p
+                    v-if="!activeProjects.length"
+                    class="px-2 py-1.5 text-xs text-muted-foreground"
+                  >
                     {{ t("projects.home.emptyAll") }}
                   </p>
-                  <p v-else-if="!filteredProjects.length" class="px-2 py-1.5 text-xs text-muted-foreground">
+                  <p
+                    v-else-if="!filteredProjects.length"
+                    class="px-2 py-1.5 text-xs text-muted-foreground"
+                  >
                     {{ t("projects.home.emptyFiltered") }}
                   </p>
                 </div>
@@ -327,13 +397,18 @@ watch(filterTagIds, () => {
             </label>
             <DropdownMenu>
               <DropdownMenuTrigger as-child>
-                <Button variant="outline" size="sm" class="h-7 w-full justify-start gap-1.5 px-2 text-xs font-normal">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="h-7 w-full justify-start gap-1.5 px-2 text-xs font-normal"
+                >
                   <Tags class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span class="truncate">{{ t("reportHistory.filterTag") }}</span>
                   <span
                     v-if="filterTagIds.length"
                     class="ml-auto rounded-full bg-primary px-1.5 text-[11px] leading-4 text-primary-foreground"
-                  >{{ filterTagIds.length }}</span>
+                    >{{ filterTagIds.length }}</span
+                  >
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" class="w-48">
@@ -372,6 +447,7 @@ watch(filterTagIds, () => {
             <ReportCalendar
               v-model="selectedDate"
               :calendar-data="calendarData"
+              :highlight-range="highlightRange"
               @month-change="onMonthChange"
             />
           </ScrollArea>
@@ -443,10 +519,28 @@ watch(filterTagIds, () => {
                     :class="{ 'rotate-90': expandedReportId === r.id }"
                   />
                   <span class="min-w-0 flex-1 truncate text-xs">
-                    <span class="font-medium">{{ r.projectNames.slice(0, 3).join(", ")
-                    }}{{ r.projectNames.length > 3 ? ` +${r.projectNames.length - 3}` : "" }}</span>
-                    <span class="ml-2 text-muted-foreground">{{ formatDateLabel(r.dateFrom, r.dateTo) }}</span>
+                    <span class="font-medium"
+                      >{{ r.projectNames.slice(0, 3).join(", ")
+                      }}{{
+                        r.projectNames.length > 3 ? ` +${r.projectNames.length - 3}` : ""
+                      }}</span
+                    >
+                    <span class="ml-2 text-muted-foreground">{{
+                      formatDateLabel(r.dateFrom, r.dateTo)
+                    }}</span>
                   </span>
+                  <Badge
+                    :variant="r.periodType === 'weekly' ? 'default' : 'outline'"
+                    class="text-[11px] shrink-0"
+                  >
+                    {{
+                      t(
+                        r.periodType === "weekly"
+                          ? "reportHistory.typeWeekly"
+                          : "reportHistory.typeDaily",
+                      )
+                    }}
+                  </Badge>
                   <Badge variant="secondary" class="text-[11px] shrink-0">
                     {{ t("reportHistory.totalCommits", { count: r.totalCommits }) }}
                   </Badge>
@@ -488,7 +582,9 @@ watch(filterTagIds, () => {
                             class="h-3 w-3 shrink-0 text-muted-foreground transition-transform"
                             :class="{ 'rotate-90': expanded }"
                           />
-                          <span class="min-w-0 flex-1 truncate font-medium">{{ c.projectName }}</span>
+                          <span class="min-w-0 flex-1 truncate font-medium">{{
+                            c.projectName
+                          }}</span>
                           <span class="shrink-0 text-muted-foreground">{{ c.commits.length }}</span>
                         </CollapsibleTrigger>
                         <CollapsibleContent>
@@ -498,7 +594,9 @@ watch(filterTagIds, () => {
                               :key="commit.hash + commit.date"
                               class="flex min-w-0 items-center gap-1.5 border-b px-2 py-0.5 text-[11px]"
                             >
-                              <code class="shrink-0 rounded bg-muted px-1 py-px font-mono text-[10px]">
+                              <code
+                                class="shrink-0 rounded bg-muted px-1 py-px font-mono text-[10px]"
+                              >
                                 {{ commit.hash }}
                               </code>
                               <span class="min-w-0 flex-1 truncate" :title="commit.subject">

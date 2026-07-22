@@ -82,6 +82,8 @@ export interface AiPrompts {
   commit: string;
   /** 日报生成提示词 */
   report: string;
+  /** 周报生成提示词 */
+  reportWeekly: string;
 }
 
 export interface Project {
@@ -155,7 +157,10 @@ export interface GitUpdatedPayload {
   last_fetch_at: number;
 }
 
-/** 日报历史列表项 */
+/** 报告类型:日报(单日) | 周报(日期范围) */
+export type ReportPeriodType = "daily" | "weekly";
+
+/** 报告历史列表项 */
 export interface ReportHistoryItem {
   id: number;
   projectIds: number[];
@@ -164,12 +169,13 @@ export interface ReportHistoryItem {
   rangeLabel: string;
   authorMode: string;
   language: string;
+  periodType: ReportPeriodType;
   createdAt: number;
   projectNames: string[];
   totalCommits: number;
 }
 
-/** 日报历史详情(含 Markdown 正文与各项目提交记录) */
+/** 报告历史详情(含 Markdown 正文与各项目提交记录) */
 export interface ReportHistoryDetail {
   id: number;
   projectIds: number[];
@@ -178,6 +184,7 @@ export interface ReportHistoryDetail {
   rangeLabel: string;
   authorMode: string;
   language: string;
+  periodType: ReportPeriodType;
   createdAt: number;
   projectNames: string[];
   totalCommits: number;
@@ -185,7 +192,7 @@ export interface ReportHistoryDetail {
   commits: ReportCommitItem[];
 }
 
-/** 日报历史中单个项目的提交记录 */
+/** 报告历史中单个项目的提交记录 */
 export interface ReportCommitItem {
   projectId: number | null;
   projectName: string;
@@ -193,7 +200,7 @@ export interface ReportCommitItem {
   commits: GitCommitInfo[];
 }
 
-/** 保存日报时传入的提交数据 */
+/** 保存报告时传入的提交数据 */
 export interface SaveReportCommit {
   projectId: number | null;
   projectName: string;
@@ -206,11 +213,21 @@ export interface ReportSchedule {
   id: string;
   name: string;
   enabled: boolean;
+  /** 报告类型:日报(当天) | 周报(工作周,最后一个工作日触发) */
+  reportType: ReportPeriodType;
   projectIds: number[];
   authorMode: "me" | "all";
   timeOfDay: string;
+  /** 日报:仅周一~周五 */
   weekdaysOnly: boolean;
+  /** 日报:仅中国工作日 */
   chineseWorkdayOnly: boolean;
+  /** 周报:true = 工作周模式(自动识别连续工作周期,末日触发);false = 自定义周几~周几 */
+  weeklyWorkweek: boolean;
+  /** 周报自定义:范围起始周几(1=周一 .. 7=周日) */
+  weeklyStartWeekday: number;
+  /** 周报自定义:范围结束/触发周几(1=周一 .. 7=周日) */
+  weeklyEndWeekday: number;
   lastRunAt: number | null;
 }
 

@@ -5,7 +5,9 @@ import { toast } from "vue-sonner";
 import {
   CalendarClock,
   Clock,
+  Loader2,
   Pencil,
+  Play,
   Plus,
   Power,
   PowerOff,
@@ -38,12 +40,25 @@ import { useProjectsStore } from "@/stores/projects";
 import { useTagsStore } from "@/stores/tags";
 import type { ReportSchedule } from "@/types";
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const projectStore = useProjectsStore();
 const tagsStore = useTagsStore();
 
 const schedules = ref<ReportSchedule[]>([]);
 const loading = ref(false);
+/** 手动执行中的任务 id 集合(按钮 loading 态) */
+const runningIds = ref<string[]>([]);
+
+/** 周一~周日的本地化短标签(浏览器 Intl,避免 i18n 数组不可靠);2024-01-01 是周一 */
+const weekdayNames = computed(() => {
+  const fmt = new Intl.DateTimeFormat(locale.value, { weekday: "short" });
+  const mon = new Date(2024, 0, 1);
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(mon);
+    d.setDate(1 + i);
+    return fmt.format(d);
+  });
+});
 
 const activeProjects = computed(() => projectStore.projects.filter((p) => !p.archived_at));
 
@@ -79,6 +94,23 @@ async function deleteSchedule(id: string) {
   toast.success(t("reportSchedule.deleted"));
 }
 
+/** 手动执行:忽略星期/去重检查,立即按任务配置生成报告 */
+async function runNow(s: ReportSchedule) {
+  if (runningIds.value.includes(s.id)) return;
+  runningIds.value = [...runningIds.value, s.id];
+  try {
+    await cmd<number>("run_report_schedule_now", { id: s.id });
+    toast.success(t("reportSchedule.runSuccess"));
+    // 刷新 lastRunAt 展示
+    await load();
+  } catch (e) {
+    const message = typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
+    toast.error(t("reportSchedule.runFailed", { error: message }));
+  } finally {
+    runningIds.value = runningIds.value.filter((id) => id !== s.id);
+  }
+}
+
 // ── dialog ─────────────────────────────────────────────────────────────
 
 const dialogOpen = ref(false);
@@ -87,7 +119,11 @@ const editing = ref<ReportSchedule | null>(null);
 // form
 const formName = ref("");
 const formTime = ref("18:00");
+const formReportType = ref<"daily" | "weekly">("daily");
 const formWeekdayMode = ref<"everyday" | "weekdays" | "chineseWorkday">("everyday");
+const formWeeklyWorkweek = ref(true);
+const formWeeklyStart = ref(1);
+const formWeeklyEnd = ref(5);
 const formAuthorMode = ref<"me" | "all">("me");
 const formProjectIds = ref<number[]>([]);
 
@@ -124,7 +160,11 @@ function openCreate() {
   editing.value = null;
   formName.value = "";
   formTime.value = "18:00";
+  formReportType.value = "daily";
   formWeekdayMode.value = "everyday";
+  formWeeklyWorkweek.value = true;
+  formWeeklyStart.value = 1;
+  formWeeklyEnd.value = 5;
   formAuthorMode.value = "me";
   formProjectIds.value = [];
   keyword.value = "";
@@ -136,11 +176,15 @@ function openEdit(s: ReportSchedule) {
   editing.value = s;
   formName.value = s.name;
   formTime.value = s.timeOfDay;
+  formReportType.value = s.reportType;
   formAuthorMode.value = s.authorMode;
   formProjectIds.value = [...s.projectIds];
   if (s.chineseWorkdayOnly) formWeekdayMode.value = "chineseWorkday";
   else if (s.weekdaysOnly) formWeekdayMode.value = "weekdays";
   else formWeekdayMode.value = "everyday";
+  formWeeklyWorkweek.value = s.weeklyWorkweek;
+  formWeeklyStart.value = s.weeklyStartWeekday || 1;
+  formWeeklyEnd.value = s.weeklyEndWeekday || 5;
   keyword.value = "";
   filterTagIds.value = [];
   dialogOpen.value = true;
@@ -151,15 +195,20 @@ async function submit() {
     toast.error(t("report.noProjects"));
     return;
   }
+  const isDaily = formReportType.value === "daily";
   const data: ReportSchedule = {
     id: editing.value?.id ?? crypto.randomUUID(),
     name: formName.value.trim(),
     enabled: editing.value?.enabled ?? true,
+    reportType: formReportType.value,
     projectIds: [...formProjectIds.value],
     authorMode: formAuthorMode.value,
     timeOfDay: formTime.value,
-    weekdaysOnly: formWeekdayMode.value === "weekdays",
-    chineseWorkdayOnly: formWeekdayMode.value === "chineseWorkday",
+    weekdaysOnly: isDaily && formWeekdayMode.value === "weekdays",
+    chineseWorkdayOnly: isDaily && formWeekdayMode.value === "chineseWorkday",
+    weeklyWorkweek: formWeeklyWorkweek.value,
+    weeklyStartWeekday: formWeeklyStart.value,
+    weeklyEndWeekday: formWeeklyEnd.value,
     lastRunAt: editing.value?.lastRunAt ?? null,
   };
 
@@ -188,10 +237,16 @@ function weekdayMode(s: ReportSchedule) {
   return "everyday";
 }
 
+/** 周报周期描述:工作周模式显示固定文案;自定义模式显示 "周一 ~ 周五" */
+function weeklyLabel(s: ReportSchedule) {
+  if (s.weeklyWorkweek) return t("reportSchedule.workweekLabel");
+  const start = weekdayNames.value[(s.weeklyStartWeekday - 1 + 7) % 7] ?? "";
+  const end = weekdayNames.value[(s.weeklyEndWeekday - 1 + 7) % 7] ?? "";
+  return `${start} ~ ${end}`;
+}
+
 function projectNames(ids: number[]) {
-  return ids
-    .map((id) => activeProjects.value.find((p) => p.id === id)?.name ?? "")
-    .filter(Boolean);
+  return ids.map((id) => activeProjects.value.find((p) => p.id === id)?.name ?? "").filter(Boolean);
 }
 
 function lastRun(ts: number | null) {
@@ -235,30 +290,47 @@ watch(
 
     <!-- list -->
     <div v-if="schedules.length" class="flex flex-col gap-2">
-      <div
-        v-for="s in schedules"
-        :key="s.id"
-        class="flex items-center gap-3 rounded-md border p-3"
-      >
+      <div v-for="s in schedules" :key="s.id" class="flex items-center gap-3 rounded-md border p-3">
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <span class="text-sm font-medium truncate">{{
               s.name || t("reportSchedule.title")
             }}</span>
+            <Badge variant="outline" class="text-[11px]">
+              {{
+                t(
+                  s.reportType === "weekly"
+                    ? "reportSchedule.typeWeekly"
+                    : "reportSchedule.typeDaily",
+                )
+              }}
+            </Badge>
             <Badge :variant="s.enabled ? 'default' : 'secondary'" class="text-[11px]">
               {{ s.enabled ? t("reportSchedule.enabled") : t("reportSchedule.disabled") }}
             </Badge>
           </div>
-          <div class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+          <div
+            class="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground"
+          >
             <span class="flex items-center gap-1">
               <Clock class="h-3 w-3" />
               {{ s.timeOfDay }}
             </span>
-            <span>{{ weekdayLabel(weekdayMode(s)) }}</span>
-            <span>{{ t("reportSchedule.authorLabel") }}: {{ s.authorMode === "me" ? t("reportSchedule.authorMe") : t("reportSchedule.authorAll") }}</span>
+            <span v-if="s.reportType === 'weekly'">{{ weeklyLabel(s) }}</span>
+            <span v-else>{{ weekdayLabel(weekdayMode(s)) }}</span>
+            <span
+              >{{ t("reportSchedule.authorLabel") }}:
+              {{
+                s.authorMode === "me" ? t("reportSchedule.authorMe") : t("reportSchedule.authorAll")
+              }}</span
+            >
             <span class="truncate max-w-48" :title="projectNames(s.projectIds).join(', ')">
               {{ projectNames(s.projectIds).slice(0, 2).join(", ")
-              }}{{ projectNames(s.projectIds).length > 2 ? ` +${projectNames(s.projectIds).length - 2}` : "" }}
+              }}{{
+                projectNames(s.projectIds).length > 2
+                  ? ` +${projectNames(s.projectIds).length - 2}`
+                  : ""
+              }}
             </span>
           </div>
           <div class="mt-1 text-[11px] text-muted-foreground">
@@ -266,6 +338,17 @@ watch(
           </div>
         </div>
         <div class="flex items-center gap-1 shrink-0">
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-7 w-7"
+            :disabled="runningIds.includes(s.id)"
+            :title="t('reportSchedule.runNow')"
+            @click="runNow(s)"
+          >
+            <Loader2 v-if="runningIds.includes(s.id)" class="h-3.5 w-3.5 animate-spin" />
+            <Play v-else class="h-3.5 w-3.5" />
+          </Button>
           <Button
             variant="ghost"
             size="icon"
@@ -312,7 +395,41 @@ watch(
           <!-- name -->
           <div class="flex flex-col gap-1.5">
             <label class="text-sm font-medium">{{ t("reportSchedule.nameLabel") }}</label>
-            <Input v-model="formName" :placeholder="t('reportSchedule.namePlaceholder')" class="h-8" />
+            <Input
+              v-model="formName"
+              :placeholder="t('reportSchedule.namePlaceholder')"
+              class="h-8"
+            />
+          </div>
+
+          <!-- report type -->
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">{{ t("reportSchedule.reportType") }}</label>
+            <div class="flex gap-1.5">
+              <Button
+                size="sm"
+                class="h-7 text-xs"
+                :variant="formReportType === 'daily' ? 'default' : 'outline'"
+                @click="formReportType = 'daily'"
+              >
+                {{ t("reportSchedule.typeDaily") }}
+              </Button>
+              <Button
+                size="sm"
+                class="h-7 text-xs"
+                :variant="formReportType === 'weekly' ? 'default' : 'outline'"
+                @click="formReportType = 'weekly'"
+              >
+                {{ t("reportSchedule.typeWeekly") }}
+              </Button>
+            </div>
+            <p class="text-[11px] text-muted-foreground">
+              {{
+                formReportType === "daily"
+                  ? t("reportSchedule.typeDailyHint")
+                  : t("reportSchedule.typeWeeklyHint")
+              }}
+            </p>
           </div>
 
           <!-- time -->
@@ -321,8 +438,8 @@ watch(
             <Input v-model="formTime" type="time" class="h-8 w-28" />
           </div>
 
-          <!-- weekday filter -->
-          <div class="flex flex-col gap-1.5">
+          <!-- weekday filter(daily) -->
+          <div v-if="formReportType === 'daily'" class="flex flex-col gap-1.5">
             <label class="text-sm font-medium">{{ t("reportSchedule.weekdayLabel") }}</label>
             <div class="flex flex-wrap gap-1.5">
               <Button
@@ -356,6 +473,67 @@ watch(
             >
               {{ t("reportSchedule.chineseWorkdayHint") }}
             </p>
+          </div>
+
+          <!-- weekly 周期模式:工作周(自动识别连续工作周期) 或 自定义周几~周几 -->
+          <div v-else class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">{{ t("reportSchedule.weeklyMode") }}</label>
+            <div class="flex gap-1.5">
+              <Button
+                size="sm"
+                class="h-7 text-xs"
+                :variant="formWeeklyWorkweek ? 'default' : 'outline'"
+                @click="formWeeklyWorkweek = true"
+              >
+                {{ t("reportSchedule.weeklyModeWorkweek") }}
+              </Button>
+              <Button
+                size="sm"
+                class="h-7 text-xs"
+                :variant="!formWeeklyWorkweek ? 'default' : 'outline'"
+                @click="formWeeklyWorkweek = false"
+              >
+                {{ t("reportSchedule.weeklyModeCustom") }}
+              </Button>
+            </div>
+            <p v-if="formWeeklyWorkweek" class="text-[11px] text-muted-foreground">
+              {{ t("reportSchedule.workweekHint") }}
+            </p>
+            <template v-else>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-xs text-muted-foreground">
+                  {{ t("reportSchedule.weeklyStart") }}
+                </span>
+                <Button
+                  v-for="(name, i) in weekdayNames"
+                  :key="i"
+                  size="sm"
+                  class="h-7 px-2 text-xs"
+                  :variant="formWeeklyStart === i + 1 ? 'default' : 'outline'"
+                  @click="formWeeklyStart = i + 1"
+                >
+                  {{ name }}
+                </Button>
+              </div>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="text-xs text-muted-foreground">
+                  {{ t("reportSchedule.weeklyEnd") }}
+                </span>
+                <Button
+                  v-for="(name, i) in weekdayNames"
+                  :key="i"
+                  size="sm"
+                  class="h-7 px-2 text-xs"
+                  :variant="formWeeklyEnd === i + 1 ? 'default' : 'outline'"
+                  @click="formWeeklyEnd = i + 1"
+                >
+                  {{ name }}
+                </Button>
+              </div>
+              <p class="text-[11px] text-muted-foreground">
+                {{ t("reportSchedule.weeklyCustomHint") }}
+              </p>
+            </template>
           </div>
 
           <!-- author -->

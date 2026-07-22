@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS report_history (
     range_label TEXT NOT NULL DEFAULT '',
     author_mode TEXT NOT NULL DEFAULT 'me',
     language    TEXT NOT NULL DEFAULT 'zh-CN',
+    period_type TEXT NOT NULL DEFAULT 'daily',
     result      TEXT NOT NULL,
     created_at  INTEGER NOT NULL
 );
@@ -66,4 +67,20 @@ CREATE TABLE IF NOT EXISTS report_commits (
 
 CREATE INDEX IF NOT EXISTS idx_report_history_created ON report_history(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_report_commits_report ON report_commits(report_id);
+
+CREATE TABLE IF NOT EXISTS report_schedules (
+    id                   TEXT PRIMARY KEY,
+    name                 TEXT NOT NULL DEFAULT '',
+    enabled              INTEGER NOT NULL DEFAULT 1,
+    report_type          TEXT NOT NULL DEFAULT 'daily',
+    project_ids          TEXT NOT NULL,
+    author_mode          TEXT NOT NULL DEFAULT 'me',
+    time_of_day          TEXT NOT NULL,
+    weekdays_only        INTEGER NOT NULL DEFAULT 0,
+    chinese_workday_only INTEGER NOT NULL DEFAULT 0,
+    weekly_workweek      INTEGER NOT NULL DEFAULT 1,
+    weekly_start_weekday INTEGER NOT NULL DEFAULT 1,
+    weekly_end_weekday   INTEGER NOT NULL DEFAULT 5,
+    last_run_at          INTEGER
+);
 

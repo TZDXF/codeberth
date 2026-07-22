@@ -2,9 +2,14 @@ import { generateText } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 import { fetch as tauriFetch } from "@tauri-apps/plugin-http";
 import { i18n, type SupportedLocale } from "@/i18n";
-import { DEFAULT_COMMIT_PROMPT, DEFAULT_REPORT_PROMPT, loadAiPrompts } from "@/lib/ai-prompts";
+import {
+  DEFAULT_COMMIT_PROMPT,
+  DEFAULT_REPORT_PROMPT,
+  DEFAULT_WEEKLY_REPORT_PROMPT,
+  loadAiPrompts,
+} from "@/lib/ai-prompts";
 import { useSettingsStore } from "@/stores/settings";
-import type { GitCommitContext, GitCommitInfo } from "@/types";
+import type { GitCommitContext, GitCommitInfo, ReportPeriodType } from "@/types";
 
 /** 一个项目在给定时间范围内的提交记录(日报输入) */
 export interface ProjectCommits {
@@ -94,11 +99,12 @@ ${ctx.diff || "(empty)"}${untrackedNamesSection}${untrackedContentsSection}`,
   return text.trim();
 }
 
-/** 汇总多个项目的提交记录,生成 Markdown 日报 */
-export async function generateDailyReport(
+/** 汇总多个项目的提交记录,生成 Markdown 报告(日报/周报按 periodType 选择提示词) */
+export async function generateReport(
   data: ProjectCommits[],
   rangeLabel: string,
   language: SupportedLocale,
+  periodType: ReportPeriodType,
 ): Promise<string> {
   const prompts = await loadAiPrompts();
   const sections = data
@@ -111,9 +117,11 @@ export async function generateDailyReport(
       return `### ${heading}\n${lines || "(no commits)"}`;
     })
     .join("\n\n");
+  const custom = periodType === "weekly" ? prompts.reportWeekly : prompts.report;
+  const fallback = periodType === "weekly" ? DEFAULT_WEEKLY_REPORT_PROMPT : DEFAULT_REPORT_PROMPT;
   const { text } = await generateText({
     model: getChatModel(),
-    system: buildSystemPrompt(prompts.report, DEFAULT_REPORT_PROMPT, language),
+    system: buildSystemPrompt(custom, fallback, language),
     prompt: `Time range: ${rangeLabel}.
 
 Commit records:

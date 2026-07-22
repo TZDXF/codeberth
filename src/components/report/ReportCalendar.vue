@@ -3,9 +3,7 @@ import { computed, ref, watch, type Ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { ChevronLeft, ChevronRight } from "@lucide/vue";
 import { getLocalTimeZone, parseDate, today, type DateValue } from "@internationalized/date";
-import {
-  CalendarRoot,
-} from "reka-ui";
+import { CalendarRoot } from "reka-ui";
 import {
   CalendarCell,
   CalendarCellTrigger,
@@ -25,6 +23,8 @@ import { useSettingsStore } from "@/stores/settings";
 const props = defineProps<{
   modelValue: string | null;
   calendarData: CalendarMeta | null;
+  /** 周报时间范围高亮("YYYY-MM-DD" 起止,闭区间);null 表示不高亮 */
+  highlightRange?: { start: string; end: string } | null;
 }>();
 
 const emit = defineEmits<{
@@ -129,6 +129,25 @@ function getReportCount(dv: DateValue): number {
   return reportDates.value[dv.toString()] ?? 0;
 }
 
+/** 周报范围高亮:日期是否落在 highlightRange 闭区间内(字符串即 ISO 日期,可直接字典序比较) */
+function isInHighlightRange(dv: DateValue): boolean {
+  const r = props.highlightRange;
+  if (!r) return false;
+  const ds = dv.toString();
+  return ds >= r.start && ds <= r.end;
+}
+
+/** 范围高亮 class:中段去圆角连成带,起止日保留外侧圆角(完整类名供 Tailwind 扫描) */
+function getHighlightClass(dv: DateValue): string {
+  if (!isInHighlightRange(dv)) return "";
+  const r = props.highlightRange!;
+  const ds = dv.toString();
+  if (ds === r.start && ds === r.end) return "bg-primary/10";
+  if (ds === r.start) return "bg-primary/10 rounded-r-none";
+  if (ds === r.end) return "bg-primary/10 rounded-l-none";
+  return "bg-primary/10 rounded-none";
+}
+
 /** Type helper: narrow grid cell date to DateValue for CalendarCellTrigger */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function asDateValue(dv: any): DateValue {
@@ -175,11 +194,7 @@ function asDateValue(dv: any): DateValue {
         </CalendarGridRow>
       </CalendarGridHead>
       <CalendarGridBody>
-        <CalendarGridRow
-          v-for="(row, _idx) in month.rows"
-          :key="_idx"
-          class="flex"
-        >
+        <CalendarGridRow v-for="(row, _idx) in month.rows" :key="_idx" class="flex">
           <CalendarCell
             v-for="cellDate in row"
             :key="cellDate.toString()"
@@ -188,7 +203,7 @@ function asDateValue(dv: any): DateValue {
             <CalendarCellTrigger
               :day="asDateValue(cellDate)"
               :month="month.value"
-              :class="getDayClass(cellDate)"
+              :class="[getDayClass(cellDate), getHighlightClass(cellDate)]"
               :title="getDayTitle(cellDate)"
               class="relative flex size-8 items-center justify-center rounded-md p-0 font-normal text-sm"
             >

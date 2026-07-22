@@ -1,16 +1,16 @@
-//! 日报定时调度引擎(订阅模式)。
+//! 日报/周报定时调度引擎(订阅模式)。
 //!
 //! 启动一个 tokio 后台循环:
 //! 1. 计算所有启用定时任务的下次触发时间
 //! 2. `sleep_until` 精确等待到最早触发时刻
-//! 3. 时间到 → 拉取 git_log → 调 AI → 保存日报历史 → emit 事件
+//! 3. 时间到 → 拉取 git_log → 调 AI → 保存报告历史 → emit 事件
 //! 4. 定时任务变更时通过 Notify 唤醒重算
 
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
-use chrono::{Datelike, Local, NaiveTime, Timelike};
+use chrono::{Datelike, Local, NaiveDate, NaiveTime, Timelike};
 use reqwest::Client;
 use serde::Deserialize;
 use serde_json::Value;
@@ -20,9 +20,9 @@ use tokio::time::{self, Duration, Instant};
 
 use crate::commands::git::{run_git_current_user, run_git_log};
 use crate::commands::report::{
-    read_schedules_from_dir, update_last_run_at, ReportGeneratedPayload, ReportSchedule,
+    read_schedules, update_last_run_at, ReportGeneratedPayload, ReportSchedule,
 };
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 use crate::models::GitCommitInfo;
 use crate::workday;
 
@@ -73,9 +73,37 @@ fn load_ai_config(data_dir: &PathBuf) -> AiConfig {
         .unwrap_or_default()
 }
 
-fn load_report_prompt(data_dir: &PathBuf) -> String {
-    let path = data_dir.join("prompts").join("report.md");
-    fs::read_to_string(&path).unwrap_or_default()
+/// 从 settings.json 读取界面语言(报告语言与其保持一致),默认 zh-CN
+fn load_language(data_dir: &PathBuf) -> String {
+    let path = data_dir.join("settings.json");
+    fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str::<Value>(&s).ok())
+        .and_then(|v| {
+            v.get("language")
+                .and_then(|x| x.as_str())
+                .map(|s| s.to_string())
+        })
+        .unwrap_or_else(|| "zh-CN".into())
+}
+
+/// 按报告类型读取自定义提示词(日报 report.md / 周报 report-weekly.md)
+fn load_report_prompt(data_dir: &PathBuf, report_type: &str) -> String {
+    let file = if report_type == "weekly" {
+        "report-weekly.md"
+    } else {
+        "report.md"
+    };
+    fs::read_to_string(data_dir.join("prompts").join(file)).unwrap_or_default()
+}
+
+/// 内置默认提示词(与前端 ai-prompts.ts 一致)
+fn default_prompt(report_type: &str) -> &'static str {
+    if report_type == "weekly" {
+        "You are a technical project manager. Generate a concise weekly report in Markdown based on git commit records.\n\nGuidelines:\n- Group commits by project\n- Summarize the week's progress, highlighting key changes and their impact\n- Use bullet points for clarity\n- Keep it professional and actionable"
+    } else {
+        "You are a technical project manager. Generate a concise daily report in Markdown based on git commit records.\n\nGuidelines:\n- Group commits by project\n- Highlight key changes and their impact\n- Use bullet points for clarity\n- Keep it professional and actionable"
+    }
 }
 
 // ── OpenAI Chat Completions ────────────────────────────────────────────
@@ -175,6 +203,7 @@ fn build_report_prompt(
 
 /// 计算某个 schedule 的下次触发时刻。
 /// 返回 `Option<Instant>`: None 表示该 schedule 无需等待(已禁用或无有效时间)。
+/// 周报任务同样按每日 time_of_day 唤醒,是否为触发日由 due_schedules 判定。
 fn next_fire(schedule: &ReportSchedule, now_local: &chrono::DateTime<Local>) -> Option<Instant> {
     if !schedule.enabled {
         return None;
@@ -223,7 +252,63 @@ fn earliest_fire(
         .min()
 }
 
-/// 筛选当前时刻应该触发的 schedule(±30 秒容差)
+// ── 工作周(连续工作周期)计算 ────────────────────────────────────────────
+//
+// 工作周 = 一段连续的工作周期,周中单日法定节假日不打断:
+//   例1: 周一~周五工作、周三法定节假日 → 工作周仍为 周一~周五
+//   例2: 周日调休上班、周一~周四工作 → 工作周为 周日~周四
+// 调休周日的归属:下周(周一~周日)内有工作日时前挂为下周工作周起点,
+// 否则(如下周整周节假日)留在本周末尾。
+
+/// 某周(周一~周日)内是否存在工作日
+fn has_workday_in_week(monday: NaiveDate, data_dir: &PathBuf) -> bool {
+    (0..7).any(|i| workday::is_workday(monday + chrono::Duration::days(i), data_dir))
+}
+
+/// 今天所在工作周的起始日
+fn work_week_start(today: NaiveDate, data_dir: &PathBuf) -> NaiveDate {
+    let monday = today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
+    let sunday_before = monday - chrono::Duration::days(1);
+    if has_workday_in_week(monday, data_dir) && workday::is_workday(sunday_before, data_dir) {
+        return sunday_before;
+    }
+    // 本周第一个工作日(周一为节假日时顺延)
+    (0..7)
+        .map(|i| monday + chrono::Duration::days(i))
+        .find(|d| workday::is_workday(*d, data_dir))
+        .unwrap_or(monday)
+}
+
+/// 今天是否为所在工作周的最后一个工作日(周报触发条件)
+fn is_work_week_last_day(today: NaiveDate, data_dir: &PathBuf) -> bool {
+    if !workday::is_workday(today, data_dir) {
+        return false;
+    }
+    let dow = today.weekday().num_days_from_monday(); // 0=周一 .. 6=周日
+    if dow == 6 {
+        // 今天是调休周日:下周有工作日时,今天前挂为下周工作周起点,不是本周末日
+        let next_monday = today + chrono::Duration::days(1);
+        return !has_workday_in_week(next_monday, data_dir);
+    }
+    // 今天之后本周内若还有属于本工作周的工作日,则今天不是末日
+    for i in 1..=(6 - dow) {
+        let d = today + chrono::Duration::days(i as i64);
+        if !workday::is_workday(d, data_dir) {
+            continue;
+        }
+        if i == 6 - dow {
+            // d 是本周日(调休):下周有工作日时归下周,不影响本工作周末日判定
+            let next_monday = d + chrono::Duration::days(1);
+            if has_workday_in_week(next_monday, data_dir) {
+                continue;
+            }
+        }
+        return false;
+    }
+    true
+}
+
+/// 筛选当前时刻应该触发的 schedule(±1 分钟容差)
 fn due_schedules(
     schedules: &[ReportSchedule],
     now_local: &chrono::DateTime<Local>,
@@ -231,7 +316,6 @@ fn due_schedules(
 ) -> Vec<ReportSchedule> {
     let now_time = now_local.time();
     let today = now_local.date_naive();
-    let _today_str = today.format("%Y-%m-%d").to_string();
 
     schedules
         .iter()
@@ -262,7 +346,16 @@ fn due_schedules(
                 }
             }
 
-            // 星期过滤
+            // 周报:工作周模式→工作周末日触发;自定义模式→结束周几触发
+            // (均不使用日报的星期过滤)
+            if s.report_type == "weekly" {
+                if s.weekly_workweek {
+                    return is_work_week_last_day(today, data_dir);
+                }
+                return today.weekday().number_from_monday() == s.weekly_end_weekday;
+            }
+
+            // 日报:星期过滤
             if s.weekdays_only {
                 let w = today.weekday().num_days_from_monday();
                 if w >= 5 {
@@ -270,7 +363,7 @@ fn due_schedules(
                 }
             }
 
-            // 中国工作日过滤
+            // 日报:中国工作日过滤
             if s.chinese_workday_only && !workday::is_workday(today, data_dir) {
                 return false;
             }
@@ -304,16 +397,33 @@ fn load_project_paths(data_dir: &PathBuf) -> AppResult<HashMap<i64, (String, Str
     Ok(map)
 }
 
+/// 更新 last_run_at(独立短连接,失败仅记录日志)
+fn mark_last_run(data_dir: &PathBuf, schedule_id: &str) {
+    let now_ts = Local::now().timestamp();
+    match rusqlite::Connection::open(data_dir.join("projects.db")) {
+        Ok(conn) => {
+            if let Err(e) = update_last_run_at(&conn, schedule_id, now_ts) {
+                eprintln!("[scheduler] 更新 last_run_at 失败: {e}");
+            }
+        }
+        Err(e) => eprintln!("[scheduler] 打开数据库失败(更新 last_run_at): {e}"),
+    }
+}
+
 // ── schedule execution ─────────────────────────────────────────────────
 
-async fn fire_schedule(
+/// 执行一次定时任务:拉取提交 → 调 AI → 写报告历史 → emit 事件。
+/// 成功返回报告历史 id;任何失败以 Err 返回(自动调度时由调用方记录日志)。
+pub(crate) async fn fire_schedule(
     app: &AppHandle,
     client: &Client,
     data_dir: &PathBuf,
     schedule: &ReportSchedule,
-) {
+) -> AppResult<i64> {
+    let is_weekly = schedule.report_type == "weekly";
+    let default_name = if is_weekly { "周报定时任务" } else { "日报定时任务" };
     let schedule_name = if schedule.name.is_empty() {
-        "日报定时任务".to_string()
+        default_name.to_string()
     } else {
         schedule.name.clone()
     };
@@ -324,42 +434,63 @@ async fn fire_schedule(
     );
 
     // 1. 读取项目路径
-    let projects = match load_project_paths(data_dir) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[scheduler] 读取项目列表失败: {e}");
-            return;
-        }
-    };
+    let projects = load_project_paths(data_dir).map_err(|e| {
+        eprintln!("[scheduler] 读取项目列表失败: {e}");
+        e
+    })?;
 
     // 2. 读取 AI 配置
     let ai_config = load_ai_config(data_dir);
     if ai_config.ai_api_key.is_empty() {
         eprintln!("[scheduler] AI API Key 未配置,跳过生成");
-        return;
+        return Err(AppError::External("AI API Key 未配置,请先在设置页配置".into()));
     }
 
-    // 3. 读取提示词模板
-    let custom_prompt = load_report_prompt(data_dir);
+    // 3. 读取提示词模板(按报告类型)
+    let language = load_language(data_dir);
+    let custom_prompt = load_report_prompt(data_dir, &schedule.report_type);
     let system_prompt = if custom_prompt.trim().is_empty() {
-        // 使用内置默认 prompt(与前端 ai-prompts.ts 一致)
-        "You are a technical project manager. Generate a concise daily report in Markdown based on git commit records.\n\nGuidelines:\n- Group commits by project\n- Highlight key changes and their impact\n- Use bullet points for clarity\n- Keep it professional and actionable"
-            .to_string()
+        default_prompt(&schedule.report_type).to_string()
     } else {
         custom_prompt
     };
-    let system_prompt = if schedule.language() == "zh-CN" {
+    let system_prompt = if language == "zh-CN" {
         format!("{system_prompt}\n\nRespond in 中文.")
     } else {
         format!("{system_prompt}\n\nRespond in English.")
     };
 
-    // 4. 获取日期范围(今天)
+    // 4. 计算日期范围
     let today = Local::now().date_naive();
-    let date_str = today.format("%Y-%m-%d").to_string();
-    let since = format!("{date_str} 00:00:00");
-    let until = format!("{date_str} 23:59:59");
-    let range_label = format!("{date_str}");
+    let today_str = today.format("%Y-%m-%d").to_string();
+    let (date_from, date_to) = if is_weekly {
+        if schedule.weekly_workweek {
+            // 工作周模式:工作周起始日(含前挂的调休周日)~ 今天
+            let start = work_week_start(today, data_dir);
+            (start.format("%Y-%m-%d").to_string(), today_str.clone())
+        } else {
+            // 自定义模式:本周 weekly_start_weekday 日 ~ 今天(起始日晚于今天时取上周对应日)
+            let monday =
+                today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
+            let offset = schedule.weekly_start_weekday.clamp(1, 7) - 1;
+            let mut start = monday + chrono::Duration::days(offset as i64);
+            if start > today {
+                start -= chrono::Duration::days(7);
+            }
+            (start.format("%Y-%m-%d").to_string(), today_str.clone())
+        }
+    } else {
+        (today_str.clone(), today_str.clone())
+    };
+    let since = format!("{date_from} 00:00:00");
+    let until = format!("{date_to} 23:59:59");
+    let range_label = if date_from == date_to {
+        date_from.clone()
+    } else if language == "zh-CN" {
+        format!("{date_from} 至 {date_to}")
+    } else {
+        format!("{date_from} ~ {date_to}")
+    };
 
     // 5. 对每个项目拉取 git_log
     let mut commits_by_project: Vec<(i64, String, String, Vec<GitCommitInfo>)> = Vec::new();
@@ -367,12 +498,10 @@ async fn fire_schedule(
         if let Some((path, name, desc)) = projects.get(&pid) {
             // 解析作者过滤
             let author: Option<String> = if schedule.author_mode == "me" {
-                run_git_current_user(path)
-                    .ok()
-                    .and_then(|u| {
-                        let name = u.name;
-                        if name.is_empty() { None } else { Some(name) }
-                    })
+                run_git_current_user(path).ok().and_then(|u| {
+                    let name = u.name;
+                    if name.is_empty() { None } else { Some(name) }
+                })
             } else {
                 None
             };
@@ -382,15 +511,16 @@ async fn fire_schedule(
         }
     }
 
-    // 无提交则跳过
-    if !commits_by_project.iter().any(|(_, _, _, c)| !c.is_empty()) {
+    // 过滤掉时间范围内没有提交的项目(不进 prompt、不写历史)
+    commits_by_project.retain(|(_, _, _, c)| !c.is_empty());
+
+    if commits_by_project.is_empty() {
         eprintln!("[scheduler] {schedule_name}: 无提交记录,跳过");
         // 仍标记为已运行,避免当天重复检查
-        let now_ts = Local::now().timestamp();
-        if let Err(e) = update_last_run_at(data_dir, &schedule.id, now_ts) {
-            eprintln!("[scheduler] 更新 last_run_at 失败: {e}");
-        }
-        return;
+        mark_last_run(data_dir, &schedule.id);
+        return Err(AppError::External(
+            "所选项目在时间范围内没有提交记录".into(),
+        ));
     }
 
     // 6. 组装 prompt
@@ -398,18 +528,17 @@ async fn fire_schedule(
         .iter()
         .map(|(_, name, desc, commits)| (name.clone(), desc.clone(), commits.clone()))
         .collect();
-    let user_prompt = build_report_prompt(&prompt_data, &range_label, &schedule.language());
+    let user_prompt = build_report_prompt(&prompt_data, &range_label, &language);
 
     // 7. 调用 AI
-    let result = match call_ai(client, &ai_config, &system_prompt, &user_prompt).await {
-        Ok(r) => r,
-        Err(e) => {
+    let result = call_ai(client, &ai_config, &system_prompt, &user_prompt)
+        .await
+        .map_err(|e| {
             eprintln!("[scheduler] {schedule_name}: AI 调用失败: {e}");
-            return;
-        }
-    };
+            AppError::External(e)
+        })?;
 
-    // 8. 保存到日报历史(SQLite)
+    // 8. 保存到报告历史(SQLite)
     let db_path = data_dir.join("projects.db");
     let save_result: Result<i64, _> = (|| {
         let conn = rusqlite::Connection::open(&db_path)?;
@@ -418,9 +547,9 @@ async fn fire_schedule(
         let ids_json = serde_json::to_string(&project_ids).unwrap_or_default();
 
         conn.execute(
-            "INSERT INTO report_history (project_ids, date_from, date_to, range_label, author_mode, language, result, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![ids_json, date_str, date_str, range_label, &schedule.author_mode, schedule.language(), result, now],
+            "INSERT INTO report_history (project_ids, date_from, date_to, range_label, author_mode, language, period_type, result, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![ids_json, date_from, date_to, range_label, &schedule.author_mode, language, schedule.report_type, result, now],
         )?;
         let report_id = conn.last_insert_rowid();
 
@@ -436,34 +565,37 @@ async fn fire_schedule(
         Ok::<i64, crate::error::AppError>(report_id)
     })();
 
-    match save_result {
-        Ok(history_id) => {
-            // 9. 更新 last_run_at
-            let now_ts = Local::now().timestamp();
-            if let Err(e) = update_last_run_at(data_dir, &schedule.id, now_ts) {
-                eprintln!("[scheduler] 更新 last_run_at 失败: {e}");
-            }
+    let history_id = save_result.map_err(|e| {
+        eprintln!("[scheduler] {schedule_name}: 保存报告历史失败: {e}");
+        e
+    })?;
 
-            // 10. 通知前端
-            let payload = ReportGeneratedPayload {
-                schedule_name: schedule_name.clone(),
-                history_id,
-                date_from: date_str.clone(),
-                date_to: date_str,
-            };
-            if let Err(e) = app.emit("report://generated", payload) {
-                eprintln!("[scheduler] 发送前端通知失败: {e}");
-            }
+    // 9. 更新 last_run_at
+    mark_last_run(data_dir, &schedule.id);
 
-            eprintln!("[scheduler] {schedule_name}: 日报已生成 (id={history_id})");
-        }
-        Err(e) => {
-            eprintln!("[scheduler] {schedule_name}: 保存日报历史失败: {e}");
-        }
+    // 10. 通知前端
+    let payload = ReportGeneratedPayload {
+        schedule_name: schedule_name.clone(),
+        history_id,
+        date_from,
+        date_to,
+    };
+    if let Err(e) = app.emit("report://generated", payload) {
+        eprintln!("[scheduler] 发送前端通知失败: {e}");
     }
+
+    eprintln!("[scheduler] {schedule_name}: 报告已生成 (id={history_id})");
+    Ok(history_id)
 }
 
 // ── main loop ──────────────────────────────────────────────────────────
+
+/// 从 SQLite 读取全部定时任务(MutexGuard 在函数返回前释放,避免跨 await 持锁)
+fn load_schedules(app: &AppHandle) -> AppResult<Vec<ReportSchedule>> {
+    let db = app.state::<crate::db::Db>();
+    let conn = db.0.lock().unwrap();
+    read_schedules(&conn)
+}
 
 /// 启动调度器后台循环。
 /// 应在 `tauri::Builder::setup` 中通过 `tauri::async_runtime::spawn` 调用。
@@ -476,8 +608,8 @@ pub async fn run(app: AppHandle) {
     let client = Client::new();
 
     loop {
-        // 重新加载定时任务(解析时间,不用持久化的 last_run_at 判断是否应跳过今天)
-        let schedules = match read_schedules_from_dir(&data_dir) {
+        // 重新加载定时任务(从 SQLite 读取;锁在此行结束后立即释放,不跨 await)
+        let schedules = match load_schedules(&app) {
             Ok(s) => s,
             Err(e) => {
                 eprintln!("[scheduler] 读取定时任务失败: {e}");
@@ -491,7 +623,9 @@ pub async fn run(app: AppHandle) {
         // 先检查是否有当前时刻应触发的任务(±1 分钟容差,防止 sleep_until 因重算延迟漏掉)
         let due = due_schedules(&schedules, &now_local, &data_dir);
         for s in &due {
-            fire_schedule(&app, &client, &data_dir, s).await;
+            if let Err(e) = fire_schedule(&app, &client, &data_dir, s).await {
+                eprintln!("[scheduler] {}: 执行失败: {e}", s.name);
+            }
         }
 
         // 计算下次触发时刻
@@ -516,20 +650,10 @@ pub async fn run(app: AppHandle) {
                     continue;
                 }
                 _ = time::sleep(IDLE_INTERVAL) => {
-                    // 定期检查(防止文件外部变更)
+                    // 定期检查
                     continue;
                 }
             }
         }
-    }
-}
-
-// ── ReportSchedule helpers ─────────────────────────────────────────────
-
-impl ReportSchedule {
-    fn language(&self) -> &str {
-        // schedule 中没有 language 字段,默认 zh-CN
-        // 可以从 settings.json 读取,但暂时用默认值
-        "zh-CN"
     }
 }
