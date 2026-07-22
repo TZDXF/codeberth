@@ -157,7 +157,7 @@ async function run(
             v-for="(f, i) in files"
             :key="`${project.id}:${f.path}`"
             v-slot="{ open }"
-            :open="openStates[f.path]"
+            :open="files.length > 1 ? openStates[f.path] : true"
             :class="{ 'mt-2 border-t border-border pt-2': i > 0 }"
             @update:open="onToggle(f, $event)"
           >

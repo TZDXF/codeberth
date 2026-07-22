@@ -81,7 +81,7 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
             v-for="(g, gi) in groups"
             :key="`${project.id}:${g.dir}`"
             v-slot="{ open }"
-            :open="openStates[g.dir]"
+            :open="groups.length > 1 ? openStates[g.dir] : true"
             :class="{ 'mt-2 border-t border-border pt-2': gi > 0 }"
             @update:open="onToggle(g, $event)"
           >
