@@ -6,30 +6,43 @@ import type { AiPrompts } from "@/types";
  * 用户在 ~/.pm/prompts/commit.md 中没有自定义内容时使用;
  * 输出语言指令由调用方按当前语言设置自动追加,无需写入模板
  */
-export const DEFAULT_COMMIT_PROMPT = `You write concise, high-quality git commit messages.
+export const DEFAULT_COMMIT_PROMPT = `You write concise, high-quality git commit messages following the Conventional Commits specification.
 
-Requirements:
-- Use the Conventional Commits format: "type: summary", e.g. feat / fix / refactor / docs / chore / perf / test / build.
-- The first line (subject) must be a single line of at most 72 characters.
-- Optionally add one blank line followed by a short body with bullet points for important details; omit the body for small changes.
-- Output ONLY the commit message itself. No explanations, no quotes, no markdown code fences.`;
+# Format
+- Always begin the subject with an emoji followed by a Conventional Commits type: "<emoji> <type>[optional scope]: <description>"
+- Use the type that best matches the change: feat / fix / docs / style / refactor / perf / test / build / chore / ci / revert
+- Subject line: imperative mood, present tense, capitalized first letter, no trailing period, at most 72 characters (preferably under 50)
+- Optionally add a scope in parentheses to identify the affected module (e.g. "feat(git)", "fix(scheduler)", "refactor(ai)")
+- Recommended emoji mapping: ✨ feat · 🐛 fix · 📝 docs · 🎨 style · ♻️ refactor · ⚡️ perf · ✅ test · 🔧 chore · 👷 ci · 📦 build · ⏪ revert
+
+# Style
+- Default to a simple single-line subject for small changes
+- Use a full style (subject + blank line + body + footer) when the change is non-trivial, touches multiple concerns, or needs to explain motivation or breaking impact
+- Full-style body: explain WHAT and WHY (not HOW), use bullet points for multiple changes, wrap lines at 72 characters
+- Full-style footer: prefix breaking changes with "BREAKING CHANGE:", reference issues with "Closes:" / "Fixes:" / "Refs:" when relevant
+- Match the language and style of the project's recent commit messages provided in the user prompt
+
+# Output
+- Output ONLY the commit message itself. No explanations, no quotes, no markdown code fences`;
 
 /** 内置默认提示词(日报生成),同上 */
-export const DEFAULT_REPORT_PROMPT = `You are an assistant that writes clear, professional daily work reports in Markdown.
+export const DEFAULT_REPORT_PROMPT = `You are an assistant that writes short, plain-language daily work reports in Markdown.
 
 Report requirements:
-- Output Markdown. Start with a top-level summary (2-4 sentences), then one section per project.
-- Group related commits into meaningful work items instead of listing every commit verbatim; use bullet points.
-- Keep it factual and concise; do not invent work that is not reflected in the commits.
+- Keep the entire report to at most 80 Chinese characters (or the equivalent in another language). Be terse.
+- Use plain, easy-to-understand language. Describe what was done in everyday terms, not jargon.
+- Start with a one-line summary of the day, then one short bullet per work item; group related commits.
+- Do not invent work that is not reflected in the commits.
 - Output ONLY the report Markdown itself.`;
 
 /** 内置默认提示词(周报生成),同上 */
 export const DEFAULT_WEEKLY_REPORT_PROMPT = `You are an assistant that writes clear, professional weekly work reports in Markdown.
 
 Report requirements:
-- Output Markdown. Start with a top-level summary of the week (3-5 sentences), then one section per project.
+- Output Markdown. Start with a brief top-level summary of the week (1-2 sentences), then one section per project.
+- Each project section must be at most 80 Chinese characters (or the equivalent in another language). Keep it terse and factual.
 - Group related commits into meaningful work items instead of listing every commit verbatim; use bullet points.
-- Highlight overall progress, key milestones and blockers across the week; keep it factual and concise.
+- Highlight overall progress, key milestones and blockers across the week.
 - Do not invent work that is not reflected in the commits.
 - Output ONLY the report Markdown itself.`;
 
