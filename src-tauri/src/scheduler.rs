@@ -134,20 +134,20 @@ fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
         .position(|w| w.eq_ignore_ascii_case(needle.as_bytes()))
 }
 
-/// 剥离输出中的 <think>...</think> 思考块(推理模型或中转服务可能把思考过程混入正文)
+/// 大小写不敏感地判断 ASCII 前缀
+fn starts_with_ascii_case_insensitive(s: &str, prefix: &str) -> bool {
+    s.len() >= prefix.len() && s.as_bytes()[..prefix.len()].eq_ignore_ascii_case(prefix.as_bytes())
+}
+
+/// 剥离输出开头的 <think>...</think> 思考块(推理模型或中转服务可能把思考过程混入正文)。
+/// 只处理响应起始位置的思考块:正文中出现的 <think> 字样(如报告介绍该功能本身)必须保留
 fn strip_thinking(text: &str) -> String {
-    let mut out = text.to_string();
-    while let Some(start) = find_ascii_case_insensitive(&out, "<think>") {
-        match find_ascii_case_insensitive(&out[start + "<think>".len()..], "</think>") {
-            Some(rel) => {
-                let end = start + "<think>".len() + rel + "</think>".len();
-                out.replace_range(start..end, "");
-            }
-            None => {
-                // 未闭合的 <think> 块:截断到标签前
-                out.truncate(start);
-                break;
-            }
+    let mut out = text.trim_start();
+    while starts_with_ascii_case_insensitive(out, "<think>") {
+        match find_ascii_case_insensitive(out, "</think>") {
+            Some(i) => out = out[i + "</think>".len()..].trim_start(),
+            // 未闭合的思考块:整段都是思考,没有正文
+            None => return String::new(),
         }
     }
     out.trim().to_string()
@@ -717,5 +717,39 @@ pub async fn run(app: AppHandle) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::strip_thinking;
+
+    #[test]
+    fn strips_leading_think_block() {
+        assert_eq!(strip_thinking("<think>推理过程</think>正文"), "正文");
+        // 大小写不敏感 + 前导空白
+        assert_eq!(strip_thinking("  <THINK>推理</THINK>\n正文"), "正文");
+        // 多个连续思考块
+        assert_eq!(strip_thinking("<think>a</think><think>b</think>正文"), "正文");
+    }
+
+    #[test]
+    fn unclosed_leading_think_yields_empty() {
+        assert_eq!(strip_thinking("<think>只有思考没有正文"), "");
+    }
+
+    #[test]
+    fn keeps_think_mentions_in_body() {
+        // 回归:正文(如介绍思考剥离功能的报告)中出现的 <think> 字样必须保留
+        let report = "# 日报\n支持成对/未闭合的`<think>`标签块自动剥离\n其余内容";
+        assert_eq!(strip_thinking(report), report);
+        // 正文中的成对标签同样保留
+        let paired = "摘要\n示例:<think>x</think> 是标签";
+        assert_eq!(strip_thinking(paired), paired);
+    }
+
+    #[test]
+    fn plain_text_unchanged() {
+        assert_eq!(strip_thinking("  普通报告  "), "普通报告");
     }
 }

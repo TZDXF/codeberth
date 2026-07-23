@@ -60,12 +60,18 @@ function thinkingOffParams(baseURL: string, model: string): Record<string, unkno
   return {};
 }
 
-/** 剥离输出中的 <think>...</think> 思考块(推理模型或中转服务可能把思考过程混入正文) */
+/**
+ * 剥离输出开头的 <think>...</think> 思考块(推理模型或中转服务可能把思考过程混入正文)。
+ * 只处理响应起始位置的思考块:正文中出现的 <think> 字样(如报告介绍该功能本身)必须保留
+ */
 function stripThinking(text: string): string {
-  return text
-    .replace(/<think>[\s\S]*?<\/think>/gi, "")
-    .replace(/<think>[\s\S]*$/i, "")
-    .trim();
+  let out = text.trimStart();
+  while (/^<think>/i.test(out)) {
+    const close = out.search(/<\/think>/i);
+    if (close === -1) return ""; // 未闭合的思考块:整段都是思考,没有正文
+    out = out.slice(close + "</think>".length).trimStart();
+  }
+  return out.trim();
 }
 
 /**
