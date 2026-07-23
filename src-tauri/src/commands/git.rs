@@ -464,25 +464,29 @@ fn read_untracked_file(repo: &str, rel: &str) -> Option<GitUntrackedFile> {
 /// 其中可读的文本文件附带内容(预算受限,二进制跳过);
 /// 附最近若干条提交 subject 供模型对齐仓库提交风格
 #[tauri::command]
-pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
-    let has_head = git_command(&path)
+pub async fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
+    run_blocking(move || commit_context_blocking(&path)).await
+}
+
+fn commit_context_blocking(path: &str) -> AppResult<GitCommitContext> {
+    let has_head = git_command(path)
         .args(["rev-parse", "--verify", "HEAD"])
         .output()
         .map(|o| o.status.success())
         .unwrap_or(false);
     let base: &[&str] = if has_head { &["HEAD"] } else { &["--cached"] };
 
-    let stat_out = run_git(&path, &[&["diff", "--stat"], base].concat())?;
+    let stat_out = run_git(path, &[&["diff", "--stat"], base].concat())?;
     let diff_out = run_git(
-        &path,
+        path,
         &[&["diff"], base, &["--", "."], DIFF_EXCLUDES].concat(),
     )?;
 
-    let untracked_out = run_git(&path, &["ls-files", "--others", "--exclude-standard"])?;
+    let untracked_out = run_git(path, &["ls-files", "--others", "--exclude-standard"])?;
     let untracked: Vec<String> = String::from_utf8_lossy(&untracked_out.stdout)
         .lines()
         .map(str::trim)
-        .filter(|l| !l.is_empty() && !is_nested_repo(&path, l))
+        .filter(|l| !l.is_empty() && !is_nested_repo(path, l))
         .map(String::from)
         .collect();
 
@@ -492,7 +496,7 @@ pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
         if budget == 0 {
             break;
         }
-        if let Some(mut f) = read_untracked_file(&path, name) {
+        if let Some(mut f) = read_untracked_file(path, name) {
             let (content, hit_budget) = truncate_chars(&f.content, budget);
             f.truncated = f.truncated || hit_budget;
             budget -= content.chars().count();
@@ -503,7 +507,7 @@ pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
 
     let recent_commits = if has_head {
         run_git(
-            &path,
+            path,
             &[
                 "log",
                 "--no-merges",
@@ -539,20 +543,23 @@ pub fn git_commit_context(path: String) -> AppResult<GitCommitContext> {
 /// author 传入时按 git --author 语义过滤(匹配 "Name <email>")。
 /// 非 git 仓库或尚无提交时返回空数组而非报错(多项目汇总时容错)
 #[tauri::command]
-pub fn git_log(
+pub async fn git_log(
     path: String,
     since: Option<String>,
     until: Option<String>,
     max_count: Option<u32>,
     author: Option<String>,
 ) -> AppResult<Vec<GitCommitInfo>> {
-    run_git_log(
-        &path,
-        since.as_deref(),
-        until.as_deref(),
-        max_count,
-        author.as_deref(),
-    )
+    run_blocking(move || {
+        run_git_log(
+            &path,
+            since.as_deref(),
+            until.as_deref(),
+            max_count,
+            author.as_deref(),
+        )
+    })
+    .await
 }
 
 /// git_log 核心逻辑,供 scheduler 等内部模块复用;参数均为引用以避免不必要的 clone
@@ -625,8 +632,8 @@ pub(crate) fn run_git_log(
 /// 读取仓库当前 git 用户身份(日报"仅自己"过滤用)。
 /// `git config user.name/email` 本身含全局配置回退;非仓库或未配置时返回空串而非报错
 #[tauri::command]
-pub fn git_current_user(path: String) -> AppResult<GitUser> {
-    run_git_current_user(&path)
+pub async fn git_current_user(path: String) -> AppResult<GitUser> {
+    run_blocking(move || run_git_current_user(&path)).await
 }
 
 pub(crate) fn run_git_current_user(path: &str) -> AppResult<GitUser> {
@@ -754,7 +761,7 @@ mod tests {
         init_repo(&dir);
         fs::write(dir.join("a.txt"), "a").unwrap();
 
-        let st = git_commit(dir.to_str().unwrap().to_string(), "init".into(), true).unwrap();
+        let st = commit_blocking(dir.to_str().unwrap(), "init", true).unwrap();
         assert!(st.is_repo);
         assert_eq!(st.branch.as_deref(), Some("main"));
         assert_eq!(st.staged, 0);
@@ -762,7 +769,7 @@ mod tests {
         assert_eq!(st.untracked, 0);
 
         // 空提交信息被拒绝
-        assert!(git_commit(dir.to_str().unwrap().to_string(), "  ".into(), true).is_err());
+        assert!(commit_blocking(dir.to_str().unwrap(), "  ", true).is_err());
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -779,15 +786,13 @@ mod tests {
         fs::write(dir.join("b.txt"), "b").unwrap(); // 未跟踪
 
         // 不勾选:未暂存修改照常提交,未跟踪文件保留
-        let st = git_commit(dir.to_str().unwrap().to_string(), "tracked only".into(), false)
-            .unwrap();
+        let st = commit_blocking(dir.to_str().unwrap(), "tracked only", false).unwrap();
         assert_eq!(st.staged, 0);
         assert_eq!(st.modified, 0);
         assert_eq!(st.untracked, 1);
 
         // 勾选:未跟踪文件一并提交,工作区干净
-        let st =
-            git_commit(dir.to_str().unwrap().to_string(), "with untracked".into(), true).unwrap();
+        let st = commit_blocking(dir.to_str().unwrap(), "with untracked", true).unwrap();
         assert_eq!(st.staged, 0);
         assert_eq!(st.modified, 0);
         assert_eq!(st.untracked, 0);
@@ -803,28 +808,24 @@ mod tests {
         git(&dir, &["add", "a.txt"]);
         git(&dir, &["commit", "-m", "init"]);
 
-        let branches = list_git_branches(dir.to_str().unwrap().to_string()).unwrap();
+        let branches = list_branches_blocking(dir.to_str().unwrap()).unwrap();
         assert_eq!(branches.local, vec!["main".to_string()]);
         assert!(branches.remote.is_empty());
 
         // 新建并切换
-        let st =
-            git_checkout(dir.to_str().unwrap().to_string(), "feature".into(), true, false).unwrap();
+        let st = checkout_blocking(dir.to_str().unwrap(), "feature", true, false).unwrap();
         assert_eq!(st.branch.as_deref(), Some("feature"));
 
-        let branches = list_git_branches(dir.to_str().unwrap().to_string()).unwrap();
+        let branches = list_branches_blocking(dir.to_str().unwrap()).unwrap();
         assert_eq!(branches.local, vec!["feature".to_string(), "main".to_string()]);
 
         // 切回 main
-        let st =
-            git_checkout(dir.to_str().unwrap().to_string(), "main".into(), false, false).unwrap();
+        let st = checkout_blocking(dir.to_str().unwrap(), "main", false, false).unwrap();
         assert_eq!(st.branch.as_deref(), Some("main"));
 
         // 空分支名 / 不存在的分支
-        assert!(git_checkout(dir.to_str().unwrap().to_string(), " ".into(), false, false).is_err());
-        assert!(
-            git_checkout(dir.to_str().unwrap().to_string(), "nope".into(), false, false).is_err()
-        );
+        assert!(checkout_blocking(dir.to_str().unwrap(), " ", false, false).is_err());
+        assert!(checkout_blocking(dir.to_str().unwrap(), "nope", false, false).is_err());
 
         let _ = fs::remove_dir_all(&dir);
     }
@@ -853,7 +854,7 @@ mod tests {
         git(&clone_b, &["clone", origin.to_str().unwrap(), "."]);
 
         // 远程分支列出 feature/main,不含 origin/HEAD 符号引用
-        let branches = list_git_branches(clone_b.to_str().unwrap().to_string()).unwrap();
+        let branches = list_branches_blocking(clone_b.to_str().unwrap()).unwrap();
         assert_eq!(branches.local, vec!["main".to_string()]);
         assert_eq!(
             branches.remote,
@@ -861,23 +862,13 @@ mod tests {
         );
 
         // 检出远程分支:本地无同名分支 → 创建跟踪分支
-        let st = git_checkout(
-            clone_b.to_str().unwrap().to_string(),
-            "origin/feature".into(),
-            false,
-            true,
-        )
-        .unwrap();
+        let st = checkout_blocking(clone_b.to_str().unwrap(), "origin/feature", false, true)
+            .unwrap();
         assert_eq!(st.branch.as_deref(), Some("feature"));
 
         // 本地已有同名分支 → 直接切换(幂等,不报错)
-        let st = git_checkout(
-            clone_b.to_str().unwrap().to_string(),
-            "origin/feature".into(),
-            false,
-            true,
-        )
-        .unwrap();
+        let st = checkout_blocking(clone_b.to_str().unwrap(), "origin/feature", false, true)
+            .unwrap();
         assert_eq!(st.branch.as_deref(), Some("feature"));
 
         let _ = fs::remove_dir_all(&origin);
@@ -899,13 +890,13 @@ mod tests {
         git(&clone, &["commit", "-m", "c1"]);
 
         // 首次 push 无 upstream → 自动回退 `git push -u origin HEAD`
-        let st = git_push(clone.to_str().unwrap().to_string()).unwrap();
+        let st = push_blocking(clone.to_str().unwrap()).unwrap();
         assert!(st.is_repo);
 
         // 已建立 upstream 后走普通 push 路径
         fs::write(clone.join("a.txt"), "a2").unwrap();
         git(&clone, &["commit", "-am", "c2"]);
-        git_push(clone.to_str().unwrap().to_string()).unwrap();
+        push_blocking(clone.to_str().unwrap()).unwrap();
 
         let out = git_command(origin.to_str().unwrap())
             .args(["rev-list", "--count", "main"])
@@ -946,7 +937,7 @@ mod tests {
         fs::write(clone_b.join("a.txt"), "local\n").unwrap();
         git(&clone_b, &["commit", "-am", "local"]);
 
-        let res = git_pull(clone_b.to_str().unwrap().to_string()).unwrap();
+        let res = pull_blocking(clone_b.to_str().unwrap()).unwrap();
         assert!(res.status.is_repo);
         assert_eq!(res.conflicts, vec!["a.txt".to_string()]);
         assert_eq!(res.status.conflicted, 1);
@@ -969,7 +960,7 @@ mod tests {
         git(&dir, &["add", "b.txt"]);
         fs::write(dir.join("c.txt"), "c").unwrap(); // 未跟踪
 
-        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        let ctx = commit_context_blocking(dir.to_str().unwrap()).unwrap();
         assert!(ctx.stat.contains("a.txt"));
         assert!(ctx.stat.contains("b.txt"));
         assert!(ctx.diff.contains("changed"));
@@ -987,7 +978,7 @@ mod tests {
         git(&dir, &["add", "a.txt"]);
 
         // 尚无提交:回退到暂存区 diff
-        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        let ctx = commit_context_blocking(dir.to_str().unwrap()).unwrap();
         assert!(ctx.diff.contains("a.txt"));
         assert!(ctx.untracked.is_empty());
 
@@ -1037,7 +1028,7 @@ mod tests {
         fs::write(dir.join("b.txt"), "b").unwrap();
 
         // 外层只看到 b.txt;嵌套仓库不出现在 untracked,其内部改动不进 diff
-        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        let ctx = commit_context_blocking(dir.to_str().unwrap()).unwrap();
         assert_eq!(ctx.untracked, vec!["b.txt".to_string()]);
         assert!(ctx.stat.is_empty());
         assert!(ctx.diff.is_empty());
@@ -1056,7 +1047,7 @@ mod tests {
         fs::write(dir.join("new.txt"), "hello world").unwrap();
         fs::write(dir.join("bin.dat"), [0u8, 159, 146, 150]).unwrap(); // 含 NUL,视为二进制
 
-        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        let ctx = commit_context_blocking(dir.to_str().unwrap()).unwrap();
         // 名称清单两个都在;内容清单只有文本文件
         assert!(ctx.untracked.contains(&"new.txt".to_string()));
         assert!(ctx.untracked.contains(&"bin.dat".to_string()));
@@ -1082,7 +1073,7 @@ mod tests {
         fs::write(dir.join("sub/pnpm-lock.yaml"), "lockfileVersion: 10").unwrap();
 
         // diff 排除子目录中的锁文件(* 跨目录匹配);stat 仍保留,模型可感知"锁文件变了"
-        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        let ctx = commit_context_blocking(dir.to_str().unwrap()).unwrap();
         assert!(ctx.diff.contains("changed"));
         assert!(!ctx.diff.contains("pnpm-lock"));
         assert!(ctx.stat.contains("pnpm-lock.yaml"));
@@ -1101,7 +1092,7 @@ mod tests {
         git(&dir, &["commit", "-am", "fix: second"]);
 
         // 新提交在前,供模型对齐提交风格
-        let ctx = git_commit_context(dir.to_str().unwrap().to_string()).unwrap();
+        let ctx = commit_context_blocking(dir.to_str().unwrap()).unwrap();
         assert_eq!(
             ctx.recent_commits,
             vec!["fix: second".to_string(), "feat: init".to_string()]
@@ -1122,7 +1113,7 @@ mod tests {
         fs::write(dir.join("b.txt"), "b").unwrap();
 
         // 勾选包含未跟踪:b.txt 被提交,嵌套仓库不被加成 embedded gitlink
-        let st = git_commit(dir.to_str().unwrap().to_string(), "add b".into(), true).unwrap();
+        let st = commit_blocking(dir.to_str().unwrap(), "add b", true).unwrap();
         assert_eq!(st.untracked, 0);
 
         let out = git_command(dir.to_str().unwrap())
@@ -1161,7 +1152,7 @@ mod tests {
             ],
         );
 
-        let all = git_log(dir.to_str().unwrap().to_string(), None, None, None, None).unwrap();
+        let all = run_git_log(dir.to_str().unwrap(), None, None, None, None).unwrap();
         assert_eq!(all.len(), 3);
         // 时间倒序:最新在前
         assert_eq!(all[0].subject, "docs: third");
@@ -1171,44 +1162,25 @@ mod tests {
         assert!(!all[0].hash.is_empty());
 
         // author 过滤:仅含匹配作者的提交
-        let mine = git_log(
-            dir.to_str().unwrap().to_string(),
-            None,
-            None,
-            None,
-            Some("test".into()),
-        )
-        .unwrap();
+        let mine = run_git_log(dir.to_str().unwrap(), None, None, None, Some("test")).unwrap();
         assert_eq!(mine.len(), 2);
         assert!(mine.iter().all(|c| c.author == "test"));
-        let nobody = git_log(
-            dir.to_str().unwrap().to_string(),
-            None,
-            None,
-            None,
-            Some("no-such-author".into()),
-        )
-        .unwrap();
+        let nobody =
+            run_git_log(dir.to_str().unwrap(), None, None, None, Some("no-such-author")).unwrap();
         assert!(nobody.is_empty());
 
         // max_count 截断
-        let one = git_log(dir.to_str().unwrap().to_string(), None, None, Some(1), None).unwrap();
+        let one = run_git_log(dir.to_str().unwrap(), None, None, Some(1), None).unwrap();
         assert_eq!(one.len(), 1);
 
         // until 远早于提交时间 → 空
-        let none = git_log(
-            dir.to_str().unwrap().to_string(),
-            None,
-            Some("2000-01-01".into()),
-            None,
-            None,
-        )
-        .unwrap();
+        let none = run_git_log(dir.to_str().unwrap(), None, Some("2000-01-01"), None, None)
+            .unwrap();
         assert!(none.is_empty());
 
         // 非仓库 → 空数组而非报错
         let plain = temp_dir("log-plain");
-        let res = git_log(plain.to_str().unwrap().to_string(), None, None, None, None).unwrap();
+        let res = run_git_log(plain.to_str().unwrap(), None, None, None, None).unwrap();
         assert!(res.is_empty());
 
         let _ = fs::remove_dir_all(&dir);
@@ -1219,13 +1191,13 @@ mod tests {
     fn git_current_user_reads_config() {
         let dir = temp_dir("user");
         init_repo(&dir);
-        let user = git_current_user(dir.to_str().unwrap().to_string()).unwrap();
+        let user = run_git_current_user(dir.to_str().unwrap()).unwrap();
         assert_eq!(user.name, "test");
         assert_eq!(user.email, "test@example.com");
 
         // 非仓库:不报错即可(字段取决于全局配置,内容不可断言)
         let plain = temp_dir("user-plain");
-        git_current_user(plain.to_str().unwrap().to_string()).unwrap();
+        run_git_current_user(plain.to_str().unwrap()).unwrap();
 
         let _ = fs::remove_dir_all(&dir);
         let _ = fs::remove_dir_all(&plain);

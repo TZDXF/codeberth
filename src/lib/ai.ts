@@ -34,16 +34,69 @@ function requireConfig() {
 }
 
 /**
+ * 按服务商/模型名给出"关闭思考模式"的请求参数。
+ * 只对已知支持该参数的提供方注入(Qwen/GLM/豆包系),避免严格 OpenAI 兼容网关因未知字段 400
+ */
+function thinkingOffParams(baseURL: string, model: string): Record<string, unknown> {
+  const s = `${baseURL} ${model}`.toLowerCase();
+  if (s.includes("qwen") || s.includes("dashscope") || s.includes("aliyuncs")) {
+    if (s.includes("dashscope") || s.includes("aliyuncs")) {
+      // 阿里云百炼 / DashScope 兼容模式
+      return { enable_thinking: false };
+    }
+    // 自建 vLLM/SGLang 部署的 Qwen3 系
+    return { enable_thinking: false, chat_template_kwargs: { enable_thinking: false } };
+  }
+  if (
+    s.includes("glm") ||
+    s.includes("zhipu") ||
+    s.includes("bigmodel") ||
+    s.includes("doubao") ||
+    s.includes("volces")
+  ) {
+    // 智谱 GLM / 火山方舟(豆包)系
+    return { thinking: { type: "disabled" } };
+  }
+  return {};
+}
+
+/** 剥离输出中的 <think>...</think> 思考块(推理模型或中转服务可能把思考过程混入正文) */
+function stripThinking(text: string): string {
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/<think>[\s\S]*$/i, "")
+    .trim();
+}
+
+/**
  * 构造 OpenAI Chat Completions 兼容模型。
  * 显式使用 .chat()(而非默认的 Responses API),兼容 DeepSeek/Moonshot/各类中转服务;
  * fetch 走 Tauri HTTP 插件(Rust 侧发请求),规避 webview 的 CORS 限制
  */
 function getChatModel() {
   const { baseURL, apiKey, model } = requireConfig();
+  const baseFetch = tauriFetch as unknown as typeof globalThis.fetch;
+  const noThink = thinkingOffParams(baseURL, model);
+  // 命中已知推理模型提供方时,包装 fetch 向请求体注入关闭思考的参数
+  const fetchFn =
+    Object.keys(noThink).length === 0
+      ? baseFetch
+      : ((async (input: RequestInfo | URL, init?: RequestInit) => {
+          if (init?.body && typeof init.body === "string") {
+            try {
+              const body = JSON.parse(init.body);
+              Object.assign(body, noThink);
+              init = { ...init, body: JSON.stringify(body) };
+            } catch {
+              // 非 JSON 请求体,原样透传
+            }
+          }
+          return baseFetch(input, init);
+        }) as typeof globalThis.fetch);
   const openai = createOpenAI({
     baseURL,
     apiKey,
-    fetch: tauriFetch as unknown as typeof globalThis.fetch,
+    fetch: fetchFn,
   });
   return openai.chat(model);
 }
@@ -96,7 +149,7 @@ ${ctx.stat || "(none)"}
 Diff:${truncatedNote}
 ${ctx.diff || "(empty)"}${untrackedNamesSection}${untrackedContentsSection}`,
   });
-  return text.trim();
+  return stripThinking(text);
 }
 
 /** 汇总多个项目的提交记录,生成 Markdown 报告(日报/周报按 periodType 选择提示词) */
@@ -127,7 +180,7 @@ export async function generateReport(
 Commit records:
 ${sections}`,
   });
-  return text.trim();
+  return stripThinking(text);
 }
 
 /** 测试连接:发一条极短请求验证 baseURL / apiKey / model 可用 */

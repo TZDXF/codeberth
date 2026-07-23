@@ -123,6 +123,62 @@ struct ChatMessage {
     content: String,
 }
 
+/// 大小写不敏感地查找 ASCII 子串,返回字节索引(标签均为 ASCII,字节索引与原串对齐)
+fn find_ascii_case_insensitive(haystack: &str, needle: &str) -> Option<usize> {
+    if needle.len() > haystack.len() {
+        return None;
+    }
+    haystack
+        .as_bytes()
+        .windows(needle.len())
+        .position(|w| w.eq_ignore_ascii_case(needle.as_bytes()))
+}
+
+/// 剥离输出中的 <think>...</think> 思考块(推理模型或中转服务可能把思考过程混入正文)
+fn strip_thinking(text: &str) -> String {
+    let mut out = text.to_string();
+    while let Some(start) = find_ascii_case_insensitive(&out, "<think>") {
+        match find_ascii_case_insensitive(&out[start + "<think>".len()..], "</think>") {
+            Some(rel) => {
+                let end = start + "<think>".len() + rel + "</think>".len();
+                out.replace_range(start..end, "");
+            }
+            None => {
+                // 未闭合的 <think> 块:截断到标签前
+                out.truncate(start);
+                break;
+            }
+        }
+    }
+    out.trim().to_string()
+}
+
+/// 按服务商/模型名给出"关闭思考模式"请求参数(仅匹配已知支持方,避免严格网关因未知字段 400)
+fn thinking_off_params(base_url: &str, model: &str) -> serde_json::Map<String, Value> {
+    let s = format!("{} {}", base_url.to_lowercase(), model.to_lowercase());
+    let mut map = serde_json::Map::new();
+    if s.contains("qwen") || s.contains("dashscope") || s.contains("aliyuncs") {
+        // 阿里云百炼 / DashScope 兼容模式
+        map.insert("enable_thinking".into(), Value::Bool(false));
+        if !s.contains("dashscope") && !s.contains("aliyuncs") {
+            // 自建 vLLM/SGLang 部署的 Qwen3 系
+            map.insert(
+                "chat_template_kwargs".into(),
+                serde_json::json!({ "enable_thinking": false }),
+            );
+        }
+    } else if s.contains("glm")
+        || s.contains("zhipu")
+        || s.contains("bigmodel")
+        || s.contains("doubao")
+        || s.contains("volces")
+    {
+        // 智谱 GLM / 火山方舟(豆包)系
+        map.insert("thinking".into(), serde_json::json!({ "type": "disabled" }));
+    }
+    map
+}
+
 async fn call_ai(
     client: &Client,
     config: &AiConfig,
@@ -131,13 +187,17 @@ async fn call_ai(
 ) -> Result<String, String> {
     let url = format!("{}/chat/completions", config.ai_base_url.trim_end_matches('/'));
 
-    let body = serde_json::json!({
+    let mut body = serde_json::json!({
         "model": config.ai_model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ]
     });
+    // 命中已知推理模型提供方时注入"关闭思考模式"参数
+    if let Some(obj) = body.as_object_mut() {
+        obj.extend(thinking_off_params(&config.ai_base_url, &config.ai_model));
+    }
 
     let resp = client
         .post(&url)
@@ -159,10 +219,12 @@ async fn call_ai(
         .await
         .map_err(|e| format!("解析 AI 响应失败: {e}"))?;
 
-    data.choices
+    let content = data
+        .choices
         .first()
         .map(|c| c.message.content.clone())
-        .ok_or_else(|| "AI 返回空响应".into())
+        .ok_or_else(|| "AI 返回空响应".to_string())?;
+    Ok(strip_thinking(&content))
 }
 
 // ── prompt builder ─────────────────────────────────────────────────────
