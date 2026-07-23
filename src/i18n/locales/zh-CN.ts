@@ -72,9 +72,6 @@ export default {
     },
     actions: {
       more: "更多操作",
-      openInVscode: "在 VSCode 中打开",
-      openInExplorer: "在资源管理器中打开",
-      openInTerminal: "在终端中打开",
       archive: "归档项目",
       archiveConfirm: "确定归档项目「{name}」吗?\n归档后将不再显示,历史数据会保留。",
       archiveSuccess: "已归档项目「{name}」",
@@ -146,8 +143,8 @@ export default {
       description:
         "拉取产生了 {count} 个冲突文件。建议使用 VSCode 或终端解决冲突,解决完成后回到此处提交。",
       files: "冲突文件",
-      openVscode: "在 VSCode 中打开",
-      openTerminal: "在终端中打开",
+      openVscode: "VS Code",
+      openTerminal: "终端",
       close: "知道了",
     },
   },
@@ -275,11 +272,11 @@ export default {
   },
   openWith: {
     vscode: "VSCode",
-    openInVscode: "在 VSCode 中打开",
+    openInVscode: "VSCode",
     explorer: "资源管理器",
-    openInExplorer: "在系统文件管理器中打开",
+    openInExplorer: "资源管理器",
     terminal: "终端",
-    openInTerminal: "在系统终端中打开该目录",
+    openInTerminal: "终端",
   },
   docker: {
     title: "Docker Compose",
@@ -359,7 +356,7 @@ export default {
     },
     picker: {
       remove: "移除标签",
-      edit: "编辑标签",
+      add: "添加标签",
       manage: "管理标签...",
     },
   },

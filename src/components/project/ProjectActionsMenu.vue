@@ -2,7 +2,7 @@
 import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Archive, Code, FolderOpen, MoreHorizontal, Terminal } from "@lucide/vue";
+import { Archive, MoreHorizontal } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { OPEN_WITH_OPTIONS } from "@/lib/open-with";
 import { cmd } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import type { EditorKind, Project } from "@/types";
@@ -32,6 +33,10 @@ const vscodeAvailable = ref<boolean | null>(null);
 onMounted(async () => {
   vscodeAvailable.value = await detectVscode();
 });
+
+function isDisabled(kind: EditorKind): boolean {
+  return kind === "vscode" && vscodeAvailable.value === false;
+}
 
 async function openWith(kind: EditorKind) {
   try {
@@ -68,20 +73,14 @@ async function archive() {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" class="w-44" @click.stop>
       <DropdownMenuItem
+        v-for="opt in OPEN_WITH_OPTIONS"
+        :key="opt.kind"
         class="gap-2 text-xs"
-        :disabled="vscodeAvailable === false"
-        @click="openWith('vscode')"
+        :disabled="isDisabled(opt.kind)"
+        @click="openWith(opt.kind)"
       >
-        <Code class="h-3.5 w-3.5" />
-        {{ t("projects.actions.openInVscode") }}
-      </DropdownMenuItem>
-      <DropdownMenuItem class="gap-2 text-xs" @click="openWith('explorer')">
-        <FolderOpen class="h-3.5 w-3.5" />
-        {{ t("projects.actions.openInExplorer") }}
-      </DropdownMenuItem>
-      <DropdownMenuItem class="gap-2 text-xs" @click="openWith('terminal')">
-        <Terminal class="h-3.5 w-3.5" />
-        {{ t("projects.actions.openInTerminal") }}
+        <component :is="opt.icon" class="h-3.5 w-3.5" />
+        {{ t(opt.descKey) }}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
       <DropdownMenuItem variant="destructive" class="gap-2 text-xs" @click="archive">

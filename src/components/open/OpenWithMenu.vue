@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, type Component } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Check, ChevronDown, Code, FolderOpen, Terminal } from "@lucide/vue";
+import { ChevronDown } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { OPEN_WITH_OPTIONS } from "@/lib/open-with";
 import { cmd } from "@/lib/tauri";
 import { useSettingsStore } from "@/stores/settings";
 import type { EditorKind, Project } from "@/types";
@@ -21,24 +22,9 @@ const props = withDefaults(defineProps<{ project: Project; compact?: boolean }>(
 
 const settings = useSettingsStore();
 
-const OPTIONS: { kind: EditorKind; icon: Component; labelKey: string; descKey: string }[] = [
-  {
-    kind: "explorer",
-    icon: FolderOpen,
-    labelKey: "openWith.explorer",
-    descKey: "openWith.openInExplorer",
-  },
-  { kind: "vscode", icon: Code, labelKey: "openWith.vscode", descKey: "openWith.openInVscode" },
-  {
-    kind: "terminal",
-    icon: Terminal,
-    labelKey: "openWith.terminal",
-    descKey: "openWith.openInTerminal",
-  },
-];
-
 const current = computed(
-  () => OPTIONS.find((opt) => opt.kind === settings.defaultOpenWith) ?? OPTIONS[0],
+  () =>
+    OPEN_WITH_OPTIONS.find((opt) => opt.kind === settings.defaultOpenWith) ?? OPEN_WITH_OPTIONS[0],
 );
 
 const vscodeAvailable = ref<boolean | null>(null);
@@ -89,7 +75,7 @@ async function openWith(kind: EditorKind) {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" class="w-52" @click.stop>
         <DropdownMenuItem
-          v-for="opt in OPTIONS"
+          v-for="opt in OPEN_WITH_OPTIONS"
           :key="opt.kind"
           class="gap-2 text-xs"
           :disabled="isDisabled(opt.kind)"
@@ -97,10 +83,6 @@ async function openWith(kind: EditorKind) {
         >
           <component :is="opt.icon" class="h-3.5 w-3.5" />
           {{ t(opt.descKey) }}
-          <Check
-            v-if="opt.kind === settings.defaultOpenWith"
-            class="ml-auto h-3.5 w-3.5 text-primary"
-          />
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

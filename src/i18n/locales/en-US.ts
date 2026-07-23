@@ -71,9 +71,6 @@ export default {
     },
     actions: {
       more: "More actions",
-      openInVscode: "Open in VSCode",
-      openInExplorer: "Open in file explorer",
-      openInTerminal: "Open in terminal",
       archive: "Archive project",
       archiveConfirm:
         'Archive project "{name}"?\nIt will be hidden from the list, but its history will be kept.',
@@ -146,8 +143,8 @@ export default {
       description:
         "Pull produced {count} conflicted files. Resolve them in VSCode or a terminal, then come back here to commit.",
       files: "Conflicted files",
-      openVscode: "Open in VSCode",
-      openTerminal: "Open in terminal",
+      openVscode: "VS Code",
+      openTerminal: "Terminal",
       close: "Got it",
     },
   },
@@ -278,11 +275,11 @@ export default {
   },
   openWith: {
     vscode: "VSCode",
-    openInVscode: "Open in VSCode",
+    openInVscode: "VSCode",
     explorer: "Explorer",
-    openInExplorer: "Open in system file explorer",
+    openInExplorer: "Explorer",
     terminal: "Terminal",
-    openInTerminal: "Open this directory in a system terminal",
+    openInTerminal: "Terminal",
   },
   docker: {
     title: "Docker Compose",
@@ -362,7 +359,7 @@ export default {
     },
     picker: {
       remove: "Remove tag",
-      edit: "Edit tags",
+      add: "Add tag",
       manage: "Manage tags...",
     },
   },

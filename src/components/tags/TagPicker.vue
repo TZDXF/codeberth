@@ -70,7 +70,7 @@ async function removeTag(tagId: number) {
       <DropdownMenuTrigger as-child>
         <Button variant="outline" size="sm" class="h-6 gap-1 px-2 text-xs">
           <Tags class="h-3 w-3" />
-          {{ t("tags.picker.edit") }}
+          {{ t("tags.picker.add") }}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" class="w-52">
