@@ -46,7 +46,7 @@ import { cmd } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
 import { useTagsStore } from "@/stores/tags";
-import type { GitCommitInfo, GitUser, ReportPeriodType } from "@/types";
+import type { GitCommitInfo, GitUser, ReportPeriodType, WorkWeekRanges } from "@/types";
 
 type Mode = ReportPeriodType;
 type DailyRangeKey = "today" | "yesterday" | "custom";
@@ -208,6 +208,54 @@ const customDateLabel = computed(() =>
   customDate.value ? fmt(toLocalDate(customDate.value)) : t("report.pickDate"),
 );
 
+/** 后端计算的工作周范围(连续工作周期,含法定节假日/调休识别;打开弹窗时拉取) */
+const workWeekRanges = ref<WorkWeekRanges | null>(null);
+
+/** "YYYY-MM-DD" → 本地当天 00:00 的 Date(避免 new Date(str) 的 UTC 解析时区偏移) */
+function parseDateStr(s: string) {
+  const [y, m, d] = s.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
+/** 周报"本周/上周"的具体日期范围。优先用后端工作周算法;
+ *  未返回/失败时回退本地算法(周一为一周起点,上周为周一至周日) */
+const weekRanges = computed(() => {
+  if (workWeekRanges.value) {
+    return {
+      thisWeek: {
+        from: parseDateStr(workWeekRanges.value.thisWeek.from),
+        to: parseDateStr(workWeekRanges.value.thisWeek.to),
+      },
+      lastWeek: {
+        from: parseDateStr(workWeekRanges.value.lastWeek.from),
+        to: parseDateStr(workWeekRanges.value.lastWeek.to),
+      },
+    };
+  }
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dow = (today.getDay() + 6) % 7; // 周一=0 .. 周日=6
+  const monday = new Date(today);
+  monday.setDate(monday.getDate() - dow);
+  const lastMonday = new Date(monday);
+  lastMonday.setDate(lastMonday.getDate() - 7);
+  const lastSunday = new Date(monday);
+  lastSunday.setDate(lastSunday.getDate() - 1);
+  return {
+    thisWeek: { from: monday, to: today },
+    lastWeek: { from: lastMonday, to: lastSunday },
+  };
+});
+
+/** 当前选中的周范围(自定义时无提示) */
+const selectedWeekRange = computed(() =>
+  weeklyKey.value === "custom" ? null : weekRanges.value[weeklyKey.value],
+);
+
+function fmtWeekRange(r: { from: Date; to: Date }) {
+  return `${fmt(r.from)} ~ ${fmt(r.to)}`;
+}
+
 /** 当前选择的日期范围(本地时区,起止均为当天 00:00)。
  *  日报恒为同一天;周报默认本周一~今天 */
 const range = computed<{ from: Date; to: Date }>(() => {
@@ -230,24 +278,19 @@ const range = computed<{ from: Date; to: Date }>(() => {
         return { from: today, to: today };
     }
   }
-  // 周报:本周一(getDay 周日=0 需偏移)为范围起点
-  const dow = (today.getDay() + 6) % 7; // 周一=0 .. 周日=6
-  const monday = daysAgo(dow);
+  // 周报:以周一为一周起点(工作周)
   switch (weeklyKey.value) {
-    case "lastWeek": {
-      const lastMonday = new Date(monday);
-      lastMonday.setDate(lastMonday.getDate() - 7);
-      return { from: lastMonday, to: daysAgo(dow + 1) };
-    }
+    case "lastWeek":
+      return weekRanges.value.lastWeek;
     case "custom": {
       const { start, end } = customRange.value;
       return {
-        from: start ? toLocalDate(start) : monday,
+        from: start ? toLocalDate(start) : weekRanges.value.thisWeek.from,
         to: end ? toLocalDate(end) : today,
       };
     }
     default:
-      return { from: monday, to: today };
+      return weekRanges.value.thisWeek;
   }
 });
 
@@ -267,6 +310,10 @@ watch(open, (v) => {
   keyword.value = "";
   filterTagIds.value = [];
   if (!tagsStore.tags.length) void tagsStore.fetchTags();
+  // 拉取后端工作周范围(本周/上周的具体日期);失败保留 null 走本地回退
+  void cmd<WorkWeekRanges>("get_work_week_ranges")
+    .then((r) => (workWeekRanges.value = r))
+    .catch(() => {});
   selectedIds.value = props.presetProjectId != null ? [props.presetProjectId] : [];
   // 锁定单项目时 selectedIds 可能与上次相同而不触发上面的 watch,这里显式解析一次
   selfNames.value = {};
@@ -413,12 +460,30 @@ async function copyResult() {
   <Dialog v-model:open="open">
     <!-- flex 覆盖基类 grid;内容叠加易超视口,max-h 限制弹窗总高。
          基类 sm:max-w-sm 在 ≥sm 断点的层叠顺序后于非变体类,会盖掉普通 max-w-*,
-         故宽度必须用 sm: 变体覆盖;min(4xl, 100%-2rem) 防止窗口较窄时弹窗贴边 -->
+         故宽度必须用 sm: 变体覆盖;min(*, 100%-2rem) 防止窗口较窄时弹窗贴边。
+         未生成报告时只有配置栏,用较窄宽度避免空旷 -->
     <DialogContent
-      class="flex max-h-[calc(100dvh-3rem)] flex-col sm:max-w-[min(56rem,calc(100%-2rem))]"
+      class="flex max-h-[calc(100dvh-3rem)] flex-col"
+      :class="
+        result || generating
+          ? 'sm:max-w-[min(56rem,calc(100%-2rem))]'
+          : 'sm:max-w-[min(34rem,calc(100%-2rem))]'
+      "
     >
       <DialogHeader class="shrink-0">
-        <DialogTitle>{{ t("report.title") }}</DialogTitle>
+        <!-- pr-8 避开 DialogContent 右上角绝对定位的关闭按钮 -->
+        <div class="flex items-center justify-between pr-8">
+          <DialogTitle>{{ t("report.title") }}</DialogTitle>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-7 gap-1 px-2 text-xs"
+            @click="router.push('/report-history')"
+          >
+            <History class="h-3.5 w-3.5" />
+            {{ t("report.history") }}
+          </Button>
+        </div>
         <DialogDescription>{{ t("report.description") }}</DialogDescription>
       </DialogHeader>
 
@@ -426,7 +491,10 @@ async function copyResult() {
            item 的 min-width:auto 会按内容 min-content 撑破弹窗(如长 URL/英文串),
            min-w-0 解除该自动最小宽度;min-h-0 同理,是限高下内部滚动生效的关键 -->
       <div class="flex min-h-0 min-w-0 flex-1 gap-4">
-        <div class="flex min-h-0 w-72 shrink-0 flex-col gap-4 overflow-y-auto pr-1">
+        <div
+          class="flex min-h-0 flex-col gap-4 overflow-y-auto pr-1"
+          :class="result || generating ? 'w-72 shrink-0' : 'flex-1'"
+        >
           <div v-if="!locked" class="flex flex-col gap-1.5">
             <div class="flex items-center justify-between">
               <label class="text-sm font-medium">{{ t("report.selectProjects") }}</label>
@@ -612,6 +680,13 @@ async function copyResult() {
                 </PopoverContent>
               </Popover>
             </div>
+            <!-- 选中本周/上周后显示具体日期范围(工作周:连续工作周期) -->
+            <p
+              v-if="mode === 'weekly' && selectedWeekRange"
+              class="text-xs text-muted-foreground"
+            >
+              {{ fmtWeekRange(selectedWeekRange) }}
+            </p>
           </div>
 
           <div class="flex flex-col gap-1.5">
@@ -724,7 +799,11 @@ async function copyResult() {
           </div>
         </div>
 
-        <div class="flex min-h-0 min-w-0 flex-1 flex-col rounded-md border">
+        <!-- 生成前不展示结果面板;生成中即显示以呈现进度反馈 -->
+        <div
+          v-if="result || generating"
+          class="flex min-h-0 min-w-0 flex-1 flex-col rounded-md border"
+        >
           <div class="flex shrink-0 items-center justify-between border-b px-3 py-1.5">
             <div class="flex items-center gap-1">
               <span class="text-xs text-muted-foreground">Markdown</span>
@@ -735,31 +814,20 @@ async function copyResult() {
                 {{ t("report.saved") }}
               </span>
             </div>
-            <div class="flex items-center gap-1">
-              <Button
-                v-if="result"
-                variant="ghost"
-                size="sm"
-                class="h-6 gap-1 px-2 text-xs"
-                @click="copyResult"
-              >
-                <Copy class="h-3 w-3" />
-                {{ t("report.copy") }}
-              </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                class="h-6 gap-1 px-2 text-xs"
-                @click="router.push('/report-history')"
-              >
-                <History class="h-3 w-3" />
-                {{ t("report.history") }}
-              </Button>
-            </div>
+            <Button
+              v-if="result"
+              variant="ghost"
+              size="sm"
+              class="h-6 gap-1 px-2 text-xs"
+              @click="copyResult"
+            >
+              <Copy class="h-3 w-3" />
+              {{ t("report.copy") }}
+            </Button>
           </div>
           <ScrollArea class="min-h-0 flex-1">
             <p v-if="!result" class="p-4 text-sm text-muted-foreground">
-              {{ generating ? t("report.generating") : t("report.placeholder") }}
+              {{ t("report.generating") }}
             </p>
             <div v-else class="p-4 text-sm">
               <Markdown

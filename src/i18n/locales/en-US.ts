@@ -188,7 +188,6 @@ export default {
     copied: "Copied to clipboard",
     noProjects: "Select at least one project",
     noCommits: "No commits found in the selected projects for this time range",
-    placeholder: 'Select projects and a time range, then click "Generate report"',
     loadFailed: "Failed to load commits: {error}",
     rangeLabel: "{from} to {to}",
     saved: "Saved to report history",

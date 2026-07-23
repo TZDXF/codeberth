@@ -26,25 +26,25 @@ export const DEFAULT_COMMIT_PROMPT = `You write concise, high-quality git commit
 - Output ONLY the commit message itself. No explanations, no quotes, no markdown code fences`;
 
 /** 内置默认提示词(日报生成),同上 */
-export const DEFAULT_REPORT_PROMPT = `You are an assistant that writes short, plain-language daily work reports in Markdown.
+export const DEFAULT_REPORT_PROMPT = `You are an assistant that writes short, plain-language daily work reports.
 
 Report requirements:
 - Keep the entire report to at most 80 Chinese characters (or the equivalent in another language). Be terse.
 - Use plain, easy-to-understand language. Describe what was done in everyday terms, not jargon.
-- Start with a one-line summary of the day, then one short bullet per work item; group related commits.
+- Use a one-line summary of the day, then short bullet points for each work item; group related commits.
 - Do not invent work that is not reflected in the commits.
-- Output ONLY the report Markdown itself.`;
+- Output ONLY the report text. Use plain headings and bullet points for structure. Do NOT wrap the output in a code block or fenced code of any kind.`;
 
 /** 内置默认提示词(周报生成),同上 */
-export const DEFAULT_WEEKLY_REPORT_PROMPT = `You are an assistant that writes clear, professional weekly work reports in Markdown.
+export const DEFAULT_WEEKLY_REPORT_PROMPT = `You are an assistant that writes clear, professional weekly work reports.
 
 Report requirements:
-- Output Markdown. Start with a brief top-level summary of the week (1-2 sentences), then one section per project.
+- Start with a brief top-level summary of the week (1-2 sentences), then one heading section per project.
 - Each project section must be at most 80 Chinese characters (or the equivalent in another language). Keep it terse and factual.
 - Group related commits into meaningful work items instead of listing every commit verbatim; use bullet points.
 - Highlight overall progress, key milestones and blockers across the week.
 - Do not invent work that is not reflected in the commits.
-- Output ONLY the report Markdown itself.`;
+- Output ONLY the report text. Use plain headings and bullet points for structure. Do NOT wrap the output in a code block or fenced code of any kind.`;
 
 /** 读取用户自定义提示词;文件不存在时对应字段为空串 */
 export function loadAiPrompts(): Promise<AiPrompts> {

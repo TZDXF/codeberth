@@ -328,7 +328,7 @@ fn has_workday_in_week(monday: NaiveDate, data_dir: &PathBuf) -> bool {
 }
 
 /// 今天所在工作周的起始日
-fn work_week_start(today: NaiveDate, data_dir: &PathBuf) -> NaiveDate {
+pub(crate) fn work_week_start(today: NaiveDate, data_dir: &PathBuf) -> NaiveDate {
     let monday = today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
     let sunday_before = monday - chrono::Duration::days(1);
     if has_workday_in_week(monday, data_dir) && workday::is_workday(sunday_before, data_dir) {

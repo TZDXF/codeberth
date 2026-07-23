@@ -160,6 +160,18 @@ export interface GitUpdatedPayload {
 /** 报告类型:日报(单日) | 周报(日期范围) */
 export type ReportPeriodType = "daily" | "weekly";
 
+/** 工作周日期范围(get_work_week_ranges,起止均为 "YYYY-MM-DD") */
+export interface WorkWeekRange {
+  from: string;
+  to: string;
+}
+
+/** 本周/上周工作周范围(连续工作周期,含法定节假日/调休识别) */
+export interface WorkWeekRanges {
+  thisWeek: WorkWeekRange;
+  lastWeek: WorkWeekRange;
+}
+
 /** 报告历史列表项 */
 export interface ReportHistoryItem {
   id: number;

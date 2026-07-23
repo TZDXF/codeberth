@@ -467,6 +467,62 @@ pub fn get_reports_by_date(
     Ok(results)
 }
 
+// ── commands: work week ranges ─────────────────────────────────────────
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkWeekRange {
+    /// 起止日期 "YYYY-MM-DD"
+    pub from: String,
+    pub to: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WorkWeekRanges {
+    pub this_week: WorkWeekRange,
+    pub last_week: WorkWeekRange,
+}
+
+/// 本周/上周工作周的具体日期范围,供生成报告弹窗展示与查询。
+///
+/// 复用 scheduler 的工作周算法(连续工作周期,法定节假日/调休按 chinese-days
+/// 数据识别):本周 = 当前工作周起点 ~ 今天;上周 = 上一个完整工作周。
+/// 同步 #[tauri::command] 在主线程跑,is_workday 可能读盘/拉 CDN,放入线程池。
+#[tauri::command]
+pub async fn get_work_week_ranges(app: AppHandle) -> AppResult<WorkWeekRanges> {
+    tokio::task::spawn_blocking(move || {
+        let data_dir = workday::data_dir(&app);
+        let today = chrono::Local::now().date_naive();
+        let fmt = |d: NaiveDate| d.format("%Y-%m-%d").to_string();
+
+        let this_start = crate::scheduler::work_week_start(today, &data_dir);
+        // 上一个工作周:本周工作周起点之前最近的工作日即其末日
+        // (14 天上限覆盖整周法定节假日的情况)
+        let mut last_end = this_start - chrono::Duration::days(1);
+        for _ in 0..14 {
+            if workday::is_workday(last_end, &data_dir) {
+                break;
+            }
+            last_end -= chrono::Duration::days(1);
+        }
+        let last_start = crate::scheduler::work_week_start(last_end, &data_dir);
+
+        Ok(WorkWeekRanges {
+            this_week: WorkWeekRange {
+                from: fmt(this_start),
+                to: fmt(today),
+            },
+            last_week: WorkWeekRange {
+                from: fmt(last_start),
+                to: fmt(last_end),
+            },
+        })
+    })
+    .await
+    .map_err(|e| AppError::External(format!("任务执行失败: {e}")))?
+}
+
 // ── commands: schedules ────────────────────────────────────────────────
 
 const SCHEDULE_COLS: &str = "id, name, enabled, report_type, project_ids, author_mode, \

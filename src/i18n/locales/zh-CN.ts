@@ -188,7 +188,6 @@ export default {
     copied: "已复制到剪贴板",
     noProjects: "请至少选择一个项目",
     noCommits: "所选项目在该时间范围内没有提交记录",
-    placeholder: "选择项目与时间范围后,点击「生成日报」",
     loadFailed: "读取提交记录失败:{error}",
     rangeLabel: "{from} 至 {to}",
     saved: "已保存到报告历史",
