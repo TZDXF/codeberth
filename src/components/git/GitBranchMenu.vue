@@ -97,7 +97,7 @@ async function createBranch() {
     <DropdownMenuTrigger as-child>
       <slot />
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="start" class="w-56">
+    <DropdownMenuContent align="start" class="max-h-72 w-56">
       <DropdownMenuItem v-if="loading" disabled class="gap-2 text-xs">
         <Loader2 class="h-3.5 w-3.5 animate-spin" />
         {{ t("common.loading") }}
