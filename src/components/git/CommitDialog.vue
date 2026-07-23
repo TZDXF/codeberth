@@ -26,6 +26,7 @@ const settings = useSettingsStore();
 
 const message = ref("");
 const submitting = ref(false);
+const submittingAndPushing = ref(false);
 const generating = ref(false);
 // 参考 IDEA:未跟踪文件默认不纳入提交,需显式勾选
 const includeUntracked = ref(false);
@@ -57,6 +58,23 @@ async function submit() {
     toast.error(String(e));
   } finally {
     submitting.value = false;
+  }
+}
+
+async function submitAndPush() {
+  if (!message.value.trim() || committable.value === 0 || submitting.value) return;
+  submitting.value = true;
+  submittingAndPushing.value = true;
+  try {
+    await store.commitChanges(props.project, message.value.trim(), includeUntracked.value);
+    await store.pushRepository(props.project);
+    toast.success(t("git.commit.submitAndPushSuccess"));
+    open.value = false;
+  } catch (e) {
+    toast.error(String(e));
+  } finally {
+    submitting.value = false;
+    submittingAndPushing.value = false;
   }
 }
 
@@ -140,8 +158,20 @@ async function generate() {
           {{ t("git.commit.empty") }}
         </p>
         <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            :disabled="!message.trim() || committable === 0 || submitting"
+            @click="submitAndPush"
+          >
+            {{
+              submittingAndPushing
+                ? t("git.commit.submittingAndPushing")
+                : t("git.commit.submitAndPush")
+            }}
+          </Button>
           <Button type="submit" :disabled="!message.trim() || committable === 0 || submitting">
-            {{ submitting ? t("git.commit.submitting") : t("git.actions.commit") }}
+            {{ submitting && !submittingAndPushing ? t("git.commit.submitting") : t("git.actions.commit") }}
           </Button>
         </DialogFooter>
       </form>

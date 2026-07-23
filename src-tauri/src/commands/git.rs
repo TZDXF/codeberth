@@ -54,6 +54,16 @@ fn run_git(path: &str, args: &[&str]) -> AppResult<Output> {
     }))
 }
 
+/// 阻塞任务放入 tokio 线程池执行。
+/// 同步 #[tauri::command] 在主线程跑,git 子进程(尤其 push/pull 网络操作)会卡死 UI
+async fn run_blocking<T: Send + 'static>(
+    f: impl FnOnce() -> AppResult<T> + Send + 'static,
+) -> AppResult<T> {
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| AppError::External(format!("任务执行失败: {e}")))?
+}
+
 pub fn status(path: &str) -> AppResult<GitStatus> {
     let output = git_command(path)
         .args(["status", "--porcelain=v2", "--branch"])
@@ -122,8 +132,8 @@ fn parse_porcelain(path: &str, text: &str) -> GitStatus {
 }
 
 #[tauri::command]
-pub fn get_git_status(path: String) -> AppResult<GitStatus> {
-    status(&path)
+pub async fn get_git_status(path: String) -> AppResult<GitStatus> {
+    run_blocking(move || status(&path)).await
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -134,18 +144,19 @@ pub struct GitRemote {
 
 /// 列出所有 remote 及其地址(非仓库或无 remote 返回空列表)
 #[tauri::command]
-pub fn list_git_remotes(path: String) -> AppResult<Vec<GitRemote>> {
-    let remotes = git_command(&path).arg("remote").output()?;
+pub async fn list_git_remotes(path: String) -> AppResult<Vec<GitRemote>> {
+    run_blocking(move || list_remotes_blocking(&path)).await
+}
+
+fn list_remotes_blocking(path: &str) -> AppResult<Vec<GitRemote>> {
+    let remotes = git_command(path).arg("remote").output()?;
     if !remotes.status.success() {
         return Ok(vec![]);
     }
     let stdout = String::from_utf8_lossy(&remotes.stdout);
     let mut out = Vec::new();
     for name in stdout.lines().map(str::trim).filter(|l| !l.is_empty()) {
-        if let Ok(o) = git_command(&path)
-            .args(["remote", "get-url", name])
-            .output()
-        {
+        if let Ok(o) = git_command(path).args(["remote", "get-url", name]).output() {
             if o.status.success() {
                 let url = String::from_utf8_lossy(&o.stdout).trim().to_string();
                 if !url.is_empty() {
@@ -210,10 +221,14 @@ fn local_branch_names(path: &str) -> AppResult<Vec<String>> {
 }
 
 #[tauri::command]
-pub fn list_git_branches(path: String) -> AppResult<GitBranches> {
+pub async fn list_git_branches(path: String) -> AppResult<GitBranches> {
+    run_blocking(move || list_branches_blocking(&path)).await
+}
+
+fn list_branches_blocking(path: &str) -> AppResult<GitBranches> {
     // 远程分支:for-each-ref 附带 symref 列(tab 分隔),过滤掉 origin/HEAD 这类符号引用
     let remote_out = run_git(
-        &path,
+        path,
         &[
             "for-each-ref",
             "--format=%(refname:short)%09%(symref)",
@@ -232,7 +247,7 @@ pub fn list_git_branches(path: String) -> AppResult<GitBranches> {
         })
         .collect();
     Ok(GitBranches {
-        local: local_branch_names(&path)?,
+        local: local_branch_names(path)?,
         remote,
     })
 }
@@ -241,29 +256,33 @@ pub fn list_git_branches(path: String) -> AppResult<GitBranches> {
 /// remote 为 true 时 branch 形如 "origin/feature":本地已有同名分支则直接切换,
 /// 否则创建跟踪分支(`git checkout -b feature --track origin/feature`)
 #[tauri::command]
-pub fn git_checkout(
+pub async fn git_checkout(
     path: String,
     branch: String,
     create: bool,
     remote: bool,
 ) -> AppResult<GitStatus> {
+    run_blocking(move || checkout_blocking(&path, &branch, create, remote)).await
+}
+
+fn checkout_blocking(path: &str, branch: &str, create: bool, remote: bool) -> AppResult<GitStatus> {
     let branch = branch.trim();
     if branch.is_empty() {
         return Err(AppError::Invalid("分支名不能为空".into()));
     }
     if create {
-        run_git(&path, &["checkout", "-b", branch])?;
+        run_git(path, &["checkout", "-b", branch])?;
     } else if remote {
         let short = branch.split_once('/').map(|(_, s)| s).unwrap_or(branch);
-        if local_branch_names(&path)?.iter().any(|b| b == short) {
-            run_git(&path, &["checkout", short])?;
+        if local_branch_names(path)?.iter().any(|b| b == short) {
+            run_git(path, &["checkout", short])?;
         } else {
-            run_git(&path, &["checkout", "-b", short, "--track", branch])?;
+            run_git(path, &["checkout", "-b", short, "--track", branch])?;
         }
     } else {
-        run_git(&path, &["checkout", branch])?;
+        run_git(path, &["checkout", branch])?;
     }
-    status(&path)
+    status(path)
 }
 
 /// 提交更改,返回最新状态。
@@ -295,35 +314,47 @@ fn nested_repo_dirs(path: &str) -> Vec<String> {
 /// 仅未跟踪文件需要显式勾选(include_untracked)才纳入;
 /// 嵌套 git 仓库始终排除,避免被误加成 embedded gitlink(只存 commit 指针)
 #[tauri::command]
-pub fn git_commit(path: String, message: String, include_untracked: bool) -> AppResult<GitStatus> {
+pub async fn git_commit(
+    path: String,
+    message: String,
+    include_untracked: bool,
+) -> AppResult<GitStatus> {
+    run_blocking(move || commit_blocking(&path, &message, include_untracked)).await
+}
+
+fn commit_blocking(path: &str, message: &str, include_untracked: bool) -> AppResult<GitStatus> {
     let message = message.trim();
     if message.is_empty() {
         return Err(AppError::Invalid("提交信息不能为空".into()));
     }
     if include_untracked {
-        let nested = nested_repo_dirs(&path);
+        let nested = nested_repo_dirs(path);
         if nested.is_empty() {
-            run_git(&path, &["add", "-A"])?;
+            run_git(path, &["add", "-A"])?;
         } else {
             let mut args: Vec<String> = vec!["add".into(), "-A".into(), "--".into(), ".".into()];
             for dir in &nested {
                 args.push(format!(":(exclude){dir}"));
             }
             let arg_refs: Vec<&str> = args.iter().map(String::as_str).collect();
-            run_git(&path, &arg_refs)?;
+            run_git(path, &arg_refs)?;
         }
     } else {
-        run_git(&path, &["add", "-u"])?;
+        run_git(path, &["add", "-u"])?;
     }
-    run_git(&path, &["commit", "-m", message])?;
-    status(&path)
+    run_git(path, &["commit", "-m", message])?;
+    status(path)
 }
 
 /// 拉取远端。产生合并冲突时不算失败:返回冲突文件列表,由前端引导用户解决
 #[tauri::command]
-pub fn git_pull(path: String) -> AppResult<GitPullResult> {
-    let result = git_command(&path).arg("pull").output()?;
-    let conflicts = unmerged_files(&path);
+pub async fn git_pull(path: String) -> AppResult<GitPullResult> {
+    run_blocking(move || pull_blocking(&path)).await
+}
+
+fn pull_blocking(path: &str) -> AppResult<GitPullResult> {
+    let result = git_command(path).arg("pull").output()?;
+    let conflicts = unmerged_files(path);
     if !result.status.success() && conflicts.is_empty() {
         let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
@@ -335,15 +366,19 @@ pub fn git_pull(path: String) -> AppResult<GitPullResult> {
         }));
     }
     Ok(GitPullResult {
-        status: status(&path)?,
+        status: status(path)?,
         conflicts,
     })
 }
 
 /// 推送当前分支;无 upstream 时(如新建分支首推)自动回退 `git push -u origin HEAD`
 #[tauri::command]
-pub fn git_push(path: String) -> AppResult<GitStatus> {
-    match run_git(&path, &["push"]) {
+pub async fn git_push(path: String) -> AppResult<GitStatus> {
+    run_blocking(move || push_blocking(&path)).await
+}
+
+fn push_blocking(path: &str) -> AppResult<GitStatus> {
+    match run_git(path, &["push"]) {
         Ok(_) => {}
         Err(e) => {
             let no_upstream = e.to_string().contains("no upstream branch")
@@ -351,10 +386,10 @@ pub fn git_push(path: String) -> AppResult<GitStatus> {
             if !no_upstream {
                 return Err(e);
             }
-            run_git(&path, &["push", "-u", "origin", "HEAD"])?;
+            run_git(path, &["push", "-u", "origin", "HEAD"])?;
         }
     }
-    status(&path)
+    status(path)
 }
 
 /// 送入 AI 的 diff 长度上限(超出截断,避免 token 爆炸)
