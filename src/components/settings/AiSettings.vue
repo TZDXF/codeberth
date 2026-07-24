@@ -17,6 +17,9 @@ const apiKey = ref(store.aiApiKey);
 const model = ref(store.aiModel);
 const testing = ref(false);
 
+// 批量生成报告的并发上限(1-5),点选即持久化
+const CONCURRENCY_OPTIONS = [1, 2, 3, 4, 5];
+
 async function save() {
   await store.setAiBaseUrl(baseUrl.value);
   await store.setAiApiKey(apiKey.value);
@@ -92,6 +95,28 @@ async function testConnection() {
           <Plug v-else class="h-3.5 w-3.5" />
           {{ testing ? t("settings.ai.testing") : t("settings.ai.test") }}
         </Button>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label class="text-sm font-medium">{{ t("settings.ai.batchConcurrency") }}</label>
+        <div class="flex gap-1.5">
+          <button
+            v-for="n in CONCURRENCY_OPTIONS"
+            :key="n"
+            type="button"
+            class="h-8 w-8 rounded-md border text-sm transition-colors"
+            :class="
+              store.reportBatchConcurrency === n
+                ? 'border-primary bg-primary/10 font-medium'
+                : 'hover:bg-accent'
+            "
+            @click="store.setReportBatchConcurrency(n)"
+          >
+            {{ n }}
+          </button>
+        </div>
+        <p class="text-xs text-muted-foreground">
+          {{ t("settings.ai.batchConcurrencyHint") }}
+        </p>
       </div>
     </div>
   </section>

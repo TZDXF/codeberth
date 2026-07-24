@@ -39,10 +39,13 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RangeCalendar } from "@/components/ui/range-calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Switch } from "@/components/ui/switch";
 import TagCheckList from "@/components/tags/TagCheckList.vue";
 import { generateReport, type ProjectCommits } from "@/lib/ai";
+import { planBatchItems, type BatchItem } from "@/lib/batch-report";
 import { formatCommitTime } from "@/lib/format";
 import { cmd } from "@/lib/tauri";
+import { useBatchReportStore } from "@/stores/batch-report";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
 import { useTagsStore } from "@/stores/tags";
@@ -52,6 +55,13 @@ type Mode = ReportPeriodType;
 type DailyRangeKey = "today" | "yesterday" | "custom";
 type WeeklyRangeKey = "thisWeek" | "lastWeek" | "custom";
 type AuthorMode = "me" | "all";
+type ExecMode = "single" | "batch";
+type BatchFilter = "workdays" | "hasCommits";
+
+const BATCH_FILTER_OPTIONS: { value: BatchFilter; labelKey: string }[] = [
+  { value: "workdays", labelKey: "report.batchFilterWorkdays" },
+  { value: "hasCommits", labelKey: "report.batchFilterHasCommits" },
+];
 
 const MODE_OPTIONS: { value: Mode; labelKey: string }[] = [
   { value: "daily", labelKey: "report.modeDaily" },
@@ -136,6 +146,31 @@ const authorMode = ref<AuthorMode>("me");
 const generating = ref(false);
 const result = ref("");
 const savedHistoryId = ref<number | null>(null);
+
+// ── 批量生成(进度在右下角浮窗展示,见 stores/batch-report) ──────────────
+const batchStore = useBatchReportStore();
+const execMode = ref<ExecMode>("single");
+const isBatch = computed(() => execMode.value === "batch");
+/** 批量模式的总跨度(默认最近 7 天) */
+function defaultBatchRange(): RangeModel {
+  const end = calendarToday(getLocalTimeZone());
+  const start = end.subtract({ days: 6 });
+  return {
+    start: start as unknown as RangeDateValue,
+    end: end as unknown as RangeDateValue,
+  };
+}
+const batchRange = shallowRef<RangeModel>(defaultBatchRange());
+const batchSkipExisting = ref(true);
+const batchFilter = ref<BatchFilter>("workdays");
+const batchPlanning = ref(false);
+
+const batchRangeLabel = computed(() => {
+  const { start, end } = batchRange.value;
+  if (start && end) return `${fmt(toLocalDate(start))} - ${fmt(toLocalDate(end))}`;
+  const single = start ?? end;
+  return single ? fmt(toLocalDate(single)) : t("report.pickRange");
+});
 /** 本次拉取到的提交记录(驱动提交条数与可展开列表;生成前展示,AI 失败也保留) */
 const commitData = ref<ProjectCommits[]>([]);
 /** 各项目提交列表展开状态,key 为项目名 */
@@ -309,6 +344,10 @@ watch(open, (v) => {
   commitOpen.value = {};
   keyword.value = "";
   filterTagIds.value = [];
+  execMode.value = "single";
+  batchRange.value = defaultBatchRange();
+  batchSkipExisting.value = true;
+  batchFilter.value = "workdays";
   if (!tagsStore.tags.length) void tagsStore.fetchTags();
   // 拉取后端工作周范围(本周/上周的具体日期);失败保留 null 走本地回退
   void cmd<WorkWeekRanges>("get_work_week_ranges")
@@ -332,8 +371,10 @@ const loadingCommits = ref(false);
 /** 筛选快速变化时防止旧请求覆盖新结果 */
 let commitsToken = 0;
 
-/** 按当前项目/时间范围/作者过滤拉取提交记录(打开弹窗与筛选变化时自动触发) */
+/** 按当前项目/时间范围/作者过滤拉取提交记录(打开弹窗与筛选变化时自动触发)。
+ *  批量模式下不预拉提交(跨度大,逐时段在执行时拉取) */
 async function loadCommits() {
+  if (execMode.value === "batch") return;
   const ids = props.presetProjectId != null ? [props.presetProjectId] : selectedIds.value;
   const projects = activeProjects.value.filter((p) => ids.includes(p.id));
   const token = ++commitsToken;
@@ -380,7 +421,7 @@ async function loadCommits() {
   }
 }
 
-// 项目勾选 / 报告类型 / 时间范围 / 作者过滤变化时自动刷新提交列表
+// 项目勾选 / 报告类型 / 时间范围 / 作者过滤 / 单次批量切换 变化时自动刷新提交列表
 watch(
   () =>
     [
@@ -389,6 +430,7 @@ watch(
       fmt(range.value.from),
       fmt(range.value.to),
       authorMode.value,
+      execMode.value,
     ].join("|"),
   () => void loadCommits(),
 );
@@ -453,6 +495,59 @@ async function copyResult() {
   } catch (e) {
     toast.error(String(e));
   }
+}
+
+/** 批量生成:规划时段后交给全局 store 执行,进度在右下角浮窗展示;启动即关闭弹窗 */
+async function startBatch() {
+  if (batchStore.running || batchPlanning.value) return;
+  const ids = props.presetProjectId != null ? [props.presetProjectId] : selectedIds.value;
+  if (!ids.length) {
+    toast.error(t("report.noProjects"));
+    return;
+  }
+  const { start, end } = batchRange.value;
+  if (!start || !end) {
+    toast.error(t("report.pickRange"));
+    return;
+  }
+  if (!settings.aiApiKey.trim()) {
+    toast.error(t("ai.notConfigured"));
+    return;
+  }
+  const dateFrom = fmt(toLocalDate(start));
+  const dateTo = fmt(toLocalDate(end));
+
+  batchPlanning.value = true;
+  let items: BatchItem[];
+  try {
+    items = await planBatchItems({
+      periodType: mode.value,
+      dateFrom,
+      dateTo,
+      workdaysOnly: mode.value === "daily" && batchFilter.value === "workdays",
+      skipExisting: batchSkipExisting.value,
+      makeLabel: (from, to) => (from === to ? from : t("report.rangeLabel", { from, to })),
+    });
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e));
+    return;
+  } finally {
+    batchPlanning.value = false;
+  }
+  if (!items.length) {
+    toast.info(t("report.batchEmpty"));
+    return;
+  }
+
+  const projects = activeProjects.value.filter((p) => ids.includes(p.id));
+  void batchStore.start(items, {
+    periodType: mode.value,
+    projects,
+    authorMode: authorMode.value,
+    language: settings.language,
+    concurrency: settings.reportBatchConcurrency,
+  });
+  open.value = false;
 }
 </script>
 
@@ -604,6 +699,7 @@ async function copyResult() {
                 size="sm"
                 :variant="mode === opt.value ? 'default' : 'outline'"
                 class="h-7 px-2.5 text-xs"
+                :disabled="batchStore.running"
                 @click="mode = opt.value"
               >
                 {{ t(opt.labelKey) }}
@@ -612,9 +708,49 @@ async function copyResult() {
           </div>
 
           <div class="flex flex-col gap-1.5">
-            <label class="text-sm font-medium">{{ t("report.range") }}</label>
+            <div class="flex items-center gap-2">
+              <label class="text-sm font-medium">{{ t("report.range") }}</label>
+              <!-- 单次/批量切换:开关置右为批量(总跨度逐天/逐周拆分生成) -->
+              <div class="flex items-center gap-1.5">
+                <span class="text-xs" :class="isBatch ? 'text-muted-foreground' : 'font-medium'">
+                  {{ t("report.execSingle") }}
+                </span>
+                <Switch
+                  :checked="isBatch"
+                  :disabled="batchStore.running"
+                  @update:checked="execMode = $event ? 'batch' : 'single'"
+                />
+                <span class="text-xs" :class="isBatch ? 'font-medium' : 'text-muted-foreground'">
+                  {{ t("report.execBatch") }}
+                </span>
+              </div>
+            </div>
+            <!-- 批量:选择总跨度,逐天/逐周拆分生成 -->
+            <div v-if="isBatch" class="flex flex-wrap items-center gap-1.5">
+              <Popover>
+                <PopoverTrigger as-child>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="h-7 gap-1.5 px-2.5 text-xs font-normal"
+                    :class="{ 'text-muted-foreground': !batchRange.start && !batchRange.end }"
+                  >
+                    <CalendarIcon class="h-3.5 w-3.5" />
+                    {{ batchRangeLabel }}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent class="w-auto p-0" align="start">
+                  <RangeCalendar
+                    v-model="batchRange"
+                    :number-of-months="2"
+                    :locale="settings.language"
+                    :max-value="maxDate"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
             <!-- 日报:只能选择 1 天 -->
-            <div v-if="mode === 'daily'" class="flex flex-wrap items-center gap-1.5">
+            <div v-else-if="mode === 'daily'" class="flex flex-wrap items-center gap-1.5">
               <Button
                 v-for="opt in DAILY_RANGE_OPTIONS"
                 :key="opt.value"
@@ -682,12 +818,41 @@ async function copyResult() {
             </div>
             <!-- 选中本周/上周后显示具体日期范围(工作周:连续工作周期) -->
             <p
-              v-if="mode === 'weekly' && selectedWeekRange"
+              v-if="!isBatch && mode === 'weekly' && selectedWeekRange"
               class="text-xs text-muted-foreground"
             >
               {{ fmtWeekRange(selectedWeekRange) }}
             </p>
           </div>
+
+          <!-- 批量选项:跳过已有报告 + 日期过滤(仅日报) -->
+          <template v-if="isBatch">
+            <label class="flex cursor-pointer items-center gap-2 text-sm">
+              <input
+                v-model="batchSkipExisting"
+                type="checkbox"
+                class="h-3.5 w-3.5 shrink-0 accent-primary"
+                :disabled="batchStore.running"
+              />
+              {{ t("report.batchSkipExisting") }}
+            </label>
+            <div v-if="mode === 'daily'" class="flex flex-col gap-1.5">
+              <label class="text-sm font-medium">{{ t("report.batchFilter") }}</label>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <Button
+                  v-for="opt in BATCH_FILTER_OPTIONS"
+                  :key="opt.value"
+                  size="sm"
+                  :variant="batchFilter === opt.value ? 'default' : 'outline'"
+                  class="h-7 px-2.5 text-xs"
+                  :disabled="batchStore.running"
+                  @click="batchFilter = opt.value"
+                >
+                  {{ t(opt.labelKey) }}
+                </Button>
+              </div>
+            </div>
+          </template>
 
           <div class="flex flex-col gap-1.5">
             <label class="text-sm font-medium">{{ t("report.author") }}</label>
@@ -711,7 +876,10 @@ async function copyResult() {
             </div>
           </div>
 
-          <div v-if="commitData.length || loadingCommits" class="flex min-w-0 flex-col gap-1.5">
+          <div
+            v-if="!isBatch && (commitData.length || loadingCommits)"
+            class="flex min-w-0 flex-col gap-1.5"
+          >
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-1.5">
                 <label class="text-sm font-medium">{{ t("report.commits") }}</label>
@@ -787,6 +955,18 @@ async function copyResult() {
 
           <div class="flex justify-end">
             <Button
+              v-if="isBatch"
+              size="sm"
+              class="gap-1.5"
+              :disabled="batchStore.running || batchPlanning"
+              @click="startBatch"
+            >
+              <Loader2 v-if="batchPlanning" class="h-3.5 w-3.5 animate-spin" />
+              <Sparkles v-else class="h-3.5 w-3.5" />
+              {{ batchPlanning ? t("report.batchPlanning") : t("report.batchStart") }}
+            </Button>
+            <Button
+              v-else
               size="sm"
               class="gap-1.5"
               :disabled="generating || loadingCommits"
@@ -799,7 +979,8 @@ async function copyResult() {
           </div>
         </div>
 
-        <!-- 生成前不展示结果面板;生成中即显示以呈现进度反馈 -->
+        <!-- 生成前不展示结果面板;生成中即显示以呈现进度反馈。
+             批量进度不在此展示,由右下角浮窗(BatchProgressFloat)承载 -->
         <div
           v-if="result || generating"
           class="flex min-h-0 min-w-0 flex-1 flex-col rounded-md border"

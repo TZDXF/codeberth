@@ -27,6 +27,8 @@ export const useSettingsStore = defineStore("settings", () => {
   const aiBaseUrl = ref(AI_DEFAULT_BASE_URL);
   const aiApiKey = ref("");
   const aiModel = ref(AI_DEFAULT_MODEL);
+  /** 批量生成报告的并发上限(1-5) */
+  const reportBatchConcurrency = ref(2);
 
   let fileStore: Store | null = null;
   let initialized = false;
@@ -71,6 +73,7 @@ export const useSettingsStore = defineStore("settings", () => {
         aiBaseUrl: AI_DEFAULT_BASE_URL,
         aiApiKey: "",
         aiModel: AI_DEFAULT_MODEL,
+        reportBatchConcurrency: "2",
       },
     });
     const savedTheme = await fileStore.get<ThemeMode>("theme");
@@ -115,6 +118,14 @@ export const useSettingsStore = defineStore("settings", () => {
     const savedAiModel = await fileStore.get<string>("aiModel");
     if (typeof savedAiModel === "string" && savedAiModel.trim()) {
       aiModel.value = savedAiModel.trim();
+    }
+    // 并发上限存为字符串,解析后限制在 1-5,非法值回退默认 2
+    const savedConcurrency = await fileStore.get<string>("reportBatchConcurrency");
+    if (typeof savedConcurrency === "string") {
+      const n = Number.parseInt(savedConcurrency, 10);
+      if (Number.isFinite(n)) {
+        reportBatchConcurrency.value = Math.min(5, Math.max(1, n));
+      }
     }
     applyTheme();
     applyMdTheme();
@@ -171,6 +182,12 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("aiModel", aiModel.value);
   }
 
+  async function setReportBatchConcurrency(value: number) {
+    const n = Math.min(5, Math.max(1, Math.round(value)));
+    reportBatchConcurrency.value = n;
+    await persist("reportBatchConcurrency", String(n));
+  }
+
   return {
     theme,
     themeSkin,
@@ -180,6 +197,7 @@ export const useSettingsStore = defineStore("settings", () => {
     aiBaseUrl,
     aiApiKey,
     aiModel,
+    reportBatchConcurrency,
     init,
     setTheme,
     setThemeSkin,
@@ -189,5 +207,6 @@ export const useSettingsStore = defineStore("settings", () => {
     setAiBaseUrl,
     setAiApiKey,
     setAiModel,
+    setReportBatchConcurrency,
   };
 });

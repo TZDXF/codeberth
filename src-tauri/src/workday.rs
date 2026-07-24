@@ -136,6 +136,39 @@ fn is_regular_weekday(date: NaiveDate) -> bool {
     w < 5 // Monday(0) ~ Friday(4)
 }
 
+/// 预加载的工作日判定器:批量场景(如批量生成报告规划)避免每天重复读缓存文件。
+/// 数据加载失败时为空集合,语义同 is_workday 的回退路径(常规周一~周五)。
+pub struct WorkdayChecker {
+    holidays: HashSet<String>,
+    workdays: HashSet<String>,
+}
+
+impl WorkdayChecker {
+    pub fn load(data_dir: &PathBuf) -> Self {
+        let (holidays, workdays) = match load_data(data_dir) {
+            Ok(d) => d,
+            Err(e) => {
+                eprintln!("[workday] 加载工作日数据失败,回退常规判断: {e}");
+                (HashSet::new(), HashSet::new())
+            }
+        };
+        Self { holidays, workdays }
+    }
+
+    pub fn is_workday(&self, date: NaiveDate) -> bool {
+        let date_str = date.format("%Y-%m-%d").to_string();
+        // 调休上班(周日/周六补班)优先级最高
+        if self.workdays.contains(&date_str) {
+            return true;
+        }
+        // 法定节假日
+        if self.holidays.contains(&date_str) {
+            return false;
+        }
+        is_regular_weekday(date)
+    }
+}
+
 /// 获取数据目录路径(与 lib.rs 中 Db::open 一致)
 pub fn data_dir(app: &tauri::AppHandle) -> PathBuf {
     app.path()

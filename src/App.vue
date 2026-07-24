@@ -3,6 +3,7 @@ import { onMounted } from "vue";
 import { toast } from "vue-sonner";
 import { Toaster } from "@/components/ui/sonner";
 import TitleBar from "@/components/TitleBar.vue";
+import BatchProgressFloat from "@/components/report/BatchProgressFloat.vue";
 import { onListen } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
@@ -42,4 +43,5 @@ onMounted(() => {
     </div>
   </main>
   <Toaster position="bottom-right" />
+  <BatchProgressFloat />
 </template>

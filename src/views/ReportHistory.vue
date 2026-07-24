@@ -214,9 +214,15 @@ async function deleteReport(id: number) {
   }
 }
 
-function formatDateLabel(from: string, to: string) {
-  if (from === to) return from.slice(5);
-  return `${from.slice(5)} ~ ${to.slice(5)}`;
+/** 生成时间(秒级时间戳)格式化为本地日期时间,用于卡片头部悬停提示 */
+function formatGeneratedAt(tsSeconds: number): string {
+  return new Date(tsSeconds * 1000).toLocaleString(settings.language, {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 // ── watchers ────────────────────────────────────────────────────────────
@@ -511,7 +517,7 @@ watch(filterType, () => {
                 class="rounded-lg border"
               >
                 <CollapsibleTrigger
-                  class="flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left hover:bg-accent/50 rounded-t-lg"
+                  class="group flex w-full cursor-pointer items-center gap-2 px-3 py-2.5 text-left hover:bg-accent/50 rounded-t-lg"
                   :class="expandedReportId !== r.id && 'rounded-b-lg'"
                 >
                   <ChevronRight
@@ -525,9 +531,11 @@ watch(filterType, () => {
                         r.projectNames.length > 3 ? ` +${r.projectNames.length - 3}` : ""
                       }}</span
                     >
-                    <span class="ml-2 text-muted-foreground">{{
-                      formatDateLabel(r.dateFrom, r.dateTo)
-                    }}</span>
+                    <span
+                      class="ml-2 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                    >
+                      {{ formatGeneratedAt(r.createdAt) }}
+                    </span>
                   </span>
                   <Badge
                     :variant="r.periodType === 'weekly' ? 'default' : 'outline'"

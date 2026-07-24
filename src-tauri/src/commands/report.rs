@@ -523,6 +523,137 @@ pub async fn get_work_week_ranges(app: AppHandle) -> AppResult<WorkWeekRanges> {
     .map_err(|e| AppError::External(format!("任务执行失败: {e}")))?
 }
 
+// ── commands: batch report planning ────────────────────────────────────
+
+/// 批量生成的单个时段(daily: 单日; weekly: 一个工作周)
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BatchRange {
+    pub date_from: String,
+    pub date_to: String,
+    pub is_workday: bool,
+}
+
+/// 已有报告的日期范围(供批量生成"跳过已有"匹配)
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportDateRange {
+    pub date_from: String,
+    pub date_to: String,
+}
+
+/// 批量日报跨度上限(天)
+const BATCH_DAILY_MAX_DAYS: i64 = 93;
+/// 批量周报跨度上限(天)
+const BATCH_WEEKLY_MAX_DAYS: i64 = 180;
+
+fn parse_date(s: &str) -> AppResult<NaiveDate> {
+    NaiveDate::parse_from_str(s.trim(), "%Y-%m-%d")
+        .map_err(|_| AppError::External(format!("无效的日期: {s}")))
+}
+
+/// 规划批量生成的时段列表。
+/// * daily: 枚举范围内每一天,is_workday 标注是否工作日(过滤模式由前端决定)
+/// * weekly: 按工作周(连续工作周期)切段,复用 scheduler 的工作周算法
+/// is_workday 可能读盘/拉 CDN,放入线程池执行。
+#[tauri::command]
+pub async fn plan_batch_report_ranges(
+    app: AppHandle,
+    period_type: String,
+    date_from: String,
+    date_to: String,
+) -> AppResult<Vec<BatchRange>> {
+    tokio::task::spawn_blocking(move || {
+        let from = parse_date(&date_from)?;
+        let to = parse_date(&date_to)?;
+        if from > to {
+            return Err(AppError::External("起始日期不能晚于结束日期".into()));
+        }
+        let span = (to - from).num_days();
+        let fmt = |d: NaiveDate| d.format("%Y-%m-%d").to_string();
+
+        let data_dir = workday::data_dir(&app);
+        let checker = workday::WorkdayChecker::load(&data_dir);
+        let is_workday = |d: NaiveDate| checker.is_workday(d);
+
+        if period_type == "weekly" {
+            if span > BATCH_WEEKLY_MAX_DAYS {
+                return Err(AppError::External(format!(
+                    "批量周报跨度不能超过 {BATCH_WEEKLY_MAX_DAYS} 天"
+                )));
+            }
+            // 逐日扫描,工作日且为工作周末日时闭合一段;末尾不足一周的收尾
+            let mut ranges = Vec::new();
+            let mut seg_start = from;
+            let mut d = from;
+            while d <= to {
+                if crate::scheduler::is_work_week_last_day_with(d, &is_workday) {
+                    ranges.push(BatchRange {
+                        date_from: fmt(seg_start),
+                        date_to: fmt(d),
+                        is_workday: true,
+                    });
+                    seg_start = d + chrono::Duration::days(1);
+                }
+                d += chrono::Duration::days(1);
+            }
+            if seg_start <= to {
+                ranges.push(BatchRange {
+                    date_from: fmt(seg_start),
+                    date_to: fmt(to),
+                    is_workday: true,
+                });
+            }
+            Ok(ranges)
+        } else {
+            if span > BATCH_DAILY_MAX_DAYS {
+                return Err(AppError::External(format!(
+                    "批量日报跨度不能超过 {BATCH_DAILY_MAX_DAYS} 天"
+                )));
+            }
+            let mut ranges = Vec::new();
+            let mut d = from;
+            while d <= to {
+                ranges.push(BatchRange {
+                    date_from: fmt(d),
+                    date_to: fmt(d),
+                    is_workday: is_workday(d),
+                });
+                d += chrono::Duration::days(1);
+            }
+            Ok(ranges)
+        }
+    })
+    .await
+    .map_err(|e| AppError::External(format!("任务执行失败: {e}")))?
+}
+
+/// 查询范围内已有报告的日期范围列表(按 period_type 过滤,去重)。
+/// 前端匹配规则:日报按 date_to 相等跳过;周报按 (date_from, date_to) 对相等跳过。
+#[tauri::command]
+pub fn list_report_dates(
+    db: State<'_, Db>,
+    period_type: String,
+    date_from: String,
+    date_to: String,
+) -> AppResult<Vec<ReportDateRange>> {
+    let conn = db.0.lock().unwrap();
+    let mut stmt = conn.prepare(
+        "SELECT DISTINCT date_from, date_to FROM report_history
+         WHERE period_type = ?1 AND date_to BETWEEN ?2 AND ?3
+         ORDER BY date_to",
+    )?;
+    let rows = stmt
+        .query_map(params![period_type, date_from, date_to], |r| {
+            Ok(ReportDateRange {
+                date_from: r.get(0)?,
+                date_to: r.get(1)?,
+            })
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
 // ── commands: schedules ────────────────────────────────────────────────
 
 const SCHEDULE_COLS: &str = "id, name, enabled, report_type, project_ids, author_mode, \

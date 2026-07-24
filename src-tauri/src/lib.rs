@@ -89,6 +89,8 @@ pub fn run() {
             commands::report::get_calendar_meta,
             commands::report::get_reports_by_date,
             commands::report::get_work_week_ranges,
+            commands::report::plan_batch_report_ranges,
+            commands::report::list_report_dates,
             commands::report::list_report_schedules,
             commands::report::save_report_schedules,
             commands::report::run_report_schedule_now,

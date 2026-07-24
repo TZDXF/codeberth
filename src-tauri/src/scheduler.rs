@@ -323,51 +323,68 @@ fn earliest_fire(
 // 否则(如下周整周节假日)留在本周末尾。
 
 /// 某周(周一~周日)内是否存在工作日
-fn has_workday_in_week(monday: NaiveDate, data_dir: &PathBuf) -> bool {
-    (0..7).any(|i| workday::is_workday(monday + chrono::Duration::days(i), data_dir))
+fn has_workday_in_week_with(monday: NaiveDate, is_workday: &dyn Fn(NaiveDate) -> bool) -> bool {
+    (0..7).any(|i| is_workday(monday + chrono::Duration::days(i)))
 }
 
-/// 今天所在工作周的起始日
-pub(crate) fn work_week_start(today: NaiveDate, data_dir: &PathBuf) -> NaiveDate {
+/// 指定日期所在工作周的起始日(判定逻辑由闭包注入,批量场景可预加载数据)
+pub(crate) fn work_week_start_with(
+    today: NaiveDate,
+    is_workday: &dyn Fn(NaiveDate) -> bool,
+) -> NaiveDate {
     let monday = today - chrono::Duration::days(today.weekday().num_days_from_monday() as i64);
     let sunday_before = monday - chrono::Duration::days(1);
-    if has_workday_in_week(monday, data_dir) && workday::is_workday(sunday_before, data_dir) {
+    if has_workday_in_week_with(monday, is_workday) && is_workday(sunday_before) {
         return sunday_before;
     }
     // 本周第一个工作日(周一为节假日时顺延)
     (0..7)
         .map(|i| monday + chrono::Duration::days(i))
-        .find(|d| workday::is_workday(*d, data_dir))
+        .find(|d| is_workday(*d))
         .unwrap_or(monday)
 }
 
-/// 今天是否为所在工作周的最后一个工作日(周报触发条件)
-fn is_work_week_last_day(today: NaiveDate, data_dir: &PathBuf) -> bool {
-    if !workday::is_workday(today, data_dir) {
+/// 今天所在工作周的起始日
+pub(crate) fn work_week_start(today: NaiveDate, data_dir: &PathBuf) -> NaiveDate {
+    work_week_start_with(today, &|d| workday::is_workday(d, data_dir))
+}
+
+/// 指定日期是否为所在工作周的最后一个工作日(判定逻辑由闭包注入)。
+/// 供批量生成周报规划复用,与定时周报触发条件保持一致。
+pub(crate) fn is_work_week_last_day_with(
+    today: NaiveDate,
+    is_workday: &dyn Fn(NaiveDate) -> bool,
+) -> bool {
+    if !is_workday(today) {
         return false;
     }
     let dow = today.weekday().num_days_from_monday(); // 0=周一 .. 6=周日
     if dow == 6 {
         // 今天是调休周日:下周有工作日时,今天前挂为下周工作周起点,不是本周末日
         let next_monday = today + chrono::Duration::days(1);
-        return !has_workday_in_week(next_monday, data_dir);
+        return !has_workday_in_week_with(next_monday, is_workday);
     }
     // 今天之后本周内若还有属于本工作周的工作日,则今天不是末日
     for i in 1..=(6 - dow) {
         let d = today + chrono::Duration::days(i as i64);
-        if !workday::is_workday(d, data_dir) {
+        if !is_workday(d) {
             continue;
         }
         if i == 6 - dow {
             // d 是本周日(调休):下周有工作日时归下周,不影响本工作周末日判定
             let next_monday = d + chrono::Duration::days(1);
-            if has_workday_in_week(next_monday, data_dir) {
+            if has_workday_in_week_with(next_monday, is_workday) {
                 continue;
             }
         }
         return false;
     }
     true
+}
+
+/// 今天是否为所在工作周的最后一个工作日(周报触发条件)
+fn is_work_week_last_day(today: NaiveDate, data_dir: &PathBuf) -> bool {
+    is_work_week_last_day_with(today, &|d| workday::is_workday(d, data_dir))
 }
 
 /// 筛选当前时刻应该触发的 schedule(±1 分钟容差)

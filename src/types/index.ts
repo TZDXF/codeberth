@@ -266,3 +266,16 @@ export interface CalendarMeta {
   holidays: string[];
   workdays: string[];
 }
+
+/** 批量生成的单个时段(plan_batch_report_ranges;daily 为单日,weekly 为一个工作周) */
+export interface BatchRange {
+  dateFrom: string;
+  dateTo: string;
+  isWorkday: boolean;
+}
+
+/** 已有报告的日期范围(list_report_dates,供批量生成"跳过已有"匹配) */
+export interface ReportDateRange {
+  dateFrom: string;
+  dateTo: string;
+}
