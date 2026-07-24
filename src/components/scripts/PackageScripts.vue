@@ -136,7 +136,7 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
 <template>
   <!-- 无 package.json(或无 scripts)时整体不渲染卡片,与 DockerCompose 一致;
        全部隐藏时保留头部,以便通过「显示已隐藏」恢复 -->
-  <Card v-if="loaded && (displayGroups.length || hiddenCount)">
+  <Card v-if="loaded && (displayGroups.length || hiddenCount)" class="group/card">
     <CardHeader class="pb-3">
       <CardTitle class="flex items-center gap-2 text-sm font-semibold">
         <Package class="h-4 w-4" />
@@ -145,10 +145,9 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
           <Button
             variant="ghost"
             size="icon"
-            class="ml-auto h-6 w-6 shrink-0 text-muted-foreground"
-            :title="
-              showHidden ? t('common.hideShown') : t('common.showHidden', { count: hiddenCount })
-            "
+            class="ml-auto h-6 w-6 shrink-0 text-muted-foreground transition-opacity"
+            :class="{ 'opacity-0 group-hover/card:opacity-100': !showHidden }"
+            :title="showHidden ? t('common.hideShown') : t('common.showHidden')"
             @click="showHidden = !showHidden"
           >
             <EyeOff v-if="showHidden" class="h-3.5 w-3.5" />

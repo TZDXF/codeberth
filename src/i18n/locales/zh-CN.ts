@@ -20,7 +20,7 @@ export default {
     collapse: "折叠",
     hide: "隐藏",
     unhide: "取消隐藏",
-    showHidden: "显示已隐藏 ({count})",
+    showHidden: "显示已隐藏",
     hideShown: "收起已隐藏项",
     never: "从未",
     justNow: "刚刚",

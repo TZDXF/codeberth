@@ -19,7 +19,7 @@ export default {
     collapse: "Collapse",
     hide: "Hide",
     unhide: "Unhide",
-    showHidden: "Show hidden ({count})",
+    showHidden: "Show hidden",
     hideShown: "Stop showing hidden",
     never: "Never",
     justNow: "Just now",
