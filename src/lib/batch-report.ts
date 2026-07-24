@@ -107,15 +107,15 @@ interface ProjectCommitsWithId {
   commits: GitCommitInfo[];
 }
 
-/** 简单并发池:worker 模式,共享游标取任务;取消时停止派发新任务(运行中的任务自然完成) */
+/** 简单并发池:worker 模式,共享游标取任务;signal 中止时停止派发新任务 */
 async function runPool(
   limit: number,
   tasks: (() => Promise<void>)[],
-  isCancelled: () => boolean,
+  signal: AbortSignal,
 ): Promise<void> {
   let index = 0;
   async function worker() {
-    while (index < tasks.length && !isCancelled()) {
+    while (index < tasks.length && !signal.aborted) {
       const task = tasks[index++];
       // 并发池语义:单个 worker 内必须串行 await,并行度由 worker 数量控制
       // eslint-disable-next-line no-await-in-loop
@@ -127,14 +127,27 @@ async function runPool(
 }
 
 /**
+ * 时段状态变更回调:执行层不直接修改 item,状态变更统一上报,
+ * 由调用方(store)以不可变方式写回响应式数组,保证 UI 更新链路可靠
+ */
+export type BatchStatusCallback = (
+  item: BatchItem,
+  status: BatchItemStatus,
+  error?: string,
+) => void;
+
+/**
  * 执行批量生成:对每个 pending 时段拉取提交 → 过滤无提交项目 → AI 生成 → 存入历史。
- * 单个时段失败不影响其他时段;isCancelled 返回 true 时停止派发新任务。
+ * 单个时段失败不影响其他时段;signal 中止时停止派发新任务,
+ * 进行中的任务在阶段边界响应取消(AI 请求经 abortSignal 立即中止),取消的时段不保存。
  * 作者身份按项目缓存(不随日期变化),避免每个时段重复调用 git_current_user。
+ * items 只读;所有状态变更通过 onStatus 上报。
  */
 export async function runBatchItems(
   items: BatchItem[],
   options: BatchRunOptions,
-  isCancelled: () => boolean,
+  signal: AbortSignal,
+  onStatus: BatchStatusCallback,
 ): Promise<void> {
   // 预解析各项目的 git 用户身份(仅「我自己」模式需要;失败的项目不过滤作者)
   const authors = new Map<number, string | undefined>();
@@ -147,8 +160,12 @@ export async function runBatchItems(
     );
   }
 
+  /** 已被并发池派发执行的任务(item 不再本地变更状态,用此集合判断"未派发") */
+  const dispatched = new Set<BatchItem>();
+
   async function runOne(item: BatchItem) {
-    item.status = "running";
+    dispatched.add(item);
+    onStatus(item, "running");
     try {
       const since = `${item.dateFrom} 00:00:00`;
       const until = `${item.dateTo} 23:59:59`;
@@ -166,19 +183,30 @@ export async function runBatchItems(
           }),
         })),
       );
+      if (signal.aborted) {
+        onStatus(item, "cancelled");
+        return;
+      }
       // 排除没有提交的项目;该时段全部无提交则跳过
       const withCommits = data.filter((d) => d.commits.length);
       if (!withCommits.length) {
-        item.status = "skipped-no-commits";
+        onStatus(item, "skipped-no-commits");
         return;
       }
 
+      // AI 请求挂中止信号,取消时立即中断
       const result = await generateReport(
         withCommits,
         item.label,
         options.language,
         options.periodType,
+        signal,
       );
+      // 保存前最后检查:取消的时段不写入历史
+      if (signal.aborted) {
+        onStatus(item, "cancelled");
+        return;
+      }
 
       const commitData: SaveReportCommit[] = withCommits.map((d) => ({
         projectId: d.projectId,
@@ -197,20 +225,26 @@ export async function runBatchItems(
         result,
         commitData,
       });
-      item.status = "done";
+      onStatus(item, "done");
     } catch (e) {
-      item.status = "failed";
-      item.error = e instanceof Error ? e.message : String(e);
+      // 中止导致的异常归为取消而非失败
+      if (signal.aborted) {
+        onStatus(item, "cancelled");
+        return;
+      }
+      onStatus(item, "failed", e instanceof Error ? e.message : String(e));
     }
   }
 
   const tasks = items.filter((i) => i.status === "pending").map((item) => () => runOne(item));
-  await runPool(options.concurrency, tasks, isCancelled);
+  await runPool(options.concurrency, tasks, signal);
 
-  // 取消后未派发的任务标记为 cancelled
-  if (isCancelled()) {
+  // 取消后未派发的任务标记为 cancelled(状态不经本地修改,以是否派发为准)
+  if (signal.aborted) {
     for (const item of items) {
-      if (item.status === "pending") item.status = "cancelled";
+      if (item.status === "pending" && !dispatched.has(item)) {
+        onStatus(item, "cancelled");
+      }
     }
   }
 }

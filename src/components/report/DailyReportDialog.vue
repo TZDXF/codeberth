@@ -151,6 +151,13 @@ const savedHistoryId = ref<number | null>(null);
 const batchStore = useBatchReportStore();
 const execMode = ref<ExecMode>("single");
 const isBatch = computed(() => execMode.value === "batch");
+/** Switch 的 v-model 代理(reka-ui Switch 为 modelValue 布尔协议) */
+const batchSwitch = computed({
+  get: () => isBatch.value,
+  set: (v: boolean) => {
+    execMode.value = v ? "batch" : "single";
+  },
+});
 /** 批量模式的总跨度(默认最近 7 天) */
 function defaultBatchRange(): RangeModel {
   const end = calendarToday(getLocalTimeZone());
@@ -715,11 +722,7 @@ async function startBatch() {
                 <span class="text-xs" :class="isBatch ? 'text-muted-foreground' : 'font-medium'">
                   {{ t("report.execSingle") }}
                 </span>
-                <Switch
-                  :checked="isBatch"
-                  :disabled="batchStore.running"
-                  @update:checked="execMode = $event ? 'batch' : 'single'"
-                />
+                <Switch v-model="batchSwitch" :disabled="batchStore.running" />
                 <span class="text-xs" :class="isBatch ? 'font-medium' : 'text-muted-foreground'">
                   {{ t("report.execBatch") }}
                 </span>

@@ -158,12 +158,14 @@ ${ctx.diff || "(empty)"}${untrackedNamesSection}${untrackedContentsSection}`,
   return stripThinking(text);
 }
 
-/** 汇总多个项目的提交记录,生成 Markdown 报告(日报/周报按 periodType 选择提示词) */
+/** 汇总多个项目的提交记录,生成 Markdown 报告(日报/周报按 periodType 选择提示词);
+ *  signal 用于批量生成的取消:中止进行中的 AI 请求 */
 export async function generateReport(
   data: ProjectCommits[],
   rangeLabel: string,
   language: SupportedLocale,
   periodType: ReportPeriodType,
+  signal?: AbortSignal,
 ): Promise<string> {
   const prompts = await loadAiPrompts();
   const sections = data
@@ -185,6 +187,7 @@ export async function generateReport(
 
 Commit records:
 ${sections}`,
+    abortSignal: signal,
   });
   return stripThinking(text);
 }
