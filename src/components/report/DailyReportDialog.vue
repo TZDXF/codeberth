@@ -956,7 +956,9 @@ async function startBatch() {
             </div>
           </div>
 
-          <div class="flex justify-end">
+          <!-- pb-0.5 预留按钮 active 态 translate-y-px 的下移空间,
+               否则内容刚好撑满时按下按钮会瞬间撑出滚动条、布局位移导致 click 丢失 -->
+          <div class="flex justify-end pb-0.5">
             <Button
               v-if="isBatch"
               size="sm"
