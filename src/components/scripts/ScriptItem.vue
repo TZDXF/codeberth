@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { Pencil, Play, Trash2 } from "@lucide/vue";
+import { Eye, EyeOff, Pencil, Play, Trash2 } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { commandIcon } from "@/lib/command-icons";
 
@@ -12,6 +12,10 @@ const props = defineProps<{
   description?: string;
   icon?: string;
   editable?: boolean;
+  /** 是否可被隐藏(显示悬停 EyeOff 按钮) */
+  hidable?: boolean;
+  /** 当前处于已隐藏状态(灰显 + 常显 Eye 恢复按钮,仅在「显示已隐藏」模式下出现) */
+  dimmed?: boolean;
 }>();
 
 const iconComponent = computed(() => (props.icon ? commandIcon(props.icon) : undefined));
@@ -20,11 +24,15 @@ const emit = defineEmits<{
   run: [];
   edit: [];
   delete: [];
+  toggleHide: [];
 }>();
 </script>
 
 <template>
-  <div class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent">
+  <div
+    class="group flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-accent"
+    :class="{ 'opacity-50': dimmed }"
+  >
     <Button
       variant="ghost"
       size="icon"
@@ -41,6 +49,18 @@ const emit = defineEmits<{
     <span class="min-w-0 flex-1 truncate font-mono text-xs text-muted-foreground" :title="command">
       {{ command }}
     </span>
+    <Button
+      v-if="hidable"
+      variant="ghost"
+      size="icon"
+      class="h-7 w-7 shrink-0 transition-opacity"
+      :class="dimmed ? 'text-muted-foreground' : 'opacity-0 group-hover:opacity-100'"
+      :title="dimmed ? t('common.unhide') : t('common.hide')"
+      @click="emit('toggleHide')"
+    >
+      <Eye v-if="dimmed" class="h-3.5 w-3.5" />
+      <EyeOff v-else class="h-3.5 w-3.5" />
+    </Button>
     <template v-if="editable">
       <Button
         variant="ghost"

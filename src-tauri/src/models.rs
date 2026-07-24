@@ -151,6 +151,16 @@ pub struct ComposeServiceState {
     pub status: String,
 }
 
+/// 项目维度被隐藏的 UI 项
+/// kind: "packageFile"(整个 package.json 分组)/ "packageScript"(分组内单条命令)/ "composeFile"
+/// target_key: packageFile = 分组 dir;packageScript = "<dir>\n<name>";composeFile = 文件相对路径
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HiddenItem {
+    pub kind: String,
+    pub target_key: String,
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EditorKind {

@@ -151,6 +151,15 @@ export interface ComposeServiceState {
 
 export type EditorKind = "vscode" | "explorer" | "terminal";
 
+/** 可隐藏的 UI 项类型:package.json 分组 / 分组内单条命令 / compose 文件 */
+export type HiddenKind = "packageFile" | "packageScript" | "composeFile";
+
+/** 项目维度被隐藏的 UI 项(targetKey 含义见各使用处) */
+export interface HiddenItem {
+  kind: HiddenKind;
+  targetKey: string;
+}
+
 export interface GitUpdatedPayload {
   project_id: number;
   remote_ahead: number;

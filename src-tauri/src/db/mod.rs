@@ -69,6 +69,7 @@ mod tests {
             "project_tags",
             "custom_commands",
             "settings",
+            "hidden_items",
         ] {
             let count: i64 = conn
                 .query_row(

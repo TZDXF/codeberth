@@ -1,16 +1,25 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ChevronRight, Container, FileCode, Play, RefreshCw, RotateCw, Square } from "@lucide/vue";
+import {
+  ChevronRight,
+  Container,
+  Eye,
+  EyeOff,
+  FileCode,
+  Play,
+  RotateCw,
+  Square,
+} from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleOpen } from "@/composables/useCollapsibleOpen";
 import { cmd, runInTerminal } from "@/lib/tauri";
-import type { ComposeFile, ComposeServiceState, Project } from "@/types";
+import type { ComposeFile, ComposeServiceState, HiddenItem, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
@@ -24,19 +33,39 @@ const openStates = ref<Record<string, boolean>>({});
 /** 服务运行状态,key 为 `${file.path}\n${service}`;无记录表示未创建/docker 不可用 */
 const statuses = ref<Record<string, ComposeServiceState>>({});
 const refreshing = ref(false);
+/** 已隐藏的 compose 文件路径 */
+const hiddenFiles = ref<Set<string>>(new Set());
+/** 临时显示已隐藏文件(灰显,可逐个恢复) */
+const showHidden = ref(false);
 
 const stateKey = (f: ComposeFile, name: string) => `${f.path}\n${name}`;
+
+const hiddenCount = computed(() => hiddenFiles.value.size);
+
+/** 当前应展示的文件:过滤隐藏文件;showHidden 时全部显示但标记 hidden 灰显 */
+const displayFiles = computed(() =>
+  files.value
+    .map((f) => ({ file: f, hidden: hiddenFiles.value.has(f.path) }))
+    .filter((x) => showHidden.value || !x.hidden),
+);
 
 watch(
   () => props.project.id,
   async () => {
     loaded.value = false;
+    showHidden.value = false;
     try {
-      files.value = await cmd<ComposeFile[]>("scan_compose_files", {
-        path: props.project.path,
-      });
+      const [fs, items] = await Promise.all([
+        cmd<ComposeFile[]>("scan_compose_files", { path: props.project.path }),
+        cmd<HiddenItem[]>("list_hidden_items", { projectId: props.project.id }),
+      ]);
+      files.value = fs;
+      hiddenFiles.value = new Set(
+        items.filter((i) => i.kind === "composeFile").map((i) => i.targetKey),
+      );
     } catch {
       files.value = [];
+      hiddenFiles.value = new Set();
     } finally {
       loaded.value = true;
     }
@@ -54,6 +83,23 @@ watch(
 function onToggle(f: ComposeFile, open: boolean) {
   openStates.value[f.path] = open;
   setOpen(`${props.project.id}:${f.path}`, open);
+}
+
+async function toggleFileHidden(path: string, hidden: boolean) {
+  try {
+    await cmd("set_hidden_item", {
+      projectId: props.project.id,
+      kind: "composeFile",
+      targetKey: path,
+      hidden: !hidden,
+    });
+    const next = new Set(hiddenFiles.value);
+    if (hidden) next.delete(path);
+    else next.add(path);
+    hiddenFiles.value = next;
+  } catch (e) {
+    toast.error(String(e));
+  }
 }
 
 /** 查询每个 compose 文件的服务运行状态(失败静默,全部按未知处理) */
@@ -131,37 +177,46 @@ async function run(
 </script>
 
 <template>
-  <Card v-if="loaded && files.length">
+  <!-- 全部隐藏时保留头部,以便通过「显示已隐藏」恢复 -->
+  <Card v-if="loaded && (displayFiles.length || hiddenCount)">
     <CardHeader class="pb-3">
       <CardTitle class="flex items-center gap-2 text-sm font-semibold">
         <Container class="h-4 w-4" />
         {{ t("docker.title") }}
         <span class="text-xs font-normal text-muted-foreground">
-          {{ t("docker.fileCount", { count: files.length }) }}
+          {{ t("docker.fileCount", { count: displayFiles.length }) }}
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          class="ml-auto h-6 w-6 shrink-0 text-muted-foreground"
-          :title="t('docker.refreshStatus')"
-          @click="loadStatuses"
-        >
-          <RefreshCw class="h-3.5 w-3.5" :class="{ 'animate-spin': refreshing }" />
-        </Button>
+        <template v-if="hiddenCount">
+          <Button
+            variant="ghost"
+            size="icon"
+            class="ml-auto h-6 w-6 shrink-0 text-muted-foreground"
+            :title="
+              showHidden ? t('common.hideShown') : t('common.showHidden', { count: hiddenCount })
+            "
+            @click="showHidden = !showHidden"
+          >
+            <EyeOff v-if="showHidden" class="h-3.5 w-3.5" />
+            <Eye v-else class="h-3.5 w-3.5" />
+          </Button>
+        </template>
       </CardTitle>
     </CardHeader>
     <CardContent>
       <ScrollArea class="max-h-[320px]">
         <div class="flex flex-col">
           <Collapsible
-            v-for="(f, i) in files"
-            :key="`${project.id}:${f.path}`"
+            v-for="(d, i) in displayFiles"
+            :key="`${project.id}:${d.file.path}`"
             v-slot="{ open }"
-            :open="files.length > 1 ? openStates[f.path] : true"
+            :open="files.length > 1 ? openStates[d.file.path] : true"
             :class="{ 'mt-2 border-t border-border pt-2': i > 0 }"
-            @update:open="onToggle(f, $event)"
+            @update:open="onToggle(d.file, $event)"
           >
-            <div class="group flex items-center gap-2 rounded-md px-2 py-1.5">
+            <div
+              class="group flex items-center gap-2 rounded-md px-2 py-1.5"
+              :class="{ 'opacity-50': d.hidden }"
+            >
               <!-- 多文件时文件名区域可点击折叠;单文件保持静态展示 -->
               <CollapsibleTrigger
                 v-if="files.length > 1"
@@ -173,25 +228,36 @@ async function run(
                   :class="{ 'rotate-90': open }"
                 />
                 <FileCode class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span class="min-w-0 flex-1 truncate font-mono text-xs" :title="f.path">
-                  {{ f.path }}
+                <span class="min-w-0 flex-1 truncate font-mono text-xs" :title="d.file.path">
+                  {{ d.file.path }}
                 </span>
                 <span v-if="!open" class="shrink-0 text-xs text-muted-foreground">
-                  {{ t("docker.serviceCount", { count: f.services.length }) }}
+                  {{ t("docker.serviceCount", { count: d.file.services.length }) }}
                 </span>
               </CollapsibleTrigger>
               <template v-else>
                 <FileCode class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                <span class="min-w-0 flex-1 truncate font-mono text-xs" :title="f.path">
-                  {{ f.path }}
+                <span class="min-w-0 flex-1 truncate font-mono text-xs" :title="d.file.path">
+                  {{ d.file.path }}
                 </span>
               </template>
               <Button
                 variant="ghost"
                 size="icon"
+                class="h-7 w-7 shrink-0 transition-opacity"
+                :class="d.hidden ? 'text-muted-foreground' : 'opacity-0 group-hover:opacity-100'"
+                :title="d.hidden ? t('common.unhide') : t('docker.hideFile')"
+                @click="toggleFileHidden(d.file.path, d.hidden)"
+              >
+                <Eye v-if="d.hidden" class="h-3.5 w-3.5" />
+                <EyeOff v-else class="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 class="h-7 w-7 shrink-0 text-emerald-600"
                 :title="t('docker.upAll')"
-                @click="run(f, 'up -d')"
+                @click="run(d.file, 'up -d')"
               >
                 <Play class="h-3.5 w-3.5" />
               </Button>
@@ -200,7 +266,7 @@ async function run(
                 size="icon"
                 class="h-7 w-7 shrink-0 text-amber-600"
                 :title="t('docker.restartAll')"
-                @click="run(f, 'restart')"
+                @click="run(d.file, 'restart')"
               >
                 <RotateCw class="h-3.5 w-3.5" />
               </Button>
@@ -209,21 +275,21 @@ async function run(
                 size="icon"
                 class="h-7 w-7 shrink-0 text-red-600"
                 :title="t('docker.stopAll')"
-                @click="run(f, 'down')"
+                @click="run(d.file, 'down')"
               >
                 <Square class="h-3.5 w-3.5" />
               </Button>
             </div>
             <CollapsibleContent>
               <div
-                v-for="s in f.services"
+                v-for="s in d.file.services"
                 :key="s.name"
                 class="group flex items-center gap-2 rounded-md px-2 py-1.5 pl-7 hover:bg-accent"
               >
                 <span
                   class="h-2 w-2 shrink-0 rounded-full"
-                  :class="dotClass(f, s.name)"
-                  :title="stateTitle(f, s.name)"
+                  :class="dotClass(d.file, s.name)"
+                  :title="stateTitle(d.file, s.name)"
                 />
                 <span class="min-w-0 truncate font-mono text-sm" :title="s.name">
                   {{ s.name }}
@@ -243,7 +309,7 @@ async function run(
                   size="icon"
                   class="h-7 w-7 shrink-0 text-emerald-600 opacity-0 transition-opacity group-hover:opacity-100"
                   :title="t('docker.upService', { service: s.name })"
-                  @click="run(f, 'up -d', s.name)"
+                  @click="run(d.file, 'up -d', s.name)"
                 >
                   <Play class="h-3.5 w-3.5" />
                 </Button>
@@ -252,7 +318,7 @@ async function run(
                   size="icon"
                   class="h-7 w-7 shrink-0 text-amber-600 opacity-0 transition-opacity group-hover:opacity-100"
                   :title="t('docker.restartService', { service: s.name })"
-                  @click="run(f, 'restart', s.name)"
+                  @click="run(d.file, 'restart', s.name)"
                 >
                   <RotateCw class="h-3.5 w-3.5" />
                 </Button>
@@ -261,7 +327,7 @@ async function run(
                   size="icon"
                   class="h-7 w-7 shrink-0 text-red-600 opacity-0 transition-opacity group-hover:opacity-100"
                   :title="t('docker.stopService', { service: s.name })"
-                  @click="run(f, 'stop', s.name)"
+                  @click="run(d.file, 'stop', s.name)"
                 >
                   <Square class="h-3.5 w-3.5" />
                 </Button>

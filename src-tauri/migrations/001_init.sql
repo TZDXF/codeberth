@@ -84,3 +84,12 @@ CREATE TABLE IF NOT EXISTS report_schedules (
     last_run_at          INTEGER
 );
 
+-- 项目维度被隐藏的 UI 项(npm script 文件/命令、compose 文件)
+CREATE TABLE IF NOT EXISTS hidden_items (
+    project_id INTEGER NOT NULL,
+    kind       TEXT NOT NULL,
+    target_key TEXT NOT NULL,
+    PRIMARY KEY (project_id, kind, target_key),
+    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+);
+
