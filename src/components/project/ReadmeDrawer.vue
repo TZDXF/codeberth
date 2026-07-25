@@ -11,6 +11,7 @@ import MdLink from "@/components/markdown/MdLink.vue";
 import { MD_BASE_PATH_KEY } from "@/components/markdown/keys";
 import { cmd } from "@/lib/tauri";
 import { hasScheme, resolvePath } from "@/lib/markdown";
+import { createBeforeDownload, createTableCustomize } from "@/lib/markdown-download";
 import { useSettingsStore } from "@/stores/settings";
 import type { Project, ReadmeContent } from "@/types";
 
@@ -35,9 +36,22 @@ const nodeRenderers: NodeRenderers = {
 
 // 表格复制/导出(CSV/TSV/Markdown)/全屏 + 代码复制/折叠,库默认全开,这里显式声明
 const controls: ControlsConfig = {
-  table: { copy: true, download: true, fullscreen: true },
+  table: {
+    copy: true,
+    download: true,
+    fullscreen: true,
+    // 自定义:替换 download 按钮,让 save dialog 里选什么格式就生成什么内容
+    // (库内置下拉的"已选格式"与 save dialog 的扩展名会不同步)
+    customize: createTableCustomize(t),
+  },
   code: { copy: true, collapse: true },
 };
+
+// 覆盖库默认的 <a download> 实现(代码块用):在 Tauri WebView2 下经常静默失败且无反馈,
+// 改为弹原生 save dialog + 由 save_text_file 命令写入,失败/取消有 toast。
+// 表格由 controls.table.customize 完全接管,这里只处理 code / mermaid。
+// 见 src/lib/markdown-download.ts
+const beforeDownload = createBeforeDownload(t);
 
 // 阻止库把宿主元素上的 shadcn 变量内联到组件根节点(island 皮肤的 hex 色值
 // 会被库误包成 hsl(#xxx) 非法值),MD 主题完全交给 CSS 层(src/styles/markdown/)
@@ -142,6 +156,7 @@ async function onBodyClick(e: MouseEvent) {
               :node-renderers="nodeRenderers"
               :theme-element="themeElement"
               :locale="settingsStore.language"
+              :before-download="beforeDownload"
             />
           </div>
         </ScrollArea>

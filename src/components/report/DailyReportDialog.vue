@@ -45,6 +45,7 @@ import { generateReport, type ProjectCommits } from "@/lib/ai";
 import { planBatchItems, type BatchItem } from "@/lib/batch-report";
 import { formatCommitTime } from "@/lib/format";
 import { cmd } from "@/lib/tauri";
+import { createBeforeDownload, createTableCustomize } from "@/lib/markdown-download";
 import { useBatchReportStore } from "@/stores/batch-report";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
@@ -217,9 +218,18 @@ watch(
 
 // 表格/代码复制导出控件,与 ReadmeDrawer 保持一致
 const controls: ControlsConfig = {
-  table: { copy: true, download: true, fullscreen: true },
+  table: {
+    copy: true,
+    download: true,
+    fullscreen: true,
+    customize: createTableCustomize(t),
+  },
   code: { copy: true, collapse: true },
 };
+
+// 覆盖库默认的 <a download> 实现(WebView2 下静默失败 + 无反馈),
+// 走 Tauri save dialog + save_text_file;见 src/lib/markdown-download.ts
+const beforeDownload = createBeforeDownload(t);
 
 // 同 ReadmeDrawer:阻止库内联宿主变量,MD 主题交给 CSS 层
 const detachedThemeEl = document.createElement("div");
@@ -1022,6 +1032,7 @@ async function startBatch() {
                 :controls="controls"
                 :theme-element="themeElement"
                 :locale="settings.language"
+                :before-download="beforeDownload"
               />
             </div>
           </ScrollArea>

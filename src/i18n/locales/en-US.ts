@@ -381,6 +381,12 @@ export default {
     loading: "Loading...",
     notFound: "No README file found in this project",
   },
+  markdown: {
+    saveDialogTitle: "Save as",
+    savedAs: "Saved to {path}",
+    saveFailed: "Save failed: {error}",
+    tableNotFound: "Current table element not found, cannot download",
+  },
   scripts: {
     package: {
       title: "NPM Scripts",

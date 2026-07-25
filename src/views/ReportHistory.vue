@@ -27,6 +27,7 @@ import ReportCalendar from "@/components/report/ReportCalendar.vue";
 import TagCheckList from "@/components/tags/TagCheckList.vue";
 import { cmd } from "@/lib/tauri";
 import { formatCommitTime } from "@/lib/format";
+import { createBeforeDownload, createTableCustomize } from "@/lib/markdown-download";
 import { useSettingsStore } from "@/stores/settings";
 import { useProjectsStore } from "@/stores/projects";
 import { useTagsStore } from "@/stores/tags";
@@ -153,11 +154,19 @@ const dateBadge = computed(() => {
 // ── Markdown config ─────────────────────────────────────────────────────
 
 const controls: ControlsConfig = {
-  table: { copy: true, download: true, fullscreen: true },
+  table: {
+    copy: true,
+    download: true,
+    fullscreen: true,
+    customize: createTableCustomize(t),
+  },
   code: { copy: true, collapse: true },
 };
 const detachedThemeEl = document.createElement("div");
 const themeElement = () => detachedThemeEl;
+
+// 与 ReadmeDrawer / DailyReportDialog 一致:覆盖库默认下载,走 Tauri save dialog。
+const beforeDownload = createBeforeDownload(t);
 
 // ── data loading ────────────────────────────────────────────────────────
 
@@ -572,6 +581,7 @@ watch(filterType, () => {
                         :controls="controls"
                         :theme-element="themeElement"
                         :locale="settings.language"
+                        :before-download="beforeDownload"
                       />
                     </div>
                     <!-- Commits within this report -->

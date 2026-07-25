@@ -87,6 +87,7 @@ pub fn run() {
             commands::script::run_in_terminal,
             commands::files::read_readme,
             commands::files::scan_compose_files,
+            commands::files::save_text_file,
             commands::docker::compose_ps,
             commands::hidden::list_hidden_items,
             commands::hidden::set_hidden_item,

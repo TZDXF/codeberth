@@ -376,6 +376,12 @@ export default {
     loading: "加载中...",
     notFound: "项目中未找到 README 文件",
   },
+  markdown: {
+    saveDialogTitle: "另存为",
+    savedAs: "已保存到 {path}",
+    saveFailed: "保存失败:{error}",
+    tableNotFound: "未找到当前表格元素,无法下载",
+  },
   scripts: {
     package: {
       title: "NPM Scripts",

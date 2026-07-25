@@ -69,6 +69,37 @@ pub fn read_readme(path: String) -> AppResult<Option<ReadmeContent>> {
     Ok(Some(ReadmeContent { file_name, content }))
 }
 
+/// 写入文本到指定路径(供 Markdown 代码块/表格"下载"按钮走 Tauri save dialog 后调用)。
+/// 由前端在弹出的保存对话框中拿到目标路径后传入。
+/// 大小上限与 README 一致(512KB),超出报错 —— Markdown 表格/代码块正常不会这么大,
+/// 防止意外把几 MB 内容塞进对话框导致 UI 卡顿或误选 .log/.tmp 这类系统保留目录。
+const SAVE_TEXT_MAX_BYTES: usize = 512 * 1024;
+
+#[tauri::command]
+pub fn save_text_file(path: String, content: String) -> AppResult<()> {
+    if path.trim().is_empty() {
+        return Err(AppError::Invalid("保存路径不能为空".into()));
+    }
+    if content.len() > SAVE_TEXT_MAX_BYTES {
+        return Err(AppError::Invalid(format!(
+            "内容超过 {} 字节上限",
+            SAVE_TEXT_MAX_BYTES
+        )));
+    }
+    // 父目录必须已存在(save dialog 选定的路径必然满足,但显式校验避免空字符串路径)
+    let p = Path::new(&path);
+    if let Some(parent) = p.parent() {
+        if !parent.as_os_str().is_empty() && !parent.is_dir() {
+            return Err(AppError::Invalid(format!(
+                "目标目录不存在: {}",
+                parent.display()
+            )));
+        }
+    }
+    std::fs::write(p, content.as_bytes())?;
+    Ok(())
+}
+
 /// 判断 YAML 内容是否为 Docker Compose 格式:顶层含 mapping 类型的 services。
 /// 是则返回服务列表(含可访问端口);非法 YAML / 无 services(CI 配置等)返回 None。
 fn parse_compose(content: &str) -> Option<Vec<ComposeService>> {
@@ -326,6 +357,44 @@ mod tests {
         let files = scan_compose_files(dir.clone()).unwrap();
         let paths: Vec<&str> = files.iter().map(|f| f.path.as_str()).collect();
         assert_eq!(paths, vec!["a.yml", "z.yml", "abc/x.yml"]);
+
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn save_text_file_writes_and_validates() {
+        let dir = temp_project_dir("save-text");
+        let p = Path::new(&dir);
+
+        // 正常写入
+        let target = p.join("out.csv");
+        save_text_file(
+            target.to_string_lossy().into_owned(),
+            "a,b\n1,2\n".into(),
+        )
+        .unwrap();
+        assert_eq!(fs::read_to_string(&target).unwrap(), "a,b\n1,2\n");
+
+        // 空路径报错
+        assert!(matches!(
+            save_text_file("".into(), "x".into()),
+            Err(AppError::Invalid(_))
+        ));
+
+        // 父目录不存在报错
+        let bad = p.join("missing/out.txt");
+        assert!(matches!(
+            save_text_file(bad.to_string_lossy().into_owned(), "x".into()),
+            Err(AppError::Invalid(_))
+        ));
+
+        // 超大内容报错
+        let huge = "x".repeat(SAVE_TEXT_MAX_BYTES + 1);
+        let target2 = p.join("huge.txt");
+        assert!(matches!(
+            save_text_file(target2.to_string_lossy().into_owned(), huge),
+            Err(AppError::Invalid(_))
+        ));
 
         let _ = fs::remove_dir_all(&dir);
     }
