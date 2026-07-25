@@ -12,7 +12,8 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { OPEN_WITH_OPTIONS } from "@/lib/open-with";
+import { getEditorAvailability, isEditorUnavailable, OPEN_WITH_OPTIONS } from "@/lib/open-with";
+import type { EditorAvailability } from "@/lib/open-with";
 import { cmd } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import type { EditorKind, Project } from "@/types";
@@ -22,21 +23,15 @@ const props = defineProps<{ project: Project }>();
 
 const store = useProjectsStore();
 
-// VSCode 探测结果模块级共享,避免每个项目实例重复 invoke
-let vscodePromise: Promise<boolean> | null = null;
-function detectVscode(): Promise<boolean> {
-  vscodePromise ??= cmd<boolean>("detect_vscode").catch(() => false);
-  return vscodePromise;
-}
-
-const vscodeAvailable = ref<boolean | null>(null);
+// 可用性探测在 lib/open-with 内模块级共享,避免每个项目实例重复 invoke
+const availability = ref<EditorAvailability | null>(null);
 
 onMounted(async () => {
-  vscodeAvailable.value = await detectVscode();
+  availability.value = await getEditorAvailability();
 });
 
 function isDisabled(kind: EditorKind): boolean {
-  return kind === "vscode" && vscodeAvailable.value === false;
+  return isEditorUnavailable(kind, availability.value);
 }
 
 async function openWith(kind: EditorKind) {

@@ -10,7 +10,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { OPEN_WITH_OPTIONS } from "@/lib/open-with";
+import { getEditorAvailability, isEditorUnavailable, OPEN_WITH_OPTIONS } from "@/lib/open-with";
+import type { EditorAvailability } from "@/lib/open-with";
 import { cmd } from "@/lib/tauri";
 import { useSettingsStore } from "@/stores/settings";
 import type { EditorKind, Project } from "@/types";
@@ -27,18 +28,14 @@ const current = computed(
     OPEN_WITH_OPTIONS.find((opt) => opt.kind === settings.defaultOpenWith) ?? OPEN_WITH_OPTIONS[0],
 );
 
-const vscodeAvailable = ref<boolean | null>(null);
+const availability = ref<EditorAvailability | null>(null);
 
 onMounted(async () => {
-  try {
-    vscodeAvailable.value = await cmd<boolean>("detect_vscode");
-  } catch {
-    vscodeAvailable.value = false;
-  }
+  availability.value = await getEditorAvailability();
 });
 
 function isDisabled(kind: EditorKind) {
-  return kind === "vscode" && vscodeAvailable.value === false;
+  return isEditorUnavailable(kind, availability.value);
 }
 
 async function openWith(kind: EditorKind) {

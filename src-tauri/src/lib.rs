@@ -70,7 +70,7 @@ pub fn run() {
             commands::account::remove_git_account,
             commands::account::list_account_repos,
             commands::open::open_with,
-            commands::open::detect_vscode,
+            commands::open::detect_editors,
             commands::prompt::get_ai_prompts,
             commands::prompt::set_ai_prompts,
             commands::prompt::open_prompts_dir,

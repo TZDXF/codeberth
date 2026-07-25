@@ -3,6 +3,7 @@ import { defineStore } from "pinia";
 import { load, type Store } from "@tauri-apps/plugin-store";
 import { homeDir, join } from "@tauri-apps/api/path";
 import { setI18nLocale, type SupportedLocale } from "@/i18n";
+import { OPEN_WITH_OPTIONS } from "@/lib/open-with";
 import type { EditorKind } from "@/types";
 
 export type ThemeMode = "system" | "light" | "dark";
@@ -98,13 +99,10 @@ export const useSettingsStore = defineStore("settings", () => {
       language.value = savedLanguage;
       setI18nLocale(savedLanguage);
     }
-    const savedOpenWith = await fileStore.get<EditorKind>("defaultOpenWith");
-    if (
-      savedOpenWith === "vscode" ||
-      savedOpenWith === "explorer" ||
-      savedOpenWith === "terminal"
-    ) {
-      defaultOpenWith.value = savedOpenWith;
+    const savedOpenWith = await fileStore.get<string>("defaultOpenWith");
+    // 以 OPEN_WITH_OPTIONS 为白名单校验,新增打开方式无需改这里
+    if (OPEN_WITH_OPTIONS.some((opt) => opt.kind === savedOpenWith)) {
+      defaultOpenWith.value = savedOpenWith as EditorKind;
     }
     // AI 配置为自由文本:空值回退默认(baseUrl/model),apiKey 允许为空
     const savedAiBaseUrl = await fileStore.get<string>("aiBaseUrl");

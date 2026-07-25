@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::process::Command;
 
 use tauri::State;
@@ -6,7 +7,34 @@ use crate::db::{self, Db};
 use crate::error::{AppError, AppResult};
 use crate::models::EditorKind;
 
-const VSCODE_SETTING_KEY: &str = "vscode_available";
+/// detect_editors 结果在 settings 表中的缓存 key(JSON: { "<kind>": bool })
+const EDITORS_SETTING_KEY: &str = "editors_available";
+
+/// 命令类编辑器登记表:(kind, 前端 id, CLI 命令名)。
+/// 可用性只用 where/which 查 PATH,不扫描任何安装目录;
+/// explorer / terminal 不在表内(平台特判,无需探测)。
+const EDITOR_CLI_TABLE: &[(EditorKind, &str, &str)] = &[
+    (EditorKind::Vscode, "vscode", "code"),
+    (EditorKind::Cursor, "cursor", "cursor"),
+    (EditorKind::Windsurf, "windsurf", "windsurf"),
+    (EditorKind::Trae, "trae", "trae"),
+    (EditorKind::Vscodium, "vscodium", "codium"),
+    (EditorKind::Zed, "zed", "zed"),
+    (EditorKind::Sublime, "sublime", "subl"),
+    (EditorKind::Idea, "idea", "idea"),
+    (EditorKind::Webstorm, "webstorm", "webstorm"),
+    (EditorKind::Goland, "goland", "goland"),
+    (EditorKind::Pycharm, "pycharm", "pycharm"),
+    (EditorKind::Clion, "clion", "clion"),
+    (EditorKind::Rustrover, "rustrover", "rustrover"),
+];
+
+fn cli_command(kind: EditorKind) -> Option<&'static str> {
+    EDITOR_CLI_TABLE
+        .iter()
+        .find(|(k, _, _)| *k == kind)
+        .map(|(_, _, cli)| *cli)
+}
 
 /// Windows 下隐藏中间进程的控制台黑窗(最终弹出的终端窗口不受影响)
 fn hidden(#[allow(unused_mut)] mut cmd: Command) -> Command {
@@ -132,13 +160,14 @@ pub fn spawn_terminal(_path: &str, _title: &str, _command: Option<&str>) -> AppR
     Err(AppError::External("当前平台暂不支持打开终端".into()))
 }
 
-fn open_vscode(path: &str) -> AppResult<()> {
+/// 通过编辑器 CLI 打开目录(命令需在 PATH 中)
+fn open_editor(cli: &str, path: &str) -> AppResult<()> {
     #[cfg(windows)]
     hidden(Command::new("cmd"))
-        .args(["/C", "code", path])
+        .args(["/C", cli, path])
         .spawn()?;
     #[cfg(not(windows))]
-    Command::new("code").arg(path).spawn()?;
+    Command::new(cli).arg(path).spawn()?;
     Ok(())
 }
 
@@ -152,13 +181,13 @@ pub(crate) fn open_explorer(path: &str) -> AppResult<()> {
     Ok(())
 }
 
-fn probe_vscode() -> bool {
+/// 纯 PATH 探测:Windows 用 where,其他平台用 which。
+/// 不用 `<cli> --version` —— JetBrains 系启动器收到 --version 可能直接拉起 GUI。
+fn command_on_path(cli: &str) -> bool {
     #[cfg(windows)]
-    let probe = hidden(Command::new("cmd"))
-        .args(["/C", "code", "--version"])
-        .output();
+    let probe = hidden(Command::new("where")).arg(cli).output();
     #[cfg(not(windows))]
-    let probe = Command::new("code").arg("--version").output();
+    let probe = Command::new("which").arg(cli).output();
     matches!(probe, Ok(out) if out.status.success())
 }
 
@@ -168,22 +197,31 @@ pub fn open_with(path: String, kind: EditorKind) -> AppResult<()> {
         return Err(AppError::Invalid(format!("目录不存在: {path}")));
     }
     match kind {
-        EditorKind::Vscode => open_vscode(&path),
         EditorKind::Explorer => open_explorer(&path),
         EditorKind::Terminal => spawn_terminal(&path, "Terminal", None),
+        other => match cli_command(other) {
+            Some(cli) => open_editor(cli, &path),
+            None => Err(AppError::Invalid(format!("未知的打开方式: {other:?}"))),
+        },
     }
 }
 
-/// 探测 code 命令,结果缓存进 settings(首次调用真实探测)
+/// 探测所有命令类编辑器的 CLI 是否在 PATH 中,结果以 JSON 缓存进 settings(仅首次真实探测)
 #[tauri::command]
-pub fn detect_vscode(db: State<'_, Db>) -> AppResult<bool> {
+pub fn detect_editors(db: State<'_, Db>) -> AppResult<HashMap<String, bool>> {
     let conn = db.0.lock().unwrap();
-    if let Some(cached) = db::get_setting(&conn, VSCODE_SETTING_KEY)? {
-        return Ok(cached == "1");
+    if let Some(cached) = db::get_setting(&conn, EDITORS_SETTING_KEY)? {
+        if let Ok(map) = serde_json::from_str::<HashMap<String, bool>>(&cached) {
+            return Ok(map);
+        }
     }
-    let available = probe_vscode();
-    db::set_setting(&conn, VSCODE_SETTING_KEY, if available { "1" } else { "0" })?;
-    Ok(available)
+    let map: HashMap<String, bool> = EDITOR_CLI_TABLE
+        .iter()
+        .map(|(_, id, cli)| (id.to_string(), command_on_path(cli)))
+        .collect();
+    let json = serde_json::to_string(&map).unwrap_or_else(|_| "{}".into());
+    db::set_setting(&conn, EDITORS_SETTING_KEY, &json)?;
+    Ok(map)
 }
 
 #[cfg(test)]
@@ -203,8 +241,12 @@ mod tests {
 
     #[test]
     fn editor_kind_deserialize() {
-        let kind: EditorKind = serde_json::from_str("\"vscode\"").unwrap();
-        assert!(matches!(kind, EditorKind::Vscode));
+        // 枚举序列化 id 必须与登记表中的前端 id 一致
+        for (kind, id, _) in EDITOR_CLI_TABLE {
+            let json = format!("\"{id}\"");
+            let parsed: EditorKind = serde_json::from_str(&json).unwrap();
+            assert_eq!(&parsed, kind);
+        }
         let kind: EditorKind = serde_json::from_str("\"explorer\"").unwrap();
         assert!(matches!(kind, EditorKind::Explorer));
         let kind: EditorKind = serde_json::from_str("\"terminal\"").unwrap();
@@ -213,8 +255,17 @@ mod tests {
     }
 
     #[test]
-    fn probe_vscode_does_not_panic() {
-        let _available = probe_vscode();
+    fn cli_command_lookup() {
+        assert_eq!(cli_command(EditorKind::Vscode), Some("code"));
+        assert_eq!(cli_command(EditorKind::Sublime), Some("subl"));
+        assert_eq!(cli_command(EditorKind::Rustrover), Some("rustrover"));
+        assert_eq!(cli_command(EditorKind::Explorer), None);
+        assert_eq!(cli_command(EditorKind::Terminal), None);
+    }
+
+    #[test]
+    fn command_on_path_does_not_panic() {
+        let _available = command_on_path("definitely-not-a-real-editor-cli");
     }
 
     /// 回归测试:终端必须通过 隐藏外层 cmd + start 启动。

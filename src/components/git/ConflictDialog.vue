@@ -13,6 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { getEditorAvailability, isEditorUnavailable } from "@/lib/open-with";
+import type { EditorAvailability } from "@/lib/open-with";
 import { cmd } from "@/lib/tauri";
 import type { EditorKind, Project } from "@/types";
 
@@ -20,15 +22,11 @@ const { t } = useI18n();
 const props = defineProps<{ project: Project; conflicts: string[] }>();
 const open = defineModel<boolean>("open", { required: true });
 
-// VSCode 可用性(与 OpenWithMenu 同一探测命令,结果有缓存)
-const vscodeAvailable = ref<boolean | null>(null);
+// VSCode 可用性(与 OpenWithMenu 共享同一探测,结果有缓存)
+const availability = ref<EditorAvailability | null>(null);
 
 onMounted(async () => {
-  try {
-    vscodeAvailable.value = await cmd<boolean>("detect_vscode");
-  } catch {
-    vscodeAvailable.value = false;
-  }
+  availability.value = await getEditorAvailability();
 });
 
 /** 冲突不在应用内解决:引导用户到更合适的工具中处理 */
@@ -65,7 +63,11 @@ async function openIn(kind: EditorKind) {
         </ScrollArea>
       </div>
       <DialogFooter class="gap-2">
-        <Button variant="outline" :disabled="vscodeAvailable === false" @click="openIn('vscode')">
+        <Button
+          variant="outline"
+          :disabled="isEditorUnavailable('vscode', availability)"
+          @click="openIn('vscode')"
+        >
           <Code class="h-4 w-4" />
           {{ t("git.conflict.openVscode") }}
         </Button>

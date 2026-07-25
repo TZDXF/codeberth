@@ -149,7 +149,22 @@ export interface ComposeServiceState {
   status: string;
 }
 
-export type EditorKind = "vscode" | "explorer" | "terminal";
+export type EditorKind =
+  | "explorer"
+  | "vscode"
+  | "cursor"
+  | "windsurf"
+  | "trae"
+  | "vscodium"
+  | "zed"
+  | "sublime"
+  | "idea"
+  | "webstorm"
+  | "goland"
+  | "pycharm"
+  | "clion"
+  | "rustrover"
+  | "terminal";
 
 /** 可隐藏的 UI 项类型:package.json 分组 / 分组内单条命令 / compose 文件 */
 export type HiddenKind = "packageFile" | "packageScript" | "composeFile";

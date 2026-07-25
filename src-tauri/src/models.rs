@@ -161,10 +161,22 @@ pub struct HiddenItem {
     pub target_key: String,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EditorKind {
-    Vscode,
     Explorer,
+    Vscode,
+    Cursor,
+    Windsurf,
+    Trae,
+    Vscodium,
+    Zed,
+    Sublime,
+    Idea,
+    Webstorm,
+    Goland,
+    Pycharm,
+    Clion,
+    Rustrover,
     Terminal,
 }

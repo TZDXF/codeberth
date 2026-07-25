@@ -38,6 +38,24 @@ const { t } = useI18n();
 const store = useProjectsStore();
 const router = useRouter();
 
+// 上一次添加项目用的存放位置,存 localStorage,作为下次的默认值
+const LAST_LOCATION_KEY = "project-dev:last-add-location";
+
+function loadLastLocation(): string {
+  return localStorage.getItem(LAST_LOCATION_KEY) ?? "";
+}
+
+function saveLastLocation(dir: string) {
+  if (dir) localStorage.setItem(LAST_LOCATION_KEY, dir);
+}
+
+/** 取路径的父目录(本地目录模式下项目路径本身即选中文件夹,记录其父目录作为存放位置) */
+function parentPathOf(p: string): string {
+  const trimmed = p.replace(/[\\/]+$/, "");
+  const idx = Math.max(trimmed.lastIndexOf("\\"), trimmed.lastIndexOf("/"));
+  return idx > 0 ? trimmed.slice(0, idx) : "";
+}
+
 const visible = ref(false);
 const mode = ref<"local" | "clone" | "account">("local");
 
@@ -189,6 +207,7 @@ async function pickFolder() {
     directory: true,
     multiple: false,
     title: t("projects.add.dialogTitle"),
+    defaultPath: loadLastLocation() || undefined,
   });
   if (typeof selected === "string") {
     path.value = selected;
@@ -203,6 +222,7 @@ async function pickParentDir() {
     directory: true,
     multiple: false,
     title: t("projects.add.locationDialogTitle"),
+    defaultPath: parentDir.value || loadLastLocation() || undefined,
   });
   if (typeof selected === "string") {
     parentDir.value = selected;
@@ -214,6 +234,7 @@ async function submit() {
   submitting.value = true;
   try {
     const project = await store.addProject(path.value, name.value.trim());
+    saveLastLocation(parentPathOf(path.value));
     toast.success(t("projects.add.added", { name: project.name }));
     visible.value = false;
     path.value = "";
@@ -244,6 +265,7 @@ async function submitClone() {
       cloneDescription.value,
     );
     toast.success(t("projects.add.cloned", { name: project.name }));
+    saveLastLocation(parentDir.value);
     visible.value = false;
     url.value = "";
     parentDir.value = "";
@@ -269,9 +291,10 @@ function cancelClone() {
   store.cancelClone(cloneJobId).catch(() => {});
 }
 
-// 克隆过程中关闭弹窗(ESC/点 X/点遮罩)视为取消克隆
+// 克隆过程中关闭弹窗(ESC/点 X/点遮罩)视为取消克隆;打开时回填上次的存放位置
 watch(visible, (open_) => {
   if (!open_ && cloning.value) cancelClone();
+  if (open_ && !parentDir.value) parentDir.value = loadLastLocation();
 });
 
 /** 顶部模式切换;手动切出克隆模式时丢弃「账号仓库」带入的凭据与简介 */
