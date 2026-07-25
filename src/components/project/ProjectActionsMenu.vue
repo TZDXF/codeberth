@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Archive, MoreHorizontal } from "@lucide/vue";
@@ -30,9 +30,10 @@ onMounted(async () => {
   availability.value = await getEditorAvailability();
 });
 
-function isDisabled(kind: EditorKind): boolean {
-  return isEditorUnavailable(kind, availability.value);
-}
+// 只展示已扫描到的编辑器;探测中途(null)不过滤,避免闪烁
+const visibleOptions = computed(() =>
+  OPEN_WITH_OPTIONS.filter((opt) => !isEditorUnavailable(opt.kind, availability.value)),
+);
 
 async function openWith(kind: EditorKind) {
   try {
@@ -69,10 +70,9 @@ async function archive() {
     </DropdownMenuTrigger>
     <DropdownMenuContent align="end" class="w-44" @click.stop>
       <DropdownMenuItem
-        v-for="opt in OPEN_WITH_OPTIONS"
+        v-for="opt in visibleOptions"
         :key="opt.kind"
         class="gap-2 text-xs"
-        :disabled="isDisabled(opt.kind)"
         @click="openWith(opt.kind)"
       >
         <component :is="opt.icon" class="h-3.5 w-3.5" />

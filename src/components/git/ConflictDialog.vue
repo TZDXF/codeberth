@@ -64,8 +64,8 @@ async function openIn(kind: EditorKind) {
       </div>
       <DialogFooter class="gap-2">
         <Button
+          v-if="!isEditorUnavailable('vscode', availability)"
           variant="outline"
-          :disabled="isEditorUnavailable('vscode', availability)"
           @click="openIn('vscode')"
         >
           <Code class="h-4 w-4" />

@@ -9,11 +9,11 @@ import {
   FolderOpen,
   Globe,
   Rocket,
-  Snake,
   Sparkles,
   SquareCode,
   Terminal,
   Wind,
+  Worm,
   Zap,
 } from "@lucide/vue";
 import { cmd } from "@/lib/tauri";
@@ -76,7 +76,7 @@ export const OPEN_WITH_OPTIONS: readonly OpenWithOption[] = [
   },
   {
     kind: "pycharm",
-    icon: Snake,
+    icon: Worm,
     labelKey: "openWith.pycharm",
     descKey: "openWith.openInPycharm",
   },
@@ -119,6 +119,8 @@ export function isEditorUnavailable(
   kind: EditorKind,
   availability: EditorAvailability | null,
 ): boolean {
-  if (ALWAYS_AVAILABLE.has(kind) || availability === null) return false;
+  if (ALWAYS_AVAILABLE.has(kind) || availability === null) {
+    return false;
+  }
   return availability[kind] === false;
 }

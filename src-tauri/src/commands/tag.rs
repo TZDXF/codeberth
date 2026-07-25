@@ -240,7 +240,7 @@ mod tests {
     fn set_project_tags_replaces_and_cascades() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let p = project::add(&conn, &dir, "demo").unwrap();
+        let p = project::add(&conn, &dir, "demo", "").unwrap();
         let t1 = create(&conn, "a", "").unwrap();
         let t2 = create(&conn, "b", "").unwrap();
 

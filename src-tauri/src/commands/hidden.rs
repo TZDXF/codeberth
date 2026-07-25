@@ -83,7 +83,7 @@ mod tests {
     fn set_list_unset() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let p = project::add(&conn, &dir, "demo").unwrap();
+        let p = project::add(&conn, &dir, "demo", "").unwrap();
 
         set_hidden(&conn, p.id, "packageFile", ".", true).unwrap();
         set_hidden(&conn, p.id, "packageScript", ".\ndev", true).unwrap();
@@ -105,7 +105,7 @@ mod tests {
     fn rejects_bad_input() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let p = project::add(&conn, &dir, "demo").unwrap();
+        let p = project::add(&conn, &dir, "demo", "").unwrap();
 
         assert!(matches!(
             set_hidden(&conn, p.id, "bogus", "x", true),
@@ -121,7 +121,7 @@ mod tests {
     fn cascades_on_project_delete() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let p = project::add(&conn, &dir, "demo").unwrap();
+        let p = project::add(&conn, &dir, "demo", "").unwrap();
         set_hidden(&conn, p.id, "composeFile", "compose.yml", true).unwrap();
 
         conn.execute("DELETE FROM projects WHERE id = ?1", params![p.id])

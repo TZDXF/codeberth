@@ -412,10 +412,10 @@ function switchMode(m: "local" | "clone" | "account") {
                 >
                   <span class="truncate">
                     {{
-                      accounts.find((a) => a.id === selectedAccountId)?.label
-                      || accounts.find((a) => a.id === selectedAccountId)?.username
-                      || accounts.find((a) => a.id === selectedAccountId)?.provider
-                      || t("projects.add.accountLabel")
+                      accounts.find((a) => a.id === selectedAccountId)?.label ||
+                      accounts.find((a) => a.id === selectedAccountId)?.username ||
+                      accounts.find((a) => a.id === selectedAccountId)?.provider ||
+                      t("projects.add.accountLabel")
                     }}
                   </span>
                   <ChevronDown class="h-4 w-4 shrink-0 opacity-60" />
@@ -426,11 +426,7 @@ function switchMode(m: "local" | "clone" | "account") {
                 class="w-[var(--reka-dropdown-menu-trigger-width)]"
               >
                 <DropdownMenuRadioGroup v-model="selectedAccountId">
-                  <DropdownMenuRadioItem
-                    v-for="a in accounts"
-                    :key="a.id"
-                    :value="a.id"
-                  >
+                  <DropdownMenuRadioItem v-for="a in accounts" :key="a.id" :value="a.id">
                     {{ a.label || a.username || a.provider }}
                     <template v-if="a.username">(@{{ a.username }})</template>
                   </DropdownMenuRadioItem>
@@ -462,11 +458,7 @@ function switchMode(m: "local" | "clone" | "account") {
                   <DropdownMenuRadioItem value="">
                     {{ t("projects.add.repoOwnerAll") }}
                   </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem
-                    v-for="owner in ownerOptions"
-                    :key="owner"
-                    :value="owner"
-                  >
+                  <DropdownMenuRadioItem v-for="owner in ownerOptions" :key="owner" :value="owner">
                     {{ owner }}
                   </DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>

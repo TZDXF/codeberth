@@ -283,7 +283,7 @@ mod tests {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
 
-        let p = add(&conn, &dir, "demo").unwrap();
+        let p = add(&conn, &dir, "demo", "").unwrap();
         assert_eq!(p.name, "demo");
         assert!(p.tags.is_empty());
         assert!(p.git.is_none());
@@ -308,7 +308,7 @@ mod tests {
     fn unarchive_restores_to_list() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let p = add(&conn, &dir, "demo").unwrap();
+        let p = add(&conn, &dir, "demo", "").unwrap();
         archive(&conn, p.id).unwrap();
 
         // 归档列表按归档时间倒序返回
@@ -331,7 +331,7 @@ mod tests {
     fn remove_deletes_permanently() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let p = add(&conn, &dir, "demo").unwrap();
+        let p = add(&conn, &dir, "demo", "").unwrap();
         archive(&conn, p.id).unwrap();
 
         remove(&conn, p.id).unwrap();
@@ -344,26 +344,26 @@ mod tests {
     fn duplicate_path_conflicts() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        add(&conn, &dir, "a").unwrap();
-        assert!(matches!(add(&conn, &dir, "b"), Err(AppError::Conflict(_))));
+        add(&conn, &dir, "a", "").unwrap();
+        assert!(matches!(add(&conn, &dir, "b", ""), Err(AppError::Conflict(_))));
     }
 
     #[test]
     fn rejects_bad_input() {
         let conn = test_conn();
         assert!(matches!(
-            add(&conn, "C:/definitely/not/exist", "x"),
+            add(&conn, "C:/definitely/not/exist", "x", ""),
             Err(AppError::Invalid(_))
         ));
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        assert!(matches!(add(&conn, &dir, "   "), Err(AppError::Invalid(_))));
+        assert!(matches!(add(&conn, &dir, "   ", ""), Err(AppError::Invalid(_))));
     }
 
     #[test]
     fn update_changes_fields() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let p = add(&conn, &dir, "old").unwrap();
+        let p = add(&conn, &dir, "old", "").unwrap();
         let p2 = update(&conn, p.id, "new", "desc").unwrap();
         assert_eq!(p2.name, "new");
         assert_eq!(p2.description, "desc");
@@ -381,8 +381,8 @@ mod tests {
         let dir_b = std::env::temp_dir().join("projectdev-test-beta");
         std::fs::create_dir_all(&dir_b).unwrap();
         let dir_b = dir_b.to_string_lossy().to_string();
-        let a = add(&conn, &dir, "Alpha").unwrap();
-        let _b = add(&conn, &dir_b, "Beta").unwrap();
+        let a = add(&conn, &dir, "Alpha", "").unwrap();
+        let _b = add(&conn, &dir_b, "Beta", "").unwrap();
 
         let hit = list(&conn, Some("alph".into()), None).unwrap();
         assert_eq!(hit.len(), 1);

@@ -249,7 +249,7 @@ mod tests {
 
     fn add_project(conn: &Connection) -> i64 {
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        project::add(conn, &dir, "demo").unwrap().id
+        project::add(conn, &dir, "demo", "").unwrap().id
     }
 
     fn temp_project_dir(tag: &str) -> String {
