@@ -728,8 +728,13 @@ pub async fn git_clone(
     }
 
     let mut command = tokio::process::Command::new("git");
+    command.env("GIT_TERMINAL_PROMPT", "0");
+    // 用账号 token 克隆时禁用凭据助手:认证只走 URL 内嵌的 token,
+    // 避免 GCM 把 token 存进系统凭据管理器;后续 pull/push 由用户自己的凭据解决
+    if clone_url != url {
+        command.arg("-c").arg("credential.helper=");
+    }
     command
-        .env("GIT_TERMINAL_PROMPT", "0")
         .args(["clone", "--", &clone_url, &target_path])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
