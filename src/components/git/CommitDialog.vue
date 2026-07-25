@@ -28,8 +28,8 @@ const message = ref("");
 const submitting = ref(false);
 const submittingAndPushing = ref(false);
 const generating = ref(false);
-// 参考 IDEA:未跟踪文件默认不纳入提交,需显式勾选
-const includeUntracked = ref(false);
+// 未跟踪文件默认勾选纳入本次提交
+const includeUntracked = ref(true);
 
 const git = computed(() => props.project.git);
 const untrackedCount = computed(() => git.value?.untracked ?? 0);
@@ -43,7 +43,7 @@ const committable = computed(() => {
 watch(open, (v) => {
   if (v) {
     message.value = "";
-    includeUntracked.value = false;
+    includeUntracked.value = true;
   }
 });
 
