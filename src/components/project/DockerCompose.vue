@@ -183,9 +183,6 @@ async function run(
       <CardTitle class="flex items-center gap-2 text-sm font-semibold">
         <Container class="h-4 w-4" />
         {{ t("docker.title") }}
-        <span class="text-xs font-normal text-muted-foreground">
-          {{ t("docker.fileCount", { count: displayFiles.length }) }}
-        </span>
         <template v-if="hiddenCount">
           <Button
             variant="ghost"

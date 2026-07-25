@@ -188,9 +188,6 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
                 >
                   {{ groupLabel(d.group) }}
                 </span>
-                <span v-if="!open" class="shrink-0 text-xs text-muted-foreground">
-                  {{ t("scripts.package.scriptCount", { count: d.scripts.length }) }}
-                </span>
                 <span
                   v-if="d.group.package_name"
                   class="shrink-0 truncate text-xs text-muted-foreground"

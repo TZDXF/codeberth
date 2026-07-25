@@ -368,7 +368,6 @@ export default {
     restartService: "Restart service: docker compose restart {service}",
     stopService: "Stop service: docker compose stop {service}",
     started: "Started docker compose {args} in terminal",
-    fileCount: "1 file | {count} files",
     serviceCount: "1 service | {count} services",
     hideFile: "Hide this compose file",
     running: "Running",
@@ -387,7 +386,6 @@ export default {
       title: "NPM Scripts",
       rootDir: "Root",
       hideFile: "Hide this package.json",
-      scriptCount: "1 script | {count} scripts",
       started: "Started npm run {name} in terminal",
     },
     custom: {

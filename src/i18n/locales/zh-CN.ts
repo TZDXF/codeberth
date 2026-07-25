@@ -363,7 +363,6 @@ export default {
     restartService: "重启服务: docker compose restart {service}",
     stopService: "停止服务: docker compose stop {service}",
     started: "已在终端启动 docker compose {args}",
-    fileCount: "{count} 个文件",
     serviceCount: "{count} 个服务",
     hideFile: "隐藏该 compose 文件",
     running: "运行中",
@@ -382,7 +381,6 @@ export default {
       title: "NPM Scripts",
       rootDir: "根目录",
       hideFile: "隐藏该 package.json",
-      scriptCount: "{count} 个脚本",
       started: "已在终端启动 npm run {name}",
     },
     custom: {
