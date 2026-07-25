@@ -282,6 +282,12 @@ export interface CalendarMeta {
   workdays: string[];
 }
 
+/** 节假日/调休标注数据(get_holiday_data 返回的全集,供日期选择日历高亮) */
+export interface HolidayData {
+  holidays: string[];
+  workdays: string[];
+}
+
 /** 批量生成的单个时段(plan_batch_report_ranges;daily 为单日,weekly 为一个工作周) */
 export interface BatchRange {
   dateFrom: string;

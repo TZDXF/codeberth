@@ -95,6 +95,7 @@ pub fn run() {
             commands::report::get_report_history,
             commands::report::delete_report_history,
             commands::report::get_calendar_meta,
+            commands::report::get_holiday_data,
             commands::report::get_reports_by_date,
             commands::report::get_work_week_ranges,
             commands::report::plan_batch_report_ranges,

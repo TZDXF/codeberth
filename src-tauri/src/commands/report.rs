@@ -414,6 +414,30 @@ pub fn get_calendar_meta(
     })
 }
 
+/// 节假日/调休标注数据(全集),供报告生成弹窗等日期选择日历做高亮。
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HolidayData {
+    pub holidays: Vec<String>,
+    pub workdays: Vec<String>,
+}
+
+/// 返回全部法定节假日/调休补班日期列表(数据源覆盖 2004–2026,体积小,一次返回全集)。
+/// 数据加载失败时回退空集合,前端日历退化为常规周末着色。
+#[tauri::command]
+pub fn get_holiday_data(app: AppHandle) -> AppResult<HolidayData> {
+    let data_dir = app
+        .path()
+        .home_dir()
+        .map_err(|e| AppError::External(e.to_string()))?
+        .join(crate::APP_DATA_DIR_NAME);
+    let (holidays, workdays) = workday::load_data(&data_dir).unwrap_or_default();
+    Ok(HolidayData {
+        holidays: holidays.into_iter().collect(),
+        workdays: workdays.into_iter().collect(),
+    })
+}
+
 /// 查询指定日期(date_to 匹配)的所有报告详情(含提交记录和 Markdown 正文)。
 #[tauri::command]
 pub fn get_reports_by_date(
