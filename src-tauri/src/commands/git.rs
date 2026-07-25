@@ -5,9 +5,11 @@ use std::process::{Command, Output};
 use std::sync::OnceLock;
 
 use serde::Serialize;
-use tauri::{Emitter, Window};
+use tauri::{Emitter, State, Window};
 use tokio::sync::Semaphore;
 
+use crate::commands::account;
+use crate::db::Db;
 use crate::error::{AppError, AppResult};
 use crate::models::{
     GitBranches, GitCommitContext, GitCommitInfo, GitPullResult, GitStatus, GitUntrackedFile,
@@ -685,13 +687,32 @@ async fn remove_dir_all_retry(path: &Path) -> std::io::Result<()> {
 
 /// 克隆仓库到本地目录,返回克隆后的路径。
 /// 期间可通过 cancel_git_clone(job_id) 中断;失败/取消都会清理半成品目录。
-/// 进度行刷在 stderr 但不透传(前端仅 loading),只保留末尾用于错误提示
+/// 进度行刷在 stderr 但不透传(前端仅 loading),只保留末尾用于错误提示。
+/// account_id 传入时(从「账号仓库」入口克隆)用绑定账号的 token 拼认证 URL 克隆,
+/// 成功后把 origin 重置为干净 URL,避免 token 残留在 .git/config
 #[tauri::command]
-pub async fn git_clone(url: String, target_path: String, job_id: String) -> AppResult<String> {
+pub async fn git_clone(
+    db: State<'_, Db>,
+    url: String,
+    target_path: String,
+    job_id: String,
+    account_id: Option<i64>,
+) -> AppResult<String> {
     let url = url.trim().to_string();
     if url.is_empty() {
         return Err(AppError::Invalid("仓库地址不能为空".into()));
     }
+    // 账号凭据拼进 clone URL(仅 http(s) 地址生效,ssh 地址原样使用)
+    let clone_url = match account_id {
+        Some(id) => {
+            let (provider, username, token) = {
+                let conn = db.0.lock().unwrap();
+                account::get_credentials(&conn, id)?
+            };
+            account::build_authed_url(&provider, &username, &token, &url)
+        }
+        None => url.clone(),
+    };
     let target = Path::new(&target_path);
     let parent = target
         .parent()
@@ -709,7 +730,7 @@ pub async fn git_clone(url: String, target_path: String, job_id: String) -> AppR
     let mut command = tokio::process::Command::new("git");
     command
         .env("GIT_TERMINAL_PROMPT", "0")
-        .args(["clone", "--", &url, &target_path])
+        .args(["clone", "--", &clone_url, &target_path])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::piped());
     #[cfg(windows)]
@@ -784,7 +805,38 @@ pub async fn git_clone(url: String, target_path: String, job_id: String) -> AppR
     if result.is_err() && target.exists() {
         let _ = remove_dir_all_retry(target).await;
     }
+    // 用账号凭据克隆成功后,把 origin 重置为干净 URL(token 不留在 .git/config)
+    if result.is_ok() && clone_url != url {
+        let _ = run_git(&target_path, &["remote", "set-url", "origin", &url]);
+    }
     result.map(|()| target_path)
+}
+
+/// 列出所有未归档项目的 origin 地址(非仓库/无 remote 的项目跳过),
+/// 供前端与账号仓库列表做「已添加」匹配
+#[tauri::command]
+pub async fn list_project_remote_urls(db: State<'_, Db>) -> AppResult<Vec<String>> {
+    let paths = {
+        let conn = db.0.lock().unwrap();
+        let mut stmt = conn.prepare("SELECT path FROM projects WHERE archived_at IS NULL")?;
+        let rows = stmt.query_map([], |r| r.get::<_, String>(0))?;
+        rows.collect::<Result<Vec<_>, _>>()?
+    };
+    run_blocking(move || {
+        let mut urls = Vec::new();
+        for path in paths {
+            if let Ok(o) = git_command(&path).args(["remote", "get-url", "origin"]).output() {
+                if o.status.success() {
+                    let url = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                    if !url.is_empty() {
+                        urls.push(url);
+                    }
+                }
+            }
+        }
+        Ok(urls)
+    })
+    .await
 }
 
 /// 取消进行中的克隆:kill 子进程并从注册表移除(git_clone 轮询发现后清理目录)。

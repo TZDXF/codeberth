@@ -97,9 +97,15 @@ export const useProjectsStore = defineStore("projects", () => {
     return project;
   }
 
-  /** 克隆仓库到本地,返回克隆后的路径;可被 cancelClone 中断 */
-  async function cloneProject(url: string, targetPath: string, jobId: string): Promise<string> {
-    return cmd<string>("git_clone", { url, targetPath, jobId });
+  /** 克隆仓库到本地,返回克隆后的路径;可被 cancelClone 中断。
+   *  accountId 传入时后端用绑定账号 token 克隆(成功后重置 origin 为干净 URL) */
+  async function cloneProject(
+    url: string,
+    targetPath: string,
+    jobId: string,
+    accountId?: number,
+  ): Promise<string> {
+    return cmd<string>("git_clone", { url, targetPath, jobId, accountId: accountId ?? null });
   }
 
   /** 取消进行中的克隆(后端 kill 子进程并清理半成品目录) */

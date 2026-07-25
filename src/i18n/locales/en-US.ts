@@ -85,6 +85,18 @@ export default {
       cloning: "Cloning...",
       cloneAndAdd: "Clone & add",
       cloned: 'Cloned and added project "{name}".',
+      modeAccount: "Account repos",
+      accountDescription:
+        "Browse repositories of a linked account, then clone and add one as a project",
+      accountLabel: "Account",
+      accountEmpty:
+        "No linked accounts yet. Go to Settings → Accounts to add a GitHub / Gitee / GitLab account first.",
+      repoSearchPlaceholder: "Search by org, name or description...",
+      repoOwnerAll: "All orgs",
+      repoEmpty: "No repositories to show",
+      repoPrivate: "Private",
+      repoAdded: "Added",
+      repoLoading: "Loading repositories...",
     },
     actions: {
       more: "More actions",
@@ -411,6 +423,7 @@ export default {
       tags: "Tag manager",
       archive: "Archived projects",
       ai: "AI",
+      accounts: "Accounts",
       prompts: "Prompts",
       schedule: "Schedules",
     },
@@ -444,6 +457,37 @@ export default {
       batchConcurrency: "Batch generation concurrency",
       batchConcurrencyHint:
         "Maximum number of concurrent AI requests during batch report generation (1-5). Lower this when the API is rate-limited.",
+    },
+    accounts: {
+      title: "Accounts",
+      description:
+        "Link GitHub / Gitee / GitLab accounts to browse their repositories and clone them in one click",
+      empty: "No linked accounts yet",
+      add: "Add account",
+      addTitle: "Link account",
+      editTitle: "Edit account",
+      formDescription:
+        "The token is verified against the platform API on save; the account is stored only if verification succeeds",
+      provider: "Provider",
+      baseUrl: "Instance URL",
+      baseUrlPlaceholder: "https://gitlab.example.com (intranet http URLs allowed)",
+      label: "Label",
+      labelPlaceholder: "e.g. Work (optional)",
+      token: "Access token",
+      tokenPlaceholder: "Paste a Personal Access Token",
+      tokenKeepPlaceholder: "Leave empty to keep the current token",
+      tokenHint: {
+        github:
+          "GitHub → Settings → Developer settings → Personal access tokens, repo scope required",
+        gitee: "Gitee → Settings → Private tokens, projects scope required",
+        gitlab: "GitLab → Preferences → Access Tokens, read_api scope required",
+      },
+      tokenNote: "Tokens are stored in plain text in the local database, on this machine only",
+      verifying: "Verifying & saving...",
+      added: "Account linked",
+      updated: "Account updated",
+      deleted: "Account removed",
+      deleteConfirm: 'Remove account "{name}"? Projects already cloned are not affected.',
     },
     prompts: {
       title: "Prompts",

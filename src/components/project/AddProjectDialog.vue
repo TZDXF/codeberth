@@ -4,7 +4,8 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "vue-sonner";
-import { FolderOpen, FolderGit2, Loader2 } from "@lucide/vue";
+import { FolderOpen, FolderGit2, KeyRound, Loader2 } from "@lucide/vue";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,6 +17,15 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { NativeSelect } from "@/components/ui/native-select";
+import {
+  listAccountRepos,
+  listGitAccounts,
+  listProjectRemoteUrls,
+  normalizeRemoteUrl,
+  type GitAccount,
+  type RemoteRepo,
+} from "@/lib/accounts";
 import { useProjectsStore } from "@/stores/projects";
 
 const { t } = useI18n();
@@ -23,7 +33,7 @@ const store = useProjectsStore();
 const router = useRouter();
 
 const visible = ref(false);
-const mode = ref<"local" | "clone">("local");
+const mode = ref<"local" | "clone" | "account">("local");
 
 // 本地目录模式
 const path = ref("");
@@ -40,6 +50,107 @@ const cloneNameTouched = ref(false);
 const cloning = ref(false);
 const cancelling = ref(false);
 let cloneJobId = "";
+// 从「账号仓库」入口克隆时记录账号,后端用其 token 克隆;手动切模式时清空
+let cloneAccountId: number | undefined;
+
+// 账号仓库模式
+const accounts = ref<GitAccount[]>([]);
+const accountsLoaded = ref(false);
+const selectedAccountId = ref<number | null>(null);
+const repos = ref<RemoteRepo[]>([]);
+const reposLoading = ref(false);
+const repoSearch = ref("");
+const selectedOwner = ref("");
+const addedRemotes = ref<Set<string>>(new Set());
+
+/** NativeSelect 的 v-model 是字符串,包一层与 number id 互转 */
+const selectedAccountKey = computed({
+  get: () => (selectedAccountId.value == null ? "" : String(selectedAccountId.value)),
+  set: (v) => {
+    selectedAccountId.value = v ? Number(v) : null;
+  },
+});
+
+/** 当前账号下仓库涉及的组织/用户(去重,按名称排序) */
+const ownerOptions = computed(() => {
+  const owners = new Set(repos.value.map((r) => r.owner).filter(Boolean));
+  return [...owners].sort((a, b) => a.localeCompare(b));
+});
+
+const filteredRepos = computed(() => {
+  let list = repos.value;
+  if (selectedOwner.value) {
+    list = list.filter((r) => r.owner === selectedOwner.value);
+  }
+  const q = repoSearch.value.trim().toLowerCase();
+  if (!q) return list;
+  // 组织名(owner)、全名、仓库名、描述均参与匹配
+  return list.filter(
+    (r) =>
+      r.owner.toLowerCase().includes(q) ||
+      r.fullName.toLowerCase().includes(q) ||
+      r.name.toLowerCase().includes(q) ||
+      r.description.toLowerCase().includes(q),
+  );
+});
+
+/** 首次进入账号模式时加载账号列表与本地项目 remote 地址(「已添加」匹配用) */
+async function ensureAccountsLoaded() {
+  if (accountsLoaded.value) return;
+  accountsLoaded.value = true;
+  try {
+    const [accs, remoteUrls] = await Promise.all([listGitAccounts(), listProjectRemoteUrls()]);
+    accounts.value = accs;
+    addedRemotes.value = new Set(remoteUrls.map(normalizeRemoteUrl));
+    if (accs.length > 0 && selectedAccountId.value == null) {
+      selectedAccountId.value = accs[0].id;
+    }
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+
+/** 一次加载账号下全部仓库(后端循环分页拉全,前端只做客户端搜索过滤) */
+async function loadRepos() {
+  const id = selectedAccountId.value;
+  if (id == null || reposLoading.value) return;
+  reposLoading.value = true;
+  try {
+    repos.value = await listAccountRepos(id);
+  } catch (e) {
+    toast.error(String(e));
+  } finally {
+    reposLoading.value = false;
+  }
+}
+
+watch(selectedAccountId, (id) => {
+  repos.value = [];
+  repoSearch.value = "";
+  selectedOwner.value = "";
+  if (id != null) loadRepos();
+});
+
+/** 仓库是否已添加为本地项目(remote URL 归一化后匹配) */
+function isAdded(repo: RemoteRepo): boolean {
+  return addedRemotes.value.has(normalizeRemoteUrl(repo.httpCloneUrl));
+}
+
+/** 选中仓库:回填克隆表单并切到克隆模式,克隆时带上账号凭据 */
+function pickRepo(repo: RemoteRepo) {
+  if (isAdded(repo) || !repo.httpCloneUrl) return;
+  cloneAccountId = selectedAccountId.value ?? undefined;
+  dirNameTouched.value = false;
+  cloneNameTouched.value = false;
+  url.value = repo.httpCloneUrl;
+  mode.value = "clone";
+}
+
+function formatRepoTime(iso: string): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? "" : d.toLocaleDateString();
+}
 
 /** 从仓库 URL 推导目录名:取末段并去掉 .git 后缀 */
 function dirNameFromUrl(raw: string): string {
@@ -120,7 +231,12 @@ async function submitClone() {
   cancelling.value = false;
   cloneJobId = crypto.randomUUID();
   try {
-    const clonedPath = await store.cloneProject(url.value.trim(), targetPath.value, cloneJobId);
+    const clonedPath = await store.cloneProject(
+      url.value.trim(),
+      targetPath.value,
+      cloneJobId,
+      cloneAccountId,
+    );
     const project = await store.addProject(clonedPath, cloneName.value.trim());
     toast.success(t("projects.add.cloned", { name: project.name }));
     visible.value = false;
@@ -130,6 +246,7 @@ async function submitClone() {
     cloneName.value = "";
     dirNameTouched.value = false;
     cloneNameTouched.value = false;
+    cloneAccountId = undefined;
     router.push(`/projects/${project.id}`);
   } catch (e) {
     // 用户主动取消:静默复位,不弹错误
@@ -150,6 +267,13 @@ function cancelClone() {
 watch(visible, (open_) => {
   if (!open_ && cloning.value) cancelClone();
 });
+
+/** 顶部模式切换;手动切出克隆模式时丢弃「账号仓库」带入的凭据 */
+function switchMode(m: "local" | "clone" | "account") {
+  mode.value = m;
+  if (m !== "clone") cloneAccountId = undefined;
+  if (m === "account") ensureAccountsLoaded();
+}
 </script>
 
 <template>
@@ -162,7 +286,11 @@ watch(visible, (open_) => {
         <DialogTitle>{{ t("projects.add.title") }}</DialogTitle>
         <DialogDescription>
           {{
-            mode === "local" ? t("projects.add.description") : t("projects.add.cloneDescription")
+            mode === "local"
+              ? t("projects.add.description")
+              : mode === "clone"
+                ? t("projects.add.cloneDescription")
+                : t("projects.add.accountDescription")
           }}
         </DialogDescription>
       </DialogHeader>
@@ -175,7 +303,7 @@ watch(visible, (open_) => {
           class="h-7 flex-1 gap-1.5"
           :class="mode === 'local' && 'bg-accent'"
           :disabled="cloning"
-          @click="mode = 'local'"
+          @click="switchMode('local')"
         >
           <FolderOpen class="h-3.5 w-3.5" />
           {{ t("projects.add.modeLocal") }}
@@ -187,10 +315,22 @@ watch(visible, (open_) => {
           class="h-7 flex-1 gap-1.5"
           :class="mode === 'clone' && 'bg-accent'"
           :disabled="cloning"
-          @click="mode = 'clone'"
+          @click="switchMode('clone')"
         >
           <FolderGit2 class="h-3.5 w-3.5" />
           {{ t("projects.add.modeClone") }}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="h-7 flex-1 gap-1.5"
+          :class="mode === 'account' && 'bg-accent'"
+          :disabled="cloning"
+          @click="switchMode('account')"
+        >
+          <KeyRound class="h-3.5 w-3.5" />
+          {{ t("projects.add.modeAccount") }}
         </Button>
       </div>
 
@@ -220,6 +360,87 @@ watch(visible, (open_) => {
           </Button>
         </DialogFooter>
       </form>
+
+      <div v-else-if="mode === 'account'" class="flex min-w-0 flex-col gap-3">
+        <p
+          v-if="accountsLoaded && accounts.length === 0"
+          class="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground"
+        >
+          {{ t("projects.add.accountEmpty") }}
+        </p>
+        <template v-else>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium">{{ t("projects.add.accountLabel") }}</label>
+            <NativeSelect v-model="selectedAccountKey" class="w-full">
+              <option v-for="a in accounts" :key="a.id" :value="String(a.id)">
+                {{ a.label || a.username || a.provider }}
+                <template v-if="a.username">(@{{ a.username }})</template>
+              </option>
+            </NativeSelect>
+          </div>
+          <div class="flex gap-2">
+            <Input
+              v-model="repoSearch"
+              :placeholder="t('projects.add.repoSearchPlaceholder')"
+              spellcheck="false"
+              class="min-w-0 flex-1"
+            />
+            <NativeSelect
+              v-if="ownerOptions.length > 1"
+              v-model="selectedOwner"
+              class="w-32 shrink-0"
+            >
+              <option value="">{{ t("projects.add.repoOwnerAll") }}</option>
+              <option v-for="owner in ownerOptions" :key="owner" :value="owner">
+                {{ owner }}
+              </option>
+            </NativeSelect>
+          </div>
+          <div class="max-h-64 overflow-x-hidden overflow-y-auto rounded-md border">
+            <div
+              v-if="reposLoading && repos.length === 0"
+              class="flex items-center justify-center gap-2 py-8 text-sm text-muted-foreground"
+            >
+              <Loader2 class="h-4 w-4 animate-spin" />
+              {{ t("projects.add.repoLoading") }}
+            </div>
+            <p
+              v-else-if="filteredRepos.length === 0"
+              class="py-6 text-center text-sm text-muted-foreground"
+            >
+              {{ t("projects.add.repoEmpty") }}
+            </p>
+            <button
+              v-for="repo in filteredRepos"
+              :key="repo.repoId"
+              type="button"
+              class="flex w-full flex-col gap-0.5 border-b px-3 py-2 text-left transition-colors last:border-b-0"
+              :class="isAdded(repo) ? 'cursor-not-allowed opacity-60' : 'hover:bg-accent'"
+              :disabled="isAdded(repo)"
+              @click="pickRepo(repo)"
+            >
+              <div class="flex min-w-0 items-center gap-2">
+                <span class="min-w-0 truncate text-sm">
+                  <span v-if="repo.owner" class="text-muted-foreground">{{ repo.owner }} / </span>
+                  <span class="font-medium">{{ repo.name }}</span>
+                </span>
+                <Badge v-if="repo.isPrivate" variant="outline" class="shrink-0 text-xs">
+                  {{ t("projects.add.repoPrivate") }}
+                </Badge>
+                <Badge v-if="isAdded(repo)" variant="secondary" class="shrink-0 text-xs">
+                  {{ t("projects.add.repoAdded") }}
+                </Badge>
+                <span class="ml-auto shrink-0 text-xs text-muted-foreground">
+                  {{ formatRepoTime(repo.updatedAt) }}
+                </span>
+              </div>
+              <p v-if="repo.description" class="truncate text-xs text-muted-foreground">
+                {{ repo.description }}
+              </p>
+            </button>
+          </div>
+        </template>
+      </div>
 
       <form v-else class="flex flex-col gap-4" @submit.prevent="submitClone">
         <div class="flex flex-col gap-1.5">

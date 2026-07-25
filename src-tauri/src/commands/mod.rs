@@ -1,3 +1,4 @@
+pub mod account;
 pub mod docker;
 pub mod files;
 pub mod git;
