@@ -58,6 +58,8 @@ const cancelling = ref(false);
 let cloneJobId = "";
 // 从「账号仓库」入口克隆时记录账号,后端用其 token 克隆;手动切模式时清空
 let cloneAccountId: number | undefined;
+// 从「账号仓库」入口克隆时带入的远程仓库简介,作为项目描述;手动切模式时清空
+const cloneDescription = ref("");
 
 // 账号仓库模式
 const accounts = ref<GitAccount[]>([]);
@@ -138,6 +140,7 @@ function isAdded(repo: RemoteRepo): boolean {
 function pickRepo(repo: RemoteRepo) {
   if (isAdded(repo) || !repo.httpCloneUrl) return;
   cloneAccountId = selectedAccountId.value ?? undefined;
+  cloneDescription.value = repo.description;
   dirNameTouched.value = false;
   cloneNameTouched.value = false;
   url.value = repo.httpCloneUrl;
@@ -235,7 +238,11 @@ async function submitClone() {
       cloneJobId,
       cloneAccountId,
     );
-    const project = await store.addProject(clonedPath, cloneName.value.trim());
+    const project = await store.addProject(
+      clonedPath,
+      cloneName.value.trim(),
+      cloneDescription.value,
+    );
     toast.success(t("projects.add.cloned", { name: project.name }));
     visible.value = false;
     url.value = "";
@@ -245,6 +252,7 @@ async function submitClone() {
     dirNameTouched.value = false;
     cloneNameTouched.value = false;
     cloneAccountId = undefined;
+    cloneDescription.value = "";
     router.push(`/projects/${project.id}`);
   } catch (e) {
     // 用户主动取消:静默复位,不弹错误
@@ -266,10 +274,13 @@ watch(visible, (open_) => {
   if (!open_ && cloning.value) cancelClone();
 });
 
-/** 顶部模式切换;手动切出克隆模式时丢弃「账号仓库」带入的凭据 */
+/** 顶部模式切换;手动切出克隆模式时丢弃「账号仓库」带入的凭据与简介 */
 function switchMode(m: "local" | "clone" | "account") {
   mode.value = m;
-  if (m !== "clone") cloneAccountId = undefined;
+  if (m !== "clone") {
+    cloneAccountId = undefined;
+    cloneDescription.value = "";
+  }
   if (m === "account") ensureAccountsLoaded();
 }
 </script>

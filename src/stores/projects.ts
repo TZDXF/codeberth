@@ -91,8 +91,12 @@ export const useProjectsStore = defineStore("projects", () => {
     projects.value.forEach(triggerRemoteFetch);
   }
 
-  async function addProject(path: string, name: string) {
-    const project = await cmd<Project>("add_project", { path, name });
+  async function addProject(path: string, name: string, description?: string) {
+    const project = await cmd<Project>("add_project", {
+      path,
+      name,
+      description: description?.trim() ? description.trim() : null,
+    });
     await fetchProjects();
     return project;
   }

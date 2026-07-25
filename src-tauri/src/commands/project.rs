@@ -66,7 +66,7 @@ fn with_tags(conn: &Connection, row: ProjectRow) -> AppResult<Project> {
     })
 }
 
-pub fn add(conn: &Connection, path: &str, name: &str) -> AppResult<Project> {
+pub fn add(conn: &Connection, path: &str, name: &str, description: &str) -> AppResult<Project> {
     if !std::path::Path::new(path).is_dir() {
         return Err(AppError::Invalid(format!("目录不存在: {path}")));
     }
@@ -77,8 +77,8 @@ pub fn add(conn: &Connection, path: &str, name: &str) -> AppResult<Project> {
     let ts = now();
     conn.execute(
         "INSERT INTO projects (path, name, description, created_at, updated_at)
-         VALUES (?1, ?2, '', ?3, ?4)",
-        params![path, name, ts, ts],
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![path, name, description.trim(), ts, ts],
     )
     .map_err(|e| match e {
         rusqlite::Error::SqliteFailure(err, _)
@@ -205,9 +205,14 @@ pub fn remove(conn: &Connection, id: i64) -> AppResult<()> {
 // ---- Tauri 命令包装 ----
 
 #[tauri::command]
-pub fn add_project(db: State<'_, Db>, path: String, name: String) -> AppResult<Project> {
+pub fn add_project(
+    db: State<'_, Db>,
+    path: String,
+    name: String,
+    description: Option<String>,
+) -> AppResult<Project> {
     let conn = db.0.lock().unwrap();
-    add(&conn, &path, &name)
+    add(&conn, &path, &name, description.as_deref().unwrap_or(""))
 }
 
 #[tauri::command]
