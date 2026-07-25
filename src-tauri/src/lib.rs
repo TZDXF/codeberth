@@ -61,6 +61,8 @@ pub fn run() {
             commands::git::git_commit_context,
             commands::git::git_log,
             commands::git::git_current_user,
+            commands::git::git_clone,
+            commands::git::cancel_git_clone,
             commands::open::open_with,
             commands::open::detect_vscode,
             commands::prompt::get_ai_prompts,

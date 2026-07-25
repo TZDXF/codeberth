@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Output};
@@ -16,6 +17,14 @@ use crate::models::{
 /// 后台 fetch 并发上限(超出排队)
 static FETCH_PERMITS: OnceLock<Semaphore> = OnceLock::new();
 
+/// 进行中的克隆任务(job_id -> 子进程),供 cancel_git_clone 查找并 kill
+static CLONE_JOBS: OnceLock<tokio::sync::Mutex<HashMap<String, tokio::process::Child>>> =
+    OnceLock::new();
+
+fn clone_jobs() -> &'static tokio::sync::Mutex<HashMap<String, tokio::process::Child>> {
+    CLONE_JOBS.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GitUpdatedPayload {
     pub project_id: i64,
@@ -23,18 +32,22 @@ pub struct GitUpdatedPayload {
     pub last_fetch_at: i64,
 }
 
-pub(crate) fn git_command(path: &str) -> Command {
+/// 构造 git 命令:禁用终端凭据交互(GUI 应用无人应答会挂起,凭据管理器
+/// helper 弹窗不受影响),Windows 下隐藏控制台黑窗
+fn git_command_raw() -> Command {
     let mut cmd = Command::new("git");
-    cmd.arg("-C").arg(path);
-    // 禁止 git 在终端交互式询问凭据(GUI 应用无人应答会挂起);
-    // 凭据管理器 helper 弹窗不受影响
     cmd.env("GIT_TERMINAL_PROMPT", "0");
-    // Windows: 避免 GUI 应用弹 git 时闪现控制台黑窗
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
         cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
     }
+    cmd
+}
+
+pub(crate) fn git_command(path: &str) -> Command {
+    let mut cmd = git_command_raw();
+    cmd.arg("-C").arg(path);
     cmd
 }
 
@@ -654,6 +667,144 @@ pub(crate) fn run_git_current_user(path: &str) -> AppResult<GitUser> {
         name: read("user.name"),
         email: read("user.email"),
     })
+}
+
+/// 删除目录(带重试)。取消克隆时 Windows 上被杀掉的子进程可能短暂持有
+/// 文件句柄,立即 remove_dir_all 会失败,故重试几次
+async fn remove_dir_all_retry(path: &Path) -> std::io::Result<()> {
+    for attempt in 0..5 {
+        match tokio::fs::remove_dir_all(path).await {
+            Ok(()) => return Ok(()),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+            Err(e) if attempt == 4 => return Err(e),
+            Err(_) => tokio::time::sleep(std::time::Duration::from_millis(200)).await,
+        }
+    }
+    Ok(())
+}
+
+/// 克隆仓库到本地目录,返回克隆后的路径。
+/// 期间可通过 cancel_git_clone(job_id) 中断;失败/取消都会清理半成品目录。
+/// 进度行刷在 stderr 但不透传(前端仅 loading),只保留末尾用于错误提示
+#[tauri::command]
+pub async fn git_clone(url: String, target_path: String, job_id: String) -> AppResult<String> {
+    let url = url.trim().to_string();
+    if url.is_empty() {
+        return Err(AppError::Invalid("仓库地址不能为空".into()));
+    }
+    let target = Path::new(&target_path);
+    let parent = target
+        .parent()
+        .ok_or_else(|| AppError::Invalid(format!("目标路径无效: {target_path}")))?;
+    if !parent.is_dir() {
+        return Err(AppError::Invalid(format!(
+            "存放目录不存在: {}",
+            parent.display()
+        )));
+    }
+    if target.exists() {
+        return Err(AppError::Conflict(format!("目标目录已存在: {target_path}")));
+    }
+
+    let mut command = tokio::process::Command::new("git");
+    command
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .args(["clone", "--", &url, &target_path])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped());
+    #[cfg(windows)]
+    {
+        command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = command
+        .spawn()
+        .map_err(|e| AppError::External(format!("启动 git clone 失败: {e}")))?;
+
+    // stderr 由独立任务持续消费,避免管道写满阻塞子进程;
+    // 只保留末尾 8KB(进度行很长,且只需末尾的失败原因)
+    let stderr_buf = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
+    if let Some(mut stderr) = child.stderr.take() {
+        let buf = stderr_buf.clone();
+        tauri::async_runtime::spawn(async move {
+            use tokio::io::AsyncReadExt;
+            let mut chunk = [0u8; 4096];
+            loop {
+                match stderr.read(&mut chunk).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => {
+                        let mut text = buf.lock().unwrap();
+                        text.push_str(&String::from_utf8_lossy(&chunk[..n]));
+                        if text.len() > 8192 {
+                            let mut cut = text.len() - 4096;
+                            while !text.is_char_boundary(cut) {
+                                cut += 1;
+                            }
+                            text.drain(..cut);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    clone_jobs().lock().await.insert(job_id.clone(), child);
+
+    // 轮询等待结束;注册表项被 cancel_git_clone 移除即视为用户取消
+    let result: AppResult<()> = loop {
+        let polled = {
+            let mut jobs = clone_jobs().lock().await;
+            match jobs.get_mut(&job_id) {
+                None => break Err(AppError::External("已取消克隆".into())),
+                Some(child) => child.try_wait(),
+            }
+        };
+        match polled {
+            Ok(Some(status)) if status.success() => {
+                clone_jobs().lock().await.remove(&job_id);
+                break Ok(());
+            }
+            Ok(Some(_)) => {
+                clone_jobs().lock().await.remove(&job_id);
+                let detail = stderr_buf.lock().unwrap().trim().to_string();
+                break Err(AppError::External(if detail.is_empty() {
+                    "git clone 失败".to_string()
+                } else {
+                    detail
+                }));
+            }
+            Ok(None) => tokio::time::sleep(std::time::Duration::from_millis(200)).await,
+            Err(e) => {
+                clone_jobs().lock().await.remove(&job_id);
+                break Err(AppError::External(format!("等待 git clone 结束失败: {e}")));
+            }
+        }
+    };
+
+    // 失败/取消时清理半成品目录(取消场景子进程刚被 kill,句柄释放有延迟,靠重试覆盖)
+    if result.is_err() && target.exists() {
+        let _ = remove_dir_all_retry(target).await;
+    }
+    result.map(|()| target_path)
+}
+
+/// 取消进行中的克隆:kill 子进程并从注册表移除(git_clone 轮询发现后清理目录)。
+/// Windows 上用 taskkill /T 杀整棵进程树(clone 会派生 remote helper 孙进程)
+#[tauri::command]
+pub async fn cancel_git_clone(job_id: String) -> AppResult<()> {
+    let child = clone_jobs().lock().await.remove(&job_id);
+    if let Some(mut child) = child {
+        #[cfg(windows)]
+        if let Some(pid) = child.id() {
+            let mut cmd = std::process::Command::new("taskkill");
+            cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            let _ = cmd.output();
+        }
+        // 非 Windows 主路径;Windows 上作为 taskkill 的兜底(重复 kill 无害)
+        let _ = child.start_kill();
+    }
+    Ok(())
 }
 
 #[cfg(test)]

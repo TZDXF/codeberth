@@ -171,7 +171,11 @@ async function generate() {
             }}
           </Button>
           <Button type="submit" :disabled="!message.trim() || committable === 0 || submitting">
-            {{ submitting && !submittingAndPushing ? t("git.commit.submitting") : t("git.actions.commit") }}
+            {{
+              submitting && !submittingAndPushing
+                ? t("git.commit.submitting")
+                : t("git.actions.commit")
+            }}
           </Button>
         </DialogFooter>
       </form>

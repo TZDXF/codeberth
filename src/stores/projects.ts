@@ -97,6 +97,16 @@ export const useProjectsStore = defineStore("projects", () => {
     return project;
   }
 
+  /** 克隆仓库到本地,返回克隆后的路径;可被 cancelClone 中断 */
+  async function cloneProject(url: string, targetPath: string, jobId: string): Promise<string> {
+    return cmd<string>("git_clone", { url, targetPath, jobId });
+  }
+
+  /** 取消进行中的克隆(后端 kill 子进程并清理半成品目录) */
+  async function cancelClone(jobId: string) {
+    await cmd("cancel_git_clone", { jobId });
+  }
+
   async function updateProject(id: number, name: string, description: string) {
     const project = await cmd<Project>("update_project", { id, name, description });
     const idx = projects.value.findIndex((p) => p.id === id);
@@ -197,6 +207,8 @@ export const useProjectsStore = defineStore("projects", () => {
     clearTagFilters,
     refreshProject,
     addProject,
+    cloneProject,
+    cancelClone,
     updateProject,
     archiveProject,
     fetchArchivedProjects,
