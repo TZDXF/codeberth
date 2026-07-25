@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "vue-sonner";
-import { FolderOpen, FolderGit2, KeyRound, Loader2 } from "@lucide/vue";
+import { ChevronDown, FolderOpen, FolderGit2, KeyRound, Loader2 } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,8 +16,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { NativeSelect } from "@/components/ui/native-select";
 import {
   listAccountRepos,
   listGitAccounts,
@@ -62,14 +68,6 @@ const reposLoading = ref(false);
 const repoSearch = ref("");
 const selectedOwner = ref("");
 const addedRemotes = ref<Set<string>>(new Set());
-
-/** NativeSelect 的 v-model 是字符串,包一层与 number id 互转 */
-const selectedAccountKey = computed({
-  get: () => (selectedAccountId.value == null ? "" : String(selectedAccountId.value)),
-  set: (v) => {
-    selectedAccountId.value = v ? Number(v) : null;
-  },
-});
 
 /** 当前账号下仓库涉及的组织/用户(去重,按名称排序) */
 const ownerOptions = computed(() => {
@@ -369,14 +367,42 @@ function switchMode(m: "local" | "clone" | "account") {
           {{ t("projects.add.accountEmpty") }}
         </p>
         <template v-else>
-          <div class="flex flex-col gap-1.5">
-            <label class="text-sm font-medium">{{ t("projects.add.accountLabel") }}</label>
-            <NativeSelect v-model="selectedAccountKey" class="w-full">
-              <option v-for="a in accounts" :key="a.id" :value="String(a.id)">
-                {{ a.label || a.username || a.provider }}
-                <template v-if="a.username">(@{{ a.username }})</template>
-              </option>
-            </NativeSelect>
+          <div class="flex items-center gap-2">
+            <label class="shrink-0 text-sm font-medium">{{ t("projects.add.accountLabel") }}</label>
+            <DropdownMenu>
+              <DropdownMenuTrigger as-child>
+                <Button
+                  variant="outline"
+                  class="h-8 flex-1 min-w-0 justify-between gap-2 font-normal"
+                  :disabled="accounts.length === 0"
+                >
+                  <span class="truncate">
+                    {{
+                      accounts.find((a) => a.id === selectedAccountId)?.label
+                      || accounts.find((a) => a.id === selectedAccountId)?.username
+                      || accounts.find((a) => a.id === selectedAccountId)?.provider
+                      || t("projects.add.accountLabel")
+                    }}
+                  </span>
+                  <ChevronDown class="h-4 w-4 shrink-0 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent
+                align="start"
+                class="w-[var(--reka-dropdown-menu-trigger-width)]"
+              >
+                <DropdownMenuRadioGroup v-model="selectedAccountId">
+                  <DropdownMenuRadioItem
+                    v-for="a in accounts"
+                    :key="a.id"
+                    :value="a.id"
+                  >
+                    {{ a.label || a.username || a.provider }}
+                    <template v-if="a.username">(@{{ a.username }})</template>
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <div class="flex gap-2">
             <Input
@@ -385,16 +411,33 @@ function switchMode(m: "local" | "clone" | "account") {
               spellcheck="false"
               class="min-w-0 flex-1"
             />
-            <NativeSelect
-              v-if="ownerOptions.length > 1"
-              v-model="selectedOwner"
-              class="w-32 shrink-0"
-            >
-              <option value="">{{ t("projects.add.repoOwnerAll") }}</option>
-              <option v-for="owner in ownerOptions" :key="owner" :value="owner">
-                {{ owner }}
-              </option>
-            </NativeSelect>
+            <DropdownMenu v-if="ownerOptions.length > 1">
+              <DropdownMenuTrigger as-child>
+                <Button
+                  variant="outline"
+                  class="h-8 w-32 shrink-0 justify-between gap-2 font-normal"
+                >
+                  <span class="truncate">
+                    {{ selectedOwner || t("projects.add.repoOwnerAll") }}
+                  </span>
+                  <ChevronDown class="h-4 w-4 shrink-0 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuRadioGroup v-model="selectedOwner">
+                  <DropdownMenuRadioItem value="">
+                    {{ t("projects.add.repoOwnerAll") }}
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem
+                    v-for="owner in ownerOptions"
+                    :key="owner"
+                    :value="owner"
+                  >
+                    {{ owner }}
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <div class="max-h-64 overflow-x-hidden overflow-y-auto rounded-md border">
             <div

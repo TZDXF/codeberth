@@ -555,6 +555,7 @@ export default {
       empty: "没有已归档的项目",
       restored: "已恢复项目「{name}」",
       deleted: "已删除项目「{name}」",
+      restoreConfirm: "确定恢复项目「{name}」吗?将重新显示在项目列表中。",
       deleteConfirm:
         "确定彻底删除项目「{name}」吗?此操作不可恢复,标签指派、自定义命令等历史数据将一并删除。(不会删除磁盘文件)",
     },

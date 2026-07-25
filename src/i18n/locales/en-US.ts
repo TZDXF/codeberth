@@ -570,6 +570,7 @@ export default {
       empty: "No archived projects",
       restored: 'Project "{name}" restored.',
       deleted: 'Project "{name}" deleted.',
+      restoreConfirm: 'Restore project "{name}"? It will be shown in the project list again.',
       deleteConfirm:
         'Permanently delete project "{name}"? This cannot be undone. All history including tag assignments and custom commands will be deleted. (Files on disk are not affected.)',
     },

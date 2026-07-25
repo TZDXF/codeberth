@@ -1,32 +1,48 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { ArchiveRestore, Trash2 } from "@lucide/vue";
+import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { formatRelativeTime } from "@/lib/format";
 import { useProjectsStore } from "@/stores/projects";
+import type { Project } from "@/types";
 
 const { t } = useI18n();
 const store = useProjectsStore();
 
 onMounted(() => store.fetchArchivedProjects());
 
-async function restore(id: number, name: string) {
-  try {
-    await store.unarchiveProject(id);
-    toast.success(t("settings.archive.restored", { name }));
-  } catch (e) {
-    toast.error(String(e));
-  }
-}
+/** 待确认的二次操作:恢复归档或彻底删除 */
+const pending = ref<{ action: "restore" | "delete"; project: Project } | null>(null);
 
-async function remove(id: number, name: string) {
-  if (!window.confirm(t("settings.archive.deleteConfirm", { name }))) return;
+const confirmTitle = computed(() =>
+  pending.value?.action === "delete"
+    ? t("settings.archive.permanentDelete")
+    : t("settings.archive.restore"),
+);
+const confirmDescription = computed(() => {
+  if (!pending.value) return "";
+  const key =
+    pending.value.action === "delete"
+      ? "settings.archive.deleteConfirm"
+      : "settings.archive.restoreConfirm";
+  return t(key, { name: pending.value.project.name });
+});
+
+async function confirmAction() {
+  if (!pending.value) return;
+  const { action, project } = pending.value;
   try {
-    await store.deleteProject(id);
-    toast.success(t("settings.archive.deleted", { name }));
+    if (action === "delete") {
+      await store.deleteProject(project.id);
+      toast.success(t("settings.archive.deleted", { name: project.name }));
+    } else {
+      await store.unarchiveProject(project.id);
+      toast.success(t("settings.archive.restored", { name: project.name }));
+    }
   } catch (e) {
     toast.error(String(e));
   }
@@ -62,7 +78,7 @@ async function remove(id: number, name: string) {
               size="icon"
               class="h-7 w-7"
               :title="t('settings.archive.restore')"
-              @click="restore(p.id, p.name)"
+              @click="pending = { action: 'restore', project: p }"
             >
               <ArchiveRestore class="h-3.5 w-3.5" />
             </Button>
@@ -71,7 +87,7 @@ async function remove(id: number, name: string) {
               size="icon"
               class="h-7 w-7 text-destructive hover:text-destructive"
               :title="t('settings.archive.permanentDelete')"
-              @click="remove(p.id, p.name)"
+              @click="pending = { action: 'delete', project: p }"
             >
               <Trash2 class="h-3.5 w-3.5" />
             </Button>
@@ -85,5 +101,15 @@ async function remove(id: number, name: string) {
         </p>
       </div>
     </ScrollArea>
+
+    <ConfirmDialog
+      :open="pending !== null"
+      :title="confirmTitle"
+      :description="confirmDescription"
+      :confirm-text="pending?.action === 'delete' ? t('common.delete') : undefined"
+      :destructive="pending?.action === 'delete'"
+      @update:open="pending = null"
+      @confirm="confirmAction"
+    />
   </section>
 </template>

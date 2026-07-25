@@ -3,6 +3,7 @@ import { onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Archive, MoreHorizontal } from "@lucide/vue";
+import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -46,9 +47,9 @@ async function openWith(kind: EditorKind) {
   }
 }
 
+const archiveConfirmOpen = ref(false);
+
 async function archive() {
-  const ok = window.confirm(t("projects.actions.archiveConfirm", { name: props.project.name }));
-  if (!ok) return;
   try {
     await store.archiveProject(props.project.id);
     toast.success(t("projects.actions.archiveSuccess", { name: props.project.name }));
@@ -83,10 +84,20 @@ async function archive() {
         {{ t(opt.descKey) }}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
-      <DropdownMenuItem variant="destructive" class="gap-2 text-xs" @click="archive">
+      <DropdownMenuItem
+        variant="destructive"
+        class="gap-2 text-xs"
+        @click="archiveConfirmOpen = true"
+      >
         <Archive class="h-3.5 w-3.5" />
         {{ t("projects.actions.archive") }}
       </DropdownMenuItem>
     </DropdownMenuContent>
   </DropdownMenu>
+  <ConfirmDialog
+    v-model:open="archiveConfirmOpen"
+    :title="t('projects.actions.archive')"
+    :description="t('projects.actions.archiveConfirm', { name: project.name })"
+    @confirm="archive"
+  />
 </template>
