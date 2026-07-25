@@ -19,7 +19,6 @@ import {
 import { Markdown, type ControlsConfig } from "vue-stream-markdown";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Calendar } from "@/components/ui/calendar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import {
   Dialog,
@@ -37,9 +36,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { RangeCalendar } from "@/components/ui/range-calendar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
+import HolidayCalendar from "@/components/report/HolidayCalendar.vue";
+import HolidayRangeCalendar from "@/components/report/HolidayRangeCalendar.vue";
 import TagCheckList from "@/components/tags/TagCheckList.vue";
 import { generateReport, type ProjectCommits } from "@/lib/ai";
 import { planBatchItems, type BatchItem } from "@/lib/batch-report";
@@ -743,7 +743,7 @@ async function startBatch() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent class="w-auto p-0" align="start">
-                  <RangeCalendar
+                  <HolidayRangeCalendar
                     v-model="batchRange"
                     :number-of-months="2"
                     :locale="settings.language"
@@ -777,7 +777,7 @@ async function startBatch() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent class="w-auto p-0" align="start">
-                  <Calendar
+                  <HolidayCalendar
                     v-model="customDate"
                     :locale="settings.language"
                     :max-value="maxDateSingle"
@@ -810,7 +810,7 @@ async function startBatch() {
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent class="w-auto p-0" align="start">
-                  <RangeCalendar
+                  <HolidayRangeCalendar
                     v-model="customRange"
                     :number-of-months="2"
                     :locale="settings.language"

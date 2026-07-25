@@ -1,0 +1,15 @@
+/* 日历节假日标注配色,供 ReportCalendar / HolidayCalendar / HolidayRangeCalendar 共用。
+   非 scoped:各组件通过 import 引入(Vite 去重),class 判定逻辑见 src/lib/holidays.ts */
+
+/* 法定节假日:红色 */
+.report-calendar-holiday {
+  color: #f87171;
+}
+/* 普通周末:淡红 */
+.report-calendar-weekend {
+  color: rgb(248 113 113 / 0.7);
+}
+/* 调休上班日:绿色 */
+.report-calendar-makeup {
+  color: #4ade80;
+}

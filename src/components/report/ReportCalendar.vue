@@ -18,6 +18,8 @@ import {
   CalendarPrevButton,
 } from "@/components/ui/calendar";
 import type { CalendarMeta } from "@/types";
+import { getHolidayDayClass, getHolidayDayTitle, isWeekendDate } from "@/lib/holidays";
+import "@/styles/holiday-calendar.css";
 import { useSettingsStore } from "@/stores/settings";
 
 const props = defineProps<{
@@ -98,31 +100,18 @@ watch(placeholder, (val) => {
 
 // ── helpers ─────────────────────────────────────────────────────────────
 
-function isWeekend(dv: DateValue): boolean {
-  const d = dv.toDate(getLocalTimeZone());
-  return d.getDay() === 0 || d.getDay() === 6;
-}
-
 function getDayClass(dv: DateValue): string {
-  const ds = dv.toString();
-  const classes: string[] = [];
-  if (holidaySet.value.has(ds)) {
-    classes.push("report-calendar-holiday");
-  } else if (isWeekend(dv) && !workdaySet.value.has(ds)) {
-    classes.push("report-calendar-weekend");
-  }
-  if (workdaySet.value.has(ds)) {
-    classes.push("report-calendar-makeup");
-  }
-  return classes.join(" ");
+  return getHolidayDayClass(dv.toString(), isWeekendDate(dv), holidaySet.value, workdaySet.value);
 }
 
 function getDayTitle(dv: DateValue): string | undefined {
-  const ds = dv.toString();
-  if (holidaySet.value.has(ds)) return t("reportHistory.holiday");
-  if (workdaySet.value.has(ds)) return t("reportHistory.makeupWorkday");
-  if (isWeekend(dv)) return t("reportHistory.weekend");
-  return undefined;
+  return getHolidayDayTitle(
+    dv.toString(),
+    isWeekendDate(dv),
+    holidaySet.value,
+    workdaySet.value,
+    t,
+  );
 }
 
 function getReportCount(dv: DateValue): number {
@@ -219,18 +208,3 @@ function asDateValue(dv: any): DateValue {
     </CalendarGrid>
   </CalendarRoot>
 </template>
-
-<style scoped>
-/* 法定节假日：红色 */
-:deep(.report-calendar-holiday) {
-  color: #f87171;
-}
-/* 普通周末：淡红 */
-:deep(.report-calendar-weekend) {
-  color: rgb(248 113 113 / 0.7);
-}
-/* 调休上班日：绿色 */
-:deep(.report-calendar-makeup) {
-  color: #4ade80;
-}
-</style>
