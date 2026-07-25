@@ -71,7 +71,6 @@ async function testConnection() {
           autocomplete="off"
           spellcheck="false"
         />
-        <p class="text-xs text-muted-foreground">{{ t("settings.ai.apiKeyNote") }}</p>
       </div>
       <div class="flex flex-col gap-1.5">
         <label class="text-sm font-medium" for="ai-model">{{ t("settings.ai.model") }}</label>

@@ -176,7 +176,6 @@ async function remove(account: GitAccount) {
           {{ t("settings.accounts.add") }}
         </Button>
       </div>
-      <p class="text-xs text-muted-foreground">{{ t("settings.accounts.tokenNote") }}</p>
     </div>
 
     <Dialog v-model:open="dialogOpen">
