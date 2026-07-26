@@ -38,6 +38,26 @@ export default {
     restore: "Restore",
     maximize: "Maximize",
     close: "Close",
+    checkUpdate: "Check for updates",
+    updateAvailable: "New version v{version} available",
+  },
+  update: {
+    title: "New version v{version} available",
+    currentVersion: "Current version: v{version}",
+    currentVersionLabel: "Current version",
+    check: "Check for updates",
+    checking: "Checking...",
+    upToDate: "You are on the latest version",
+    checkFailed: "Failed to check for updates: {error}",
+    available: "New version v{version} available",
+    viewDetail: "View",
+    noNotes: "No release notes provided.",
+    updateNow: "Update now",
+    downloading: "Downloading update... {progress}%",
+    installedHint: "Update installed. Restart the app to apply it.",
+    installFailed: "Failed to install the update: {error}",
+    restartNow: "Restart now",
+    later: "Later",
   },
   projects: {
     home: {
@@ -476,6 +496,13 @@ export default {
       openWith: "Default open with",
       openWithDescription:
         "The default action of the Open button on the project detail page. You can always pick another one from the dropdown. Only editors that are installed and have their command on PATH are listed.",
+    },
+    update: {
+      title: "Software updates",
+      description: "Check for and install new versions, delivered via GitHub Releases",
+      autoCheck: "Check for updates on startup",
+      autoCheckHint:
+        "Automatically check for new versions after launch and notify when one is found",
     },
     ai: {
       title: "AI integration",

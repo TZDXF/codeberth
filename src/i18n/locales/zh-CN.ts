@@ -39,6 +39,26 @@ export default {
     restore: "还原",
     maximize: "最大化",
     close: "关闭",
+    checkUpdate: "检查更新",
+    updateAvailable: "发现新版本 v{version}",
+  },
+  update: {
+    title: "发现新版本 v{version}",
+    currentVersion: "当前版本:v{version}",
+    currentVersionLabel: "当前版本",
+    check: "检查更新",
+    checking: "检查中...",
+    upToDate: "当前已是最新版本",
+    checkFailed: "检查更新失败:{error}",
+    available: "发现新版本 v{version}",
+    viewDetail: "查看",
+    noNotes: "暂无更新说明",
+    updateNow: "立即更新",
+    downloading: "下载更新中... {progress}%",
+    installedHint: "更新已安装,重启应用后生效。",
+    installFailed: "更新安装失败:{error}",
+    restartNow: "立即重启",
+    later: "稍后重启",
   },
   projects: {
     home: {
@@ -469,6 +489,12 @@ export default {
       openWith: "默认打开方式",
       openWithDescription:
         "项目详情页「打开」按钮默认使用的方式,可随时通过下拉菜单选择其他方式;仅展示已安装且命令已加入 PATH 的编辑器",
+    },
+    update: {
+      title: "软件更新",
+      description: "检查并安装新版本,更新来自 GitHub Releases",
+      autoCheck: "启动时自动检查更新",
+      autoCheckHint: "应用启动后自动检查是否有新版本,发现更新时提示",
     },
     ai: {
       title: "AI 接入",

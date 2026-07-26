@@ -3,11 +3,14 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { Copy, Minus, Square, X } from "@lucide/vue";
+import { ArrowUpCircle, Copy, Minus, RefreshCw, Square, X } from "@lucide/vue";
+import UpdateDialog from "@/components/update/UpdateDialog.vue";
+import { useUpdateStore } from "@/stores/update";
 
 const { t } = useI18n();
 const appWindow = getCurrentWindow();
 const isMaximized = ref(false);
+const updateStore = useUpdateStore();
 let unlistenResize: UnlistenFn | undefined;
 
 onMounted(async () => {
@@ -20,6 +23,15 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   unlistenResize?.();
 });
+
+function onUpdateClick() {
+  // 已有可用更新时打开详情对话框,否则手动检查
+  if (updateStore.hasUpdate) {
+    updateStore.dialogOpen = true;
+  } else {
+    updateStore.checkForUpdate(true);
+  }
+}
 
 function onDragRegionDblClick(event: MouseEvent) {
   // 仅在空白拖拽区域响应双击最大化，避免在按钮上双击时误触发
@@ -43,6 +55,26 @@ function onDragRegionDblClick(event: MouseEvent) {
     </div>
     <div class="flex h-full items-stretch">
       <button
+        class="relative flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        :class="updateStore.hasUpdate && 'text-primary hover:text-primary'"
+        :title="
+          updateStore.hasUpdate
+            ? t('titleBar.updateAvailable', { version: updateStore.update?.version ?? '' })
+            : t('titleBar.checkUpdate')
+        "
+        @click="onUpdateClick"
+      >
+        <RefreshCw
+          v-if="updateStore.status === 'checking' || updateStore.status === 'downloading'"
+          class="h-4 w-4 animate-spin"
+        />
+        <ArrowUpCircle v-else class="h-4 w-4" />
+        <span
+          v-if="updateStore.hasUpdate"
+          class="absolute right-2.5 top-2 h-1.5 w-1.5 rounded-full bg-destructive"
+        />
+      </button>
+      <button
         class="flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
         :title="t('titleBar.minimize')"
         @click="appWindow.minimize()"
@@ -65,5 +97,6 @@ function onDragRegionDblClick(event: MouseEvent) {
         <X class="h-4 w-4" />
       </button>
     </div>
+    <UpdateDialog />
   </div>
 </template>

@@ -36,6 +36,8 @@ export const useSettingsStore = defineStore("settings", () => {
   const projectsViewMode = ref<ProjectsViewMode>("grid");
   /** 项目列表排序方式 */
   const projectsSortKey = ref<ProjectsSortKey>("name");
+  /** 启动时自动检查更新 */
+  const autoCheckUpdate = ref(true);
 
   let fileStore: Store | null = null;
   let initialized = false;
@@ -85,6 +87,7 @@ export const useSettingsStore = defineStore("settings", () => {
         reportBatchConcurrency: "2",
         projectsViewMode: "grid",
         projectsSortKey: "name",
+        autoCheckUpdate: "true",
       },
     });
     const savedTheme = await fileStore.get<ThemeMode>("theme");
@@ -144,6 +147,11 @@ export const useSettingsStore = defineStore("settings", () => {
     const savedSortKey = await fileStore.get<ProjectsSortKey>("projectsSortKey");
     if (savedSortKey === "name" || savedSortKey === "updated" || savedSortKey === "created") {
       projectsSortKey.value = savedSortKey;
+    }
+    // 自动检查更新:存为字符串 "true"/"false",非法值回退 true
+    const savedAutoCheckUpdate = await fileStore.get<string>("autoCheckUpdate");
+    if (savedAutoCheckUpdate === "true" || savedAutoCheckUpdate === "false") {
+      autoCheckUpdate.value = savedAutoCheckUpdate === "true";
     }
     applyTheme();
     applyMdTheme();
@@ -218,6 +226,11 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("projectsSortKey", value);
   }
 
+  async function setAutoCheckUpdate(value: boolean) {
+    autoCheckUpdate.value = value;
+    await persist("autoCheckUpdate", String(value));
+  }
+
   return {
     theme,
     themeSkin,
@@ -230,6 +243,7 @@ export const useSettingsStore = defineStore("settings", () => {
     reportBatchConcurrency,
     projectsViewMode,
     projectsSortKey,
+    autoCheckUpdate,
     init,
     setTheme,
     setThemeSkin,
@@ -242,5 +256,6 @@ export const useSettingsStore = defineStore("settings", () => {
     setReportBatchConcurrency,
     setProjectsViewMode,
     setProjectsSortKey,
+    setAutoCheckUpdate,
   };
 });

@@ -8,14 +8,22 @@ import { onListen } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
 import { useTagsStore } from "@/stores/tags";
+import { useUpdateStore } from "@/stores/update";
 import type { GitUpdatedPayload, ReportGeneratedPayload } from "@/types";
 
 const store = useProjectsStore();
 const tagsStore = useTagsStore();
 const settingsStore = useSettingsStore();
+const updateStore = useUpdateStore();
 
 onMounted(() => {
-  settingsStore.init();
+  settingsStore.init().then(() => {
+    updateStore.init();
+    // 启动后静默检查更新(dev 环境跳过,避免无签名产物时无意义报错)
+    if (settingsStore.autoCheckUpdate && !import.meta.env.DEV) {
+      updateStore.checkForUpdate(false);
+    }
+  });
   store.fetchProjects();
   tagsStore.fetchTags();
   onListen<GitUpdatedPayload>("git://updated", (payload) => {
