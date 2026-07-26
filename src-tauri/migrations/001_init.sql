@@ -1,3 +1,6 @@
+-- App version: 0.1.0
+-- Status: in development
+
 CREATE TABLE IF NOT EXISTS projects (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     path        TEXT NOT NULL UNIQUE,

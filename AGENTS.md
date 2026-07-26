@@ -47,7 +47,7 @@ src-tauri/migrations/ SQL 迁移,NNN_name.sql
 关键规则:
 
 1. **新增 Rust 命令**:在 `commands/*.rs` 实现(返回 `AppResult<T>`)后,必须在 `lib.rs` 的 `invoke_handler!` 里注册,前端经 `cmd<T>("snake_case 名", { camelCase 参数 })` 调用(Tauri 自动做参数名映射)。
-2. **数据库**:SQLite 文件在 `~/.pm/projects.db`(Windows: `C:\Users\<user>\.pm\`)。改表结构 = 新增 `migrations/00N_xxx.sql` + 在 `db/migrations.rs` 按 `PRAGMA user_version` 顺序应用,保证幂等。不要改已发布的迁移文件。
+2. **数据库与持久化迁移**:SQLite 文件在 `~/.pm/projects.db`(Windows: `C:\Users\<user>\.pm\`)。以版本是否已正式发布或对外分发作为迁移边界:当前版本尚未发布时,同一开发版本内的 SQL、设置、配置及其他持久化格式变更可直接更新该版本的定义,无需为开发快照之间新增迁移;这不保证已有本地开发数据自动升级,必要时可重建开发数据库或配置。版本发布后,不得修改该版本已经使用的迁移文件;数据库结构变更需新增 `migrations/00N_xxx.sql` 并在 `db/migrations.rs` 中按 `PRAGMA user_version` 顺序应用、保证幂等,配置键名/类型/语义等变更也必须提供迁移或兼容处理。每个 SQL 迁移文件顶部必须用 `-- App version: x.y.z` 标明对应应用版本,并用 `-- Status: in development` 标记正在开发的版本;正式发布后改为 `-- Status: released`。
 3. **应用数据目录名 `.pm`** 在 Rust(`lib.rs` 的 `APP_DATA_DIR_NAME`)和前端(`stores/settings.ts`)各有一份常量,改动需同步。设置持久化走 `tauri-plugin-store` → `~/.pm/settings.json`。AI 提示词不走 store/SQLite,存 `~/.pm/prompts/*.md`(`commands/prompt.rs` 读写,文件缺失/为空 = 前端 `lib/ai-prompts.ts` 的内置默认模板)。
 4. **路径别名** `@/` → `src/`(tsconfig + vite 均已配置)。
 
