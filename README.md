@@ -1,4 +1,4 @@
-# ProjectDev
+# CodeBerth · 项目工作台
 
 基于 **Tauri 2 + Vue 3 + TypeScript** 的本地开发项目管理中心(桌面端)。把散落在各处的项目集中登记,在一个窗口里完成日常高频操作:跑脚本、管 Docker Compose、看 Git 状态并提交/推送、读 README、用喜欢的编辑器打开。
 
@@ -63,7 +63,7 @@ src-tauri/
 
 ## 数据存储
 
-应用数据统一存放在用户主目录下的 `~/.pm/`(Windows: `C:\Users\<用户名>\.pm\`):
+应用数据统一存放在用户主目录下的 `~/.codeberth/`(Windows: `C:\Users\<用户名>\.codeberth\`):
 
 - `projects.db` — SQLite 数据库(项目、标签、自定义命令)
 - `settings.json` — 界面设置(主题、语言、默认打开方式等)

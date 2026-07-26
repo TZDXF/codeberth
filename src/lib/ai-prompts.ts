@@ -3,7 +3,7 @@ import type { AiPrompts } from "@/types";
 
 /**
  * 内置默认提示词(提交信息生成)。
- * 用户在 ~/.pm/prompts/commit.md 中没有自定义内容时使用;
+ * 用户在 ~/.codeberth/prompts/commit.md 中没有自定义内容时使用;
  * 输出语言指令由调用方按当前语言设置自动追加,无需写入模板
  */
 export const DEFAULT_COMMIT_PROMPT = `You write concise, high-quality git commit messages following the Conventional Commits specification.
@@ -56,7 +56,7 @@ export function saveAiPrompts(prompts: AiPrompts): Promise<void> {
   return cmd<void>("set_ai_prompts", { prompts });
 }
 
-/** 在系统文件管理器中打开提示词目录(~/.pm/prompts/) */
+/** 在系统文件管理器中打开提示词目录(~/.codeberth/prompts/) */
 export function openPromptsDir(): Promise<void> {
   return cmd<void>("open_prompts_dir");
 }

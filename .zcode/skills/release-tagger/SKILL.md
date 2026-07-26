@@ -1,6 +1,6 @@
 ---
 name: release-tagger
-description: 在此仓库（tzdxf/project-manger，Tauri 2 + Vue 3）发布新版本。读取 `src-tauri/tauri.conf.json` 的 `version` 字段作为发布号，做一致性检查与构建验证后创建 `vX.Y.Z` tag 并推送到 `github` 远程，触发既有的 `.github/workflows/release.yml` 打包草稿 Release。在用户提及"发版"、"发布新版本"、"打 tag 上传"、"cut a release"、"v0.X.0"或想发起 GitHub Release 流程时调用此 skill——即便用户只是说"准备发版"，也走这条流程。
+description: 在此仓库（tzdxf/codeberth，Tauri 2 + Vue 3）发布新版本。读取 `src-tauri/tauri.conf.json` 的 `version` 字段作为发布号，做一致性检查与构建验证后创建 `vX.Y.Z` tag 并推送到 `github` 远程，触发既有的 `.github/workflows/release.yml` 打包草稿 Release。在用户提及"发版"、"发布新版本"、"打 tag 上传"、"cut a release"、"v0.X.0"或想发起 GitHub Release 流程时调用此 skill——即便用户只是说"准备发版"，也走这条流程。
 ---
 
 # 发布 Tag 工作流
@@ -26,7 +26,7 @@ VERSION=$(grep -m1 '"version"' src-tauri/tauri.conf.json | sed -E 's/.*"version"
 REMOTE=$(git remote get-url github 2>/dev/null || git remote get-url origin)
 ```
 
-期望 `REMOTE` 含 `github.com/TZDXF/project-manger`，否则中止并提示"仓库远程异常，请确认 github remote 配置"。
+期望 `REMOTE` 含 `github.com/TZDXF/codeberth`，否则中止并提示"仓库远程异常，请确认 github remote 配置"。
 
 若用户传入可选参数 `version=<X.Y.Z>`，先 echo "仓库当前版本 $VERSION，期望版本 <X.Y.Z>，是否继续？" 并停在此步等用户确认；用户确认前不要执行后续步骤。
 
@@ -79,10 +79,10 @@ git push github "v$VERSION"
 已推送 tag v$VERSION → github
 GitHub Actions 正在构建 Windows NSIS 安装包。
 后续步骤:
-  1. 打开 https://github.com/TZDXF/project-manger/releases → 进入 draft Release
+  1. 打开 https://github.com/TZDXF/codeberth/releases → 进入 draft Release
   2. 检查 assets: <baseName>_<version>_x64-setup.exe + latest.json + .sig 文件是否齐全
   3. 勾选 "Set as the latest release" 后点 Publish
-  4. latest.json 端点 https://github.com/TZDXF/project-manger/releases/latest/download/latest.json 生效后,旧版应用下次启动会自动检查到 v$VERSION
+  4. latest.json 端点 https://github.com/TZDXF/codeberth/releases/latest/download/latest.json 生效后,旧版应用下次启动会自动检查到 v$VERSION
 ```
 
 提醒：仓库使用的 `TAURI_SIGNING_PRIVATE_KEY` Secret 必须已配置（在仓库 Settings → Secrets），否则构建会在签名步骤失败。

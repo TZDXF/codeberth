@@ -1,7 +1,8 @@
 // English (US) translations
 export default {
   app: {
-    title: "ProjectDev",
+    title: "CodeBerth",
+    name: "Project Workspace",
   },
   common: {
     cancel: "Cancel",

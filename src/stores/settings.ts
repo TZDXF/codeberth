@@ -13,8 +13,8 @@ export type Language = SupportedLocale;
 export type ProjectsViewMode = "grid" | "table";
 export type ProjectsSortKey = "name" | "updated" | "created";
 
-// 应用数据统一存放于用户主目录下的 .pm 目录(与 Rust 端 APP_DATA_DIR_NAME 保持一致)
-const APP_DATA_DIR_NAME = ".pm";
+// 应用数据统一存放于用户主目录下的 .codeberth 目录(与 Rust 端 APP_DATA_DIR_NAME 保持一致)
+const APP_DATA_DIR_NAME = ".codeberth";
 const STORE_FILE = "settings.json";
 
 /** AI 服务默认接入参数(OpenAI Chat Completions 兼容) */

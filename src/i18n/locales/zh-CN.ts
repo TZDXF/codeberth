@@ -2,7 +2,8 @@
 // 命名规范:{域}.{模块}.{语义},全小写,点号分层
 export default {
   app: {
-    title: "ProjectDev",
+    title: "CodeBerth",
+    name: "项目工作台",
   },
   common: {
     cancel: "取消",

@@ -164,7 +164,7 @@ pub(crate) fn build_authed_url(provider: &str, username: &str, token: &str, url:
 
 fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent("project-dev-manager")
+        .user_agent("codeberth")
         .timeout(std::time::Duration::from_secs(15))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())

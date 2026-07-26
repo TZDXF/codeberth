@@ -17,7 +17,7 @@ import {
 
 const { t } = useI18n();
 
-// 本地副本,显式保存后才写入 ~/.pm/prompts/*.md;空串 = 使用内置默认模板
+// 本地副本,显式保存后才写入 ~/.codeberth/prompts/*.md;空串 = 使用内置默认模板
 const commitPrompt = ref("");
 const reportPrompt = ref("");
 const weeklyReportPrompt = ref("");

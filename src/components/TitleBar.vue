@@ -47,7 +47,7 @@ function onDragRegionDblClick(event: MouseEvent) {
       data-tauri-drag-region
       class="flex flex-1 items-center gap-2 text-xs font-medium text-muted-foreground"
     >
-      <span class="pointer-events-none">{{ t("app.title") }}</span>
+      <span class="pointer-events-none">{{ t("app.title") }} · {{ t("app.name") }}</span>
     </div>
     <div class="flex h-full items-stretch">
       <button

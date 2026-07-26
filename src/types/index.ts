@@ -76,7 +76,7 @@ export interface GitUser {
   email: string;
 }
 
-/** 用户自定义 AI 提示词(~/.pm/prompts/*.md);空字符串表示使用内置默认模板 */
+/** 用户自定义 AI 提示词(~/.codeberth/prompts/*.md);空字符串表示使用内置默认模板 */
 export interface AiPrompts {
   /** 提交信息生成提示词 */
   commit: string;

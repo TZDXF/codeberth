@@ -439,8 +439,8 @@ mod tests {
     fn list_loads_tags_in_project_order_and_keeps_empty_projects() {
         let conn = test_conn();
         let dir = std::env::temp_dir();
-        let a_path = dir.join("projectdev-batch-a");
-        let b_path = dir.join("projectdev-batch-b");
+        let a_path = dir.join("codeberth-batch-a");
+        let b_path = dir.join("codeberth-batch-b");
         std::fs::create_dir_all(&a_path).unwrap();
         std::fs::create_dir_all(&b_path).unwrap();
         let a = add(&conn, &a_path.to_string_lossy(), "Alpha", "").unwrap();
@@ -476,7 +476,7 @@ mod tests {
     fn list_filters_by_name_and_tags() {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
-        let dir_b = std::env::temp_dir().join("projectdev-test-beta");
+        let dir_b = std::env::temp_dir().join("codeberth-test-beta");
         std::fs::create_dir_all(&dir_b).unwrap();
         let dir_b = dir_b.to_string_lossy().to_string();
         let a = add(&conn, &dir, "Alpha", "").unwrap();
