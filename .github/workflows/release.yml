@@ -27,6 +27,15 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Tauri 2.11.4 signer bug: when the password env is **undefined**, the
+      # signer silently fails ("Signing without password." then exits 0 with no
+      # .sig written). Setting it to an empty string forces the no-password
+      # branch to actually run.
+      - name: Pin empty updater signing password
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is set"
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:

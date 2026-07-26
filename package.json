@@ -15,7 +15,13 @@
     "lint:fix": "oxlint . --fix",
     "format": "oxfmt --write src/",
     "format:check": "oxfmt --check src/",
-    "test:unit": "vitest run"
+    "test:unit": "vitest run",
+    "release:check": "node scripts/release/release.mjs check",
+    "release:build": "node scripts/release/release.mjs build",
+    "release:sign": "node scripts/release/release.mjs sign",
+    "release:latest": "node scripts/release/release.mjs latest",
+    "release:all": "node scripts/release/release.mjs all",
+    "release:local": "node scripts/release/release.mjs all --skip-build"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [

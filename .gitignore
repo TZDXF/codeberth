@@ -27,3 +27,8 @@ plans
 .playwright-cli
 
 docs/
+
+# scripts/release/*.mjs and scripts/release/README.md are tracked (release pipeline).
+# Local-only scratch under scripts/release/ stays ignored.
+scripts/release/_local/
+scripts/release/*.tmp
