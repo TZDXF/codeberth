@@ -556,7 +556,7 @@ async function startBatch() {
     toast.error(t("report.pickRange"));
     return;
   }
-  if (!settings.aiApiKey.trim()) {
+  if (!settings.aiBaseUrl.trim() || !settings.aiApiKey.trim() || !settings.aiModel.trim()) {
     toast.error(t("ai.notConfigured"));
     return;
   }

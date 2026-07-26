@@ -17,9 +17,8 @@ export type ProjectsSortKey = "name" | "updated" | "created";
 const APP_DATA_DIR_NAME = ".codeberth";
 const STORE_FILE = "settings.json";
 
-/** AI 服务默认接入参数(OpenAI Chat Completions 兼容) */
-export const AI_DEFAULT_BASE_URL = "https://api.deepseek.com/v1";
-export const AI_DEFAULT_MODEL = "deepseek-v4-flash";
+// AI 接入参数(OpenAI Chat Completions 兼容):baseUrl/apiKey/model 均无默认值,
+// 由用户在设置页填写;任一缺失时调用方需先校验。
 
 export const useSettingsStore = defineStore("settings", () => {
   const theme = ref<ThemeMode>("system");
@@ -27,9 +26,9 @@ export const useSettingsStore = defineStore("settings", () => {
   const mdTheme = ref<MdTheme>("default");
   const language = ref<Language>("zh-CN");
   const defaultOpenWith = ref<EditorKind>("explorer");
-  const aiBaseUrl = ref(AI_DEFAULT_BASE_URL);
+  const aiBaseUrl = ref("");
   const aiApiKey = ref("");
-  const aiModel = ref(AI_DEFAULT_MODEL);
+  const aiModel = ref("");
   /** AI 调用并发上限(1-5),适用于批量生成报告等所有 AI 请求场景 */
   const aiConcurrency = ref(2);
   /** 项目列表视图模式(grid / table) */
@@ -81,9 +80,9 @@ export const useSettingsStore = defineStore("settings", () => {
         mdTheme: "default",
         language: "zh-CN",
         defaultOpenWith: "explorer",
-        aiBaseUrl: AI_DEFAULT_BASE_URL,
+        aiBaseUrl: "",
         aiApiKey: "",
-        aiModel: AI_DEFAULT_MODEL,
+        aiModel: "",
         aiConcurrency: "2",
         projectsViewMode: "grid",
         projectsSortKey: "name",
@@ -117,7 +116,7 @@ export const useSettingsStore = defineStore("settings", () => {
     if (OPEN_WITH_OPTIONS.some((opt) => opt.kind === savedOpenWith)) {
       defaultOpenWith.value = savedOpenWith as EditorKind;
     }
-    // AI 配置为自由文本:空值回退默认(baseUrl/model),apiKey 允许为空
+    // AI 配置为自由文本:trim 后非空才赋值,空值保持初始空(无默认值可回退)
     const savedAiBaseUrl = await fileStore.get<string>("aiBaseUrl");
     if (typeof savedAiBaseUrl === "string" && savedAiBaseUrl.trim()) {
       aiBaseUrl.value = savedAiBaseUrl.trim();
@@ -194,7 +193,7 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   async function setAiBaseUrl(value: string) {
-    aiBaseUrl.value = value.trim() || AI_DEFAULT_BASE_URL;
+    aiBaseUrl.value = value.trim();
     await persist("aiBaseUrl", aiBaseUrl.value);
   }
 
@@ -204,7 +203,7 @@ export const useSettingsStore = defineStore("settings", () => {
   }
 
   async function setAiModel(value: string) {
-    aiModel.value = value.trim() || AI_DEFAULT_MODEL;
+    aiModel.value = value.trim();
     await persist("aiModel", aiModel.value);
   }
 

@@ -206,7 +206,8 @@ export default {
     },
   },
   ai: {
-    notConfigured: "Configure the AI API key in Settings first",
+    notConfigured:
+      "Configure AI integration in Settings first (base URL, API key, model)",
     entry: "Report",
   },
   report: {

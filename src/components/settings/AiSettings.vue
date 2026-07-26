@@ -87,7 +87,7 @@ async function testConnection() {
           size="sm"
           variant="outline"
           class="gap-1.5"
-          :disabled="testing || !apiKey.trim()"
+          :disabled="testing || !apiKey.trim() || !baseUrl.trim() || !model.trim()"
           @click="testConnection"
         >
           <Loader2 v-if="testing" class="h-3.5 w-3.5 animate-spin" />

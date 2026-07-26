@@ -204,7 +204,7 @@ export default {
     },
   },
   ai: {
-    notConfigured: "请先在设置页配置 AI 的 API Key",
+    notConfigured: "请先在设置页配置 AI(接口地址、API Key、模型)",
     entry: "报告",
   },
   report: {

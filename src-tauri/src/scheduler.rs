@@ -31,19 +31,12 @@ const IDLE_INTERVAL: Duration = Duration::from_secs(60);
 
 #[derive(Deserialize, Default)]
 struct AiConfig {
-    #[serde(default = "default_base_url")]
+    #[serde(default)]
     ai_base_url: String,
     #[serde(default)]
     ai_api_key: String,
-    #[serde(default = "default_model")]
+    #[serde(default)]
     ai_model: String,
-}
-
-fn default_base_url() -> String {
-    "https://api.openai.com/v1".into()
-}
-fn default_model() -> String {
-    "gpt-4o-mini".into()
 }
 
 fn load_ai_config(data_dir: &PathBuf) -> AiConfig {
@@ -55,18 +48,18 @@ fn load_ai_config(data_dir: &PathBuf) -> AiConfig {
             ai_base_url: v
                 .get("aiBaseUrl")
                 .and_then(|x| x.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(default_base_url),
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default(),
             ai_api_key: v
                 .get("aiApiKey")
                 .and_then(|x| x.as_str())
-                .map(|s| s.to_string())
+                .map(|s| s.trim().to_string())
                 .unwrap_or_default(),
             ai_model: v
                 .get("aiModel")
                 .and_then(|x| x.as_str())
-                .map(|s| s.to_string())
-                .unwrap_or_else(default_model),
+                .map(|s| s.trim().to_string())
+                .unwrap_or_default(),
         })
         .unwrap_or_default()
 }
@@ -549,10 +542,18 @@ pub(crate) async fn fire_schedule(
         e
     })?;
 
-    // 2. 读取 AI 配置
+    // 2. 读取 AI 配置(三项任意一项缺失即拒绝执行)
     let ai_config = load_ai_config(data_dir);
+    if ai_config.ai_base_url.is_empty() {
+        eprintln!("[scheduler] AI 接口地址未配置,跳过生成");
+        return Err(AppError::ai_not_configured());
+    }
     if ai_config.ai_api_key.is_empty() {
         eprintln!("[scheduler] AI API Key 未配置,跳过生成");
+        return Err(AppError::ai_not_configured());
+    }
+    if ai_config.ai_model.is_empty() {
+        eprintln!("[scheduler] AI 模型未配置,跳过生成");
         return Err(AppError::ai_not_configured());
     }
 

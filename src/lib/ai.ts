@@ -19,18 +19,16 @@ export interface ProjectCommits {
   commits: GitCommitInfo[];
 }
 
-/** 读取 AI 配置;未配置 API Key 时抛出带本地化文案的错误 */
+/** 读取 AI 配置;任意一项(接口地址 / API Key / 模型)缺失时抛出带本地化文案的错误 */
 function requireConfig() {
   const settings = useSettingsStore();
+  const baseURL = settings.aiBaseUrl.trim();
   const apiKey = settings.aiApiKey.trim();
-  if (!apiKey) {
+  const model = settings.aiModel.trim();
+  if (!baseURL || !apiKey || !model) {
     throw new Error(i18n.global.t("ai.notConfigured"));
   }
-  return {
-    baseURL: settings.aiBaseUrl.trim(),
-    apiKey,
-    model: settings.aiModel.trim(),
-  };
+  return { baseURL, apiKey, model };
 }
 
 /**
