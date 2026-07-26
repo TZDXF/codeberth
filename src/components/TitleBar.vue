@@ -25,12 +25,8 @@ onBeforeUnmount(() => {
 });
 
 function onUpdateClick() {
-  // 已有可用更新时打开详情对话框,否则手动检查
-  if (updateStore.hasUpdate) {
-    updateStore.dialogOpen = true;
-  } else {
-    updateStore.checkForUpdate(true);
-  }
+  // 按钮仅在检测到新版本后出现,点击打开更新详情对话框
+  updateStore.dialogOpen = true;
 }
 
 function onDragRegionDblClick(event: MouseEvent) {
@@ -55,19 +51,12 @@ function onDragRegionDblClick(event: MouseEvent) {
     </div>
     <div class="flex h-full items-stretch">
       <button
-        class="relative flex w-11 items-center justify-center text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-        :class="updateStore.hasUpdate && 'text-primary hover:text-primary'"
-        :title="
-          updateStore.hasUpdate
-            ? t('titleBar.updateAvailable', { version: updateStore.update?.version ?? '' })
-            : t('titleBar.checkUpdate')
-        "
+        v-if="updateStore.update"
+        class="relative flex w-11 items-center justify-center text-primary transition-colors hover:bg-accent"
+        :title="t('titleBar.updateAvailable', { version: updateStore.update.version })"
         @click="onUpdateClick"
       >
-        <RefreshCw
-          v-if="updateStore.status === 'checking' || updateStore.status === 'downloading'"
-          class="h-4 w-4 animate-spin"
-        />
+        <RefreshCw v-if="updateStore.status === 'downloading'" class="h-4 w-4 animate-spin" />
         <ArrowUpCircle v-else class="h-4 w-4" />
         <span
           v-if="updateStore.hasUpdate"

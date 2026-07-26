@@ -6,6 +6,7 @@ import {
   Archive,
   ArrowLeft,
   CalendarClock,
+  Info,
   KeyRound,
   MessageSquareText,
   SlidersHorizontal,
@@ -21,6 +22,7 @@ import AiSettings from "@/components/settings/AiSettings.vue";
 import AccountSettings from "@/components/settings/AccountSettings.vue";
 import PromptSettings from "@/components/settings/PromptSettings.vue";
 import ReportScheduleSettings from "@/components/settings/ReportScheduleSettings.vue";
+import AboutSettings from "@/components/settings/AboutSettings.vue";
 
 const { t } = useI18n();
 interface Category {
@@ -63,6 +65,7 @@ const categories: Category[] = [
     icon: CalendarClock,
     component: ReportScheduleSettings,
   },
+  { id: "about", labelKey: "settings.categories.about", icon: Info, component: AboutSettings },
 ];
 
 const router = useRouter();

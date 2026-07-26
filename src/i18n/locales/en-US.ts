@@ -485,6 +485,7 @@ export default {
       accounts: "Accounts",
       prompts: "Prompts",
       schedule: "Schedules",
+      about: "About",
     },
     general: {
       theme: "Theme",
@@ -503,6 +504,10 @@ export default {
       autoCheck: "Check for updates on startup",
       autoCheckHint:
         "Automatically check for new versions after launch and notify when one is found",
+    },
+    about: {
+      title: "About",
+      description: "A local dev project manager",
     },
     ai: {
       title: "AI integration",

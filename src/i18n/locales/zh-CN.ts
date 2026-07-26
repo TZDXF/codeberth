@@ -479,6 +479,7 @@ export default {
       accounts: "账号绑定",
       prompts: "提示词管理",
       schedule: "定时任务",
+      about: "关于",
     },
     general: {
       theme: "主题",
@@ -495,6 +496,10 @@ export default {
       description: "检查并安装新版本,更新来自 GitHub Releases",
       autoCheck: "启动时自动检查更新",
       autoCheckHint: "应用启动后自动检查是否有新版本,发现更新时提示",
+    },
+    about: {
+      title: "关于",
+      description: "本地开发项目管理中心",
     },
     ai: {
       title: "AI 接入",
