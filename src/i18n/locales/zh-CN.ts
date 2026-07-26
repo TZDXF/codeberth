@@ -4,6 +4,7 @@ export default {
   app: {
     title: "CodeBerth",
     name: "项目工作台",
+    repo: "GitHub 仓库",
   },
   common: {
     cancel: "取消",
@@ -493,8 +494,6 @@ export default {
         "项目详情页「打开」按钮默认使用的方式,可随时通过下拉菜单选择其他方式;仅展示已安装且命令已加入 PATH 的编辑器",
     },
     update: {
-      title: "软件更新",
-      description: "检查并安装新版本,更新来自 GitHub Releases",
       autoCheck: "启动时自动检查更新",
       autoCheckHint: "应用启动后自动检查是否有新版本,发现更新时提示",
     },

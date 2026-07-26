@@ -3,6 +3,7 @@ export default {
   app: {
     title: "CodeBerth",
     name: "Project Workspace",
+    repo: "GitHub repository",
   },
   common: {
     cancel: "Cancel",
@@ -500,8 +501,6 @@ export default {
         "The default action of the Open button on the project detail page. You can always pick another one from the dropdown. Only editors that are installed and have their command on PATH are listed.",
     },
     update: {
-      title: "Software updates",
-      description: "Check for and install new versions, delivered via GitHub Releases",
       autoCheck: "Check for updates on startup",
       autoCheckHint:
         "Automatically check for new versions after launch and notify when one is found",
