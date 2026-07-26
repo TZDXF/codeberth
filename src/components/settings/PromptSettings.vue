@@ -4,7 +4,6 @@ import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { FolderOpen, RotateCcw } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DEFAULT_COMMIT_PROMPT,
@@ -16,6 +15,10 @@ import {
 } from "@/lib/ai-prompts";
 
 const { t } = useI18n();
+
+type PromptId = "commit" | "report" | "weeklyReport";
+
+const activePrompt = ref<PromptId>("commit");
 
 // 本地副本,显式保存后才写入 ~/.codeberth/prompts/*.md;空串 = 使用内置默认模板
 const commitPrompt = ref("");
@@ -71,16 +74,40 @@ async function openDir() {
       </Button>
     </div>
 
-    <div class="mt-6 flex flex-col gap-6">
-      <div class="flex flex-col gap-1.5">
-        <div class="flex items-center justify-between">
+    <div class="mt-6 flex flex-wrap gap-2 border-b pb-3">
+      <Button
+        size="sm"
+        :variant="activePrompt === 'commit' ? 'default' : 'outline'"
+        @click="activePrompt = 'commit'"
+      >
+        {{ t("settings.prompts.commit") }}
+      </Button>
+      <Button
+        size="sm"
+        :variant="activePrompt === 'report' ? 'default' : 'outline'"
+        @click="activePrompt = 'report'"
+      >
+        {{ t("settings.prompts.report") }}
+      </Button>
+      <Button
+        size="sm"
+        :variant="activePrompt === 'weeklyReport' ? 'default' : 'outline'"
+        @click="activePrompt = 'weeklyReport'"
+      >
+        {{ t("settings.prompts.weeklyReport") }}
+      </Button>
+    </div>
+
+    <div class="mt-5 rounded-lg border bg-card p-4">
+      <template v-if="activePrompt === 'commit'">
+        <div class="flex items-center justify-between gap-2">
           <label class="text-sm font-medium" for="prompt-commit">
             {{ t("settings.prompts.commit") }}
           </label>
           <Button
             size="sm"
             variant="ghost"
-            class="h-7 gap-1 px-2 text-xs text-muted-foreground"
+            class="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground"
             :disabled="!commitPrompt"
             @click="commitPrompt = ''"
           >
@@ -88,28 +115,28 @@ async function openDir() {
             {{ t("settings.prompts.reset") }}
           </Button>
         </div>
-        <p class="text-xs text-muted-foreground">{{ t("settings.prompts.commitDescription") }}</p>
+        <p class="mt-1.5 text-xs text-muted-foreground">
+          {{ t("settings.prompts.commitDescription") }}
+        </p>
         <Textarea
           id="prompt-commit"
           v-model="commitPrompt"
           :placeholder="DEFAULT_COMMIT_PROMPT"
-          rows="10"
+          rows="18"
           spellcheck="false"
-          class="font-mono text-xs"
+          class="mt-3 min-h-96 resize-y font-mono text-xs"
         />
-      </div>
+      </template>
 
-      <Separator />
-
-      <div class="flex flex-col gap-1.5">
-        <div class="flex items-center justify-between">
+      <template v-else-if="activePrompt === 'report'">
+        <div class="flex items-center justify-between gap-2">
           <label class="text-sm font-medium" for="prompt-report">
             {{ t("settings.prompts.report") }}
           </label>
           <Button
             size="sm"
             variant="ghost"
-            class="h-7 gap-1 px-2 text-xs text-muted-foreground"
+            class="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground"
             :disabled="!reportPrompt"
             @click="reportPrompt = ''"
           >
@@ -117,28 +144,28 @@ async function openDir() {
             {{ t("settings.prompts.reset") }}
           </Button>
         </div>
-        <p class="text-xs text-muted-foreground">{{ t("settings.prompts.reportDescription") }}</p>
+        <p class="mt-1.5 text-xs text-muted-foreground">
+          {{ t("settings.prompts.reportDescription") }}
+        </p>
         <Textarea
           id="prompt-report"
           v-model="reportPrompt"
           :placeholder="DEFAULT_REPORT_PROMPT"
-          rows="10"
+          rows="18"
           spellcheck="false"
-          class="font-mono text-xs"
+          class="mt-3 min-h-96 resize-y font-mono text-xs"
         />
-      </div>
+      </template>
 
-      <Separator />
-
-      <div class="flex flex-col gap-1.5">
-        <div class="flex items-center justify-between">
+      <template v-else>
+        <div class="flex items-center justify-between gap-2">
           <label class="text-sm font-medium" for="prompt-report-weekly">
             {{ t("settings.prompts.weeklyReport") }}
           </label>
           <Button
             size="sm"
             variant="ghost"
-            class="h-7 gap-1 px-2 text-xs text-muted-foreground"
+            class="h-7 shrink-0 gap-1 px-2 text-xs text-muted-foreground"
             :disabled="!weeklyReportPrompt"
             @click="weeklyReportPrompt = ''"
           >
@@ -146,24 +173,23 @@ async function openDir() {
             {{ t("settings.prompts.reset") }}
           </Button>
         </div>
-        <p class="text-xs text-muted-foreground">
+        <p class="mt-1.5 text-xs text-muted-foreground">
           {{ t("settings.prompts.weeklyReportDescription") }}
         </p>
         <Textarea
           id="prompt-report-weekly"
           v-model="weeklyReportPrompt"
           :placeholder="DEFAULT_WEEKLY_REPORT_PROMPT"
-          rows="10"
+          rows="18"
           spellcheck="false"
-          class="font-mono text-xs"
+          class="mt-3 min-h-96 resize-y font-mono text-xs"
         />
-      </div>
+      </template>
+    </div>
 
+    <div class="mt-5 flex items-center justify-between gap-4 border-t pt-4">
       <p class="text-xs text-muted-foreground">{{ t("settings.prompts.note") }}</p>
-
-      <div>
-        <Button size="sm" @click="save">{{ t("common.save") }}</Button>
-      </div>
+      <Button size="sm" class="shrink-0" @click="save">{{ t("common.save") }}</Button>
     </div>
   </section>
 </template>

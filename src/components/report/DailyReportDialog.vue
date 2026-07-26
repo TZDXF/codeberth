@@ -591,7 +591,7 @@ async function startBatch() {
     projects,
     authorMode: authorMode.value,
     language: settings.language,
-    concurrency: settings.reportBatchConcurrency,
+    concurrency: settings.aiConcurrency,
   });
   open.value = false;
 }

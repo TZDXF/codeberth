@@ -511,22 +511,21 @@ export default {
     },
     ai: {
       title: "AI integration",
-      description:
-        "Configure an OpenAI Chat-compatible API for generating commit messages and daily reports",
+      description: "Used to generate commit messages and daily reports",
       baseUrl: "Base URL",
-      baseUrlPlaceholder: "https://api.openai.com/v1",
+      baseUrlPlaceholder: "https://api.deepseek.com/v1",
       apiKey: "API Key",
       apiKeyPlaceholder: "sk-...",
       model: "Model",
-      modelPlaceholder: "e.g. gpt-4o-mini, deepseek-chat",
+      modelPlaceholder: "e.g. deepseek-v4-flash",
       test: "Test connection",
       testing: "Testing...",
       testSuccess: "Connection succeeded, model is available",
       testFailed: "Connection failed: {error}",
       saved: "AI settings saved",
-      batchConcurrency: "Batch generation concurrency",
-      batchConcurrencyHint:
-        "Maximum number of concurrent AI requests during batch report generation (1-5). Lower this when the API is rate-limited.",
+      concurrency: "Concurrency limit",
+      concurrencyHint:
+        "Maximum number of concurrent AI requests (1-5). Lower this when the API is rate-limited.",
     },
     accounts: {
       title: "Accounts",

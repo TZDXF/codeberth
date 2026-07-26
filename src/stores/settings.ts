@@ -18,8 +18,8 @@ const APP_DATA_DIR_NAME = ".codeberth";
 const STORE_FILE = "settings.json";
 
 /** AI 服务默认接入参数(OpenAI Chat Completions 兼容) */
-export const AI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
-export const AI_DEFAULT_MODEL = "gpt-4o-mini";
+export const AI_DEFAULT_BASE_URL = "https://api.deepseek.com/v1";
+export const AI_DEFAULT_MODEL = "deepseek-v4-flash";
 
 export const useSettingsStore = defineStore("settings", () => {
   const theme = ref<ThemeMode>("system");
@@ -30,8 +30,8 @@ export const useSettingsStore = defineStore("settings", () => {
   const aiBaseUrl = ref(AI_DEFAULT_BASE_URL);
   const aiApiKey = ref("");
   const aiModel = ref(AI_DEFAULT_MODEL);
-  /** 批量生成报告的并发上限(1-5) */
-  const reportBatchConcurrency = ref(2);
+  /** AI 调用并发上限(1-5),适用于批量生成报告等所有 AI 请求场景 */
+  const aiConcurrency = ref(2);
   /** 项目列表视图模式(grid / table) */
   const projectsViewMode = ref<ProjectsViewMode>("grid");
   /** 项目列表排序方式 */
@@ -84,7 +84,7 @@ export const useSettingsStore = defineStore("settings", () => {
         aiBaseUrl: AI_DEFAULT_BASE_URL,
         aiApiKey: "",
         aiModel: AI_DEFAULT_MODEL,
-        reportBatchConcurrency: "2",
+        aiConcurrency: "2",
         projectsViewMode: "grid",
         projectsSortKey: "name",
         autoCheckUpdate: "true",
@@ -131,11 +131,11 @@ export const useSettingsStore = defineStore("settings", () => {
       aiModel.value = savedAiModel.trim();
     }
     // 并发上限存为字符串,解析后限制在 1-5,非法值回退默认 2
-    const savedConcurrency = await fileStore.get<string>("reportBatchConcurrency");
+    const savedConcurrency = await fileStore.get<string>("aiConcurrency");
     if (typeof savedConcurrency === "string") {
       const n = Number.parseInt(savedConcurrency, 10);
       if (Number.isFinite(n)) {
-        reportBatchConcurrency.value = Math.min(5, Math.max(1, n));
+        aiConcurrency.value = Math.min(5, Math.max(1, n));
       }
     }
     // 视图模式:白名单校验,非法值回退 grid
@@ -208,10 +208,10 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("aiModel", aiModel.value);
   }
 
-  async function setReportBatchConcurrency(value: number) {
+  async function setAiConcurrency(value: number) {
     const n = Math.min(5, Math.max(1, Math.round(value)));
-    reportBatchConcurrency.value = n;
-    await persist("reportBatchConcurrency", String(n));
+    aiConcurrency.value = n;
+    await persist("aiConcurrency", String(n));
   }
 
   async function setProjectsViewMode(value: ProjectsViewMode) {
@@ -240,7 +240,7 @@ export const useSettingsStore = defineStore("settings", () => {
     aiBaseUrl,
     aiApiKey,
     aiModel,
-    reportBatchConcurrency,
+    aiConcurrency,
     projectsViewMode,
     projectsSortKey,
     autoCheckUpdate,
@@ -253,7 +253,7 @@ export const useSettingsStore = defineStore("settings", () => {
     setAiBaseUrl,
     setAiApiKey,
     setAiModel,
-    setReportBatchConcurrency,
+    setAiConcurrency,
     setProjectsViewMode,
     setProjectsSortKey,
     setAutoCheckUpdate,
