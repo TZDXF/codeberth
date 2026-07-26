@@ -19,9 +19,7 @@ use tokio::select;
 use tokio::time::{self, Duration, Instant};
 
 use crate::commands::git::{run_git_current_user, run_git_log};
-use crate::commands::report::{
-    read_schedules, update_last_run_at, ReportGeneratedPayload, ReportSchedule,
-};
+use crate::commands::report::{read_schedules, ReportGeneratedPayload, ReportSchedule};
 use crate::error::{AppError, AppResult};
 use crate::models::GitCommitInfo;
 use crate::workday;
@@ -185,7 +183,10 @@ async fn call_ai(
     system_prompt: &str,
     user_prompt: &str,
 ) -> Result<String, String> {
-    let url = format!("{}/chat/completions", config.ai_base_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/chat/completions",
+        config.ai_base_url.trim_end_matches('/')
+    );
 
     let mut body = serde_json::json!({
         "model": config.ai_model,
@@ -254,7 +255,11 @@ fn build_report_prompt(
         })
         .collect();
 
-    let lang = if language == "zh-CN" { "中文" } else { "English" };
+    let lang = if language == "zh-CN" {
+        "中文"
+    } else {
+        "English"
+    };
     format!(
         "Time range: {range_label}.\n\nCommit records:\n{}\n\nRespond in {lang}.",
         sections.join("\n\n")
@@ -294,8 +299,7 @@ fn next_fire(schedule: &ReportSchedule, now_local: &chrono::DateTime<Local>) -> 
             .single()
             .map(|dt| {
                 let dur = dt.signed_duration_since(*now_local);
-                Instant::now()
-                    + Duration::from_secs(dur.to_std().unwrap_or_default().as_secs())
+                Instant::now() + Duration::from_secs(dur.to_std().unwrap_or_default().as_secs())
             });
     }
 
@@ -418,8 +422,7 @@ fn due_schedules(
 
             // 今天已运行过
             if let Some(last) = s.last_run_at {
-                let last_date =
-                    chrono::DateTime::from_timestamp(last, 0).map(|dt| dt.date_naive());
+                let last_date = chrono::DateTime::from_timestamp(last, 0).map(|dt| dt.date_naive());
                 if last_date == Some(today) {
                     return false;
                 }
@@ -455,9 +458,12 @@ fn due_schedules(
 
 // ── project path lookup ────────────────────────────────────────────────
 
-fn load_project_paths(data_dir: &PathBuf) -> AppResult<HashMap<i64, (String, String, String)>> {
-    let db_path = data_dir.join("projects.db");
-    let conn = rusqlite::Connection::open(&db_path)?;
+/// 读取所有未归档项目的 (id, path, name, description)。
+/// 复用 AppHandle 托管的 Db 连接,与主线程共享同一把锁,避免独立连接同文件
+/// 的毫秒级竞争窗口。
+fn load_project_paths(app: &AppHandle) -> AppResult<HashMap<i64, (String, String, String)>> {
+    let db = app.state::<crate::db::Db>();
+    let conn = db.0.lock().unwrap();
     let mut stmt =
         conn.prepare("SELECT id, path, name, description FROM projects WHERE archived_at IS NULL")?;
     let rows = stmt.query_map([], |r| {
@@ -476,23 +482,44 @@ fn load_project_paths(data_dir: &PathBuf) -> AppResult<HashMap<i64, (String, Str
     Ok(map)
 }
 
-/// 更新 last_run_at(独立短连接,失败仅记录日志)
-fn mark_last_run(data_dir: &PathBuf, schedule_id: &str) {
+/// 更新 last_run_at,并要求恰好命中一个定时任务。
+/// 调用方传入 AppHandle 托管的数据库连接,避免使用独立连接。
+fn mark_last_run(conn: &rusqlite::Connection, schedule_id: &str) -> AppResult<()> {
     let now_ts = Local::now().timestamp();
-    match rusqlite::Connection::open(data_dir.join("projects.db")) {
-        Ok(conn) => {
-            if let Err(e) = update_last_run_at(&conn, schedule_id, now_ts) {
-                eprintln!("[scheduler] 更新 last_run_at 失败: {e}");
-            }
-        }
-        Err(e) => eprintln!("[scheduler] 打开数据库失败(更新 last_run_at): {e}"),
+    let updated = conn.execute(
+        "UPDATE report_schedules SET last_run_at = ?1 WHERE id = ?2",
+        rusqlite::params![now_ts, schedule_id],
+    )?;
+    if updated != 1 {
+        return Err(AppError::External(format!(
+            "[scheduler] 更新 last_run_at 未命中任何行(schedule_id={schedule_id}, updated={updated})"
+        )));
     }
+    Ok(())
+}
+
+/// 删除指定 report_history 行;关联的 report_commits 由外键级联删除。
+/// 未命中恰好一行时返回错误。
+fn delete_report_history_row(conn: &rusqlite::Connection, history_id: i64) -> AppResult<()> {
+    let deleted = conn.execute(
+        "DELETE FROM report_history WHERE id = ?1",
+        rusqlite::params![history_id],
+    )?;
+    if deleted != 1 {
+        return Err(AppError::External(format!(
+            "[scheduler] 清理孤儿 report_history 失败: id={history_id}, deleted={deleted}"
+        )));
+    }
+    Ok(())
 }
 
 // ── schedule execution ─────────────────────────────────────────────────
 
-/// 执行一次定时任务:拉取提交 → 调 AI → 写报告历史 → emit 事件。
-/// 成功返回报告历史 id;任何失败以 Err 返回(自动调度时由调用方记录日志)。
+/// 执行一次定时任务:拉取提交 → 调 AI → 写报告历史 → 更新运行时间 → emit 事件。
+/// 成功返回报告历史 id;任何失败以 Err 返回。
+///
+/// 报告历史和提交明细在同一事务中写入。更新运行时间失败时尝试删除已写入的
+/// 报告历史,并保留原始更新错误;只有运行时间更新成功后才发送前端事件。
 pub(crate) async fn fire_schedule(
     app: &AppHandle,
     client: &Client,
@@ -500,7 +527,11 @@ pub(crate) async fn fire_schedule(
     schedule: &ReportSchedule,
 ) -> AppResult<i64> {
     let is_weekly = schedule.report_type == "weekly";
-    let default_name = if is_weekly { "周报定时任务" } else { "日报定时任务" };
+    let default_name = if is_weekly {
+        "周报定时任务"
+    } else {
+        "日报定时任务"
+    };
     let schedule_name = if schedule.name.is_empty() {
         default_name.to_string()
     } else {
@@ -512,8 +543,8 @@ pub(crate) async fn fire_schedule(
         Local::now().format("%Y-%m-%d %H:%M")
     );
 
-    // 1. 读取项目路径
-    let projects = load_project_paths(data_dir).map_err(|e| {
+    // 1. 读取项目路径(复用 AppHandle 托管 Db 锁)
+    let projects = load_project_paths(app).map_err(|e| {
         eprintln!("[scheduler] 读取项目列表失败: {e}");
         e
     })?;
@@ -522,7 +553,7 @@ pub(crate) async fn fire_schedule(
     let ai_config = load_ai_config(data_dir);
     if ai_config.ai_api_key.is_empty() {
         eprintln!("[scheduler] AI API Key 未配置,跳过生成");
-        return Err(AppError::External("AI API Key 未配置,请先在设置页配置".into()));
+        return Err(AppError::ai_not_configured());
     }
 
     // 3. 读取提示词模板(按报告类型)
@@ -579,13 +610,23 @@ pub(crate) async fn fire_schedule(
             let author: Option<String> = if schedule.author_mode == "me" {
                 run_git_current_user(path).ok().and_then(|u| {
                     let name = u.name;
-                    if name.is_empty() { None } else { Some(name) }
+                    if name.is_empty() {
+                        None
+                    } else {
+                        Some(name)
+                    }
                 })
             } else {
                 None
             };
-            let commits = run_git_log(path, Some(&since), Some(&until), Some(500), author.as_deref())
-                .unwrap_or_default();
+            let commits = run_git_log(
+                path,
+                Some(&since),
+                Some(&until),
+                Some(500),
+                author.as_deref(),
+            )
+            .unwrap_or_default();
             commits_by_project.push((pid, name.clone(), desc.clone(), commits));
         }
     }
@@ -595,8 +636,7 @@ pub(crate) async fn fire_schedule(
 
     if commits_by_project.is_empty() {
         eprintln!("[scheduler] {schedule_name}: 无提交记录,跳过");
-        // 仍标记为已运行,避免当天重复检查
-        mark_last_run(data_dir, &schedule.id);
+        // 不写历史、不更新 last_run_at,让下一次循环再次尝试
         return Err(AppError::External(
             "所选项目在时间范围内没有提交记录".into(),
         ));
@@ -609,7 +649,7 @@ pub(crate) async fn fire_schedule(
         .collect();
     let user_prompt = build_report_prompt(&prompt_data, &range_label, &language);
 
-    // 7. 调用 AI
+    // 7. 调用 AI(失败不写历史、不更新 last_run_at)
     let result = call_ai(client, &ai_config, &system_prompt, &user_prompt)
         .await
         .map_err(|e| {
@@ -617,40 +657,51 @@ pub(crate) async fn fire_schedule(
             AppError::External(e)
         })?;
 
-    // 8. 保存到报告历史(SQLite)
-    let db_path = data_dir.join("projects.db");
-    let save_result: Result<i64, _> = (|| {
-        let conn = rusqlite::Connection::open(&db_path)?;
+    // 8. 一次性事务保存报告历史 + 关联 commits,失败回滚。
+    // 复用 AppHandle 托管 Db 锁,避免与主线程独立连接产生毫秒级竞争窗口。
+    let db = app.state::<crate::db::Db>();
+    let mut conn = db.0.lock().unwrap();
+    let history_id = {
+        let tx = conn.transaction()?;
         let now = chrono::Utc::now().timestamp();
         let project_ids: Vec<i64> = commits_by_project.iter().map(|(id, _, _, _)| *id).collect();
         let ids_json = serde_json::to_string(&project_ids).unwrap_or_default();
 
-        conn.execute(
+        tx.execute(
             "INSERT INTO report_history (project_ids, date_from, date_to, range_label, author_mode, language, period_type, result, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             rusqlite::params![ids_json, date_from, date_to, range_label, &schedule.author_mode, language, schedule.report_type, result, now],
         )?;
-        let report_id = conn.last_insert_rowid();
+        let report_id = tx.last_insert_rowid();
 
         for (pid, name, desc, commits) in &commits_by_project {
             let commits_json = serde_json::to_string(commits).unwrap_or_default();
-            conn.execute(
+            tx.execute(
                 "INSERT INTO report_commits (report_id, project_id, project_name, project_description, commit_data)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
                 rusqlite::params![report_id, pid, name, desc, commits_json],
             )?;
         }
 
-        Ok::<i64, crate::error::AppError>(report_id)
-    })();
+        tx.commit()?;
+        report_id
+    };
 
-    let history_id = save_result.map_err(|e| {
-        eprintln!("[scheduler] {schedule_name}: 保存报告历史失败: {e}");
-        e
-    })?;
-
-    // 9. 更新 last_run_at
-    mark_last_run(data_dir, &schedule.id);
+    // 9. 更新 last_run_at;失败时清理已提交的历史并保留原始错误。
+    if let Err(mark_err) = mark_last_run(&conn, &schedule.id) {
+        match delete_report_history_row(&conn, history_id) {
+            Ok(()) => eprintln!(
+                "[scheduler] 清理孤儿历史成功: history_id={history_id}, schedule_id={}",
+                schedule.id
+            ),
+            Err(cleanup_err) => eprintln!(
+                "[scheduler] 清理孤儿历史失败: history_id={history_id}, cleanup_err={cleanup_err}; \
+                 保留原始 mark_last_run 错误继续上抛"
+            ),
+        }
+        return Err(mark_err);
+    }
+    drop(conn);
 
     // 10. 通知前端
     let payload = ReportGeneratedPayload {
@@ -747,7 +798,10 @@ mod tests {
         // 大小写不敏感 + 前导空白
         assert_eq!(strip_thinking("  <THINK>推理</THINK>\n正文"), "正文");
         // 多个连续思考块
-        assert_eq!(strip_thinking("<think>a</think><think>b</think>正文"), "正文");
+        assert_eq!(
+            strip_thinking("<think>a</think><think>b</think>正文"),
+            "正文"
+        );
     }
 
     #[test]
@@ -768,5 +822,149 @@ mod tests {
     #[test]
     fn plain_text_unchanged() {
         assert_eq!(strip_thinking("  普通报告  "), "普通报告");
+    }
+
+    use crate::commands::report::read_schedules;
+    use crate::db;
+
+    fn test_conn() -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        conn
+    }
+
+    fn insert_schedule(conn: &rusqlite::Connection, id: &str) {
+        conn.execute(
+            "INSERT INTO report_schedules (id, name, enabled, report_type, project_ids,
+                 author_mode, time_of_day, weekdays_only, chinese_workday_only,
+                 weekly_workweek, weekly_start_weekday, weekly_end_weekday, last_run_at)
+             VALUES (?1, '', 1, 'daily', '[]', 'me', '09:00', 0, 0, 1, 1, 5, NULL)",
+            rusqlite::params![id],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn mark_last_run_writes_timestamp_on_success() {
+        // 正常路径:写入 last_run_at,函数返回 Ok
+        let conn = test_conn();
+        insert_schedule(&conn, "s-ok");
+
+        let result = super::mark_last_run(&conn, "s-ok");
+        assert!(result.is_ok(), "正常写入应成功: {result:?}");
+
+        let schedules = read_schedules(&conn).unwrap();
+        let s = schedules
+            .iter()
+            .find(|s| s.id == "s-ok")
+            .expect("schedule 存在");
+        let ts = s.last_run_at.expect("last_run_at 应被更新");
+        let now = chrono::Local::now().timestamp();
+        // 允许 ±2s 抖动
+        assert!(
+            (ts - now).abs() <= 2,
+            "last_run_at 应接近当前时间(差值={})",
+            ts - now
+        );
+    }
+
+    #[test]
+    fn mark_last_run_returns_error_on_missing_schedule() {
+        // 不插入 schedule,确保更新命中零行
+        let conn = test_conn();
+        let result = super::mark_last_run(&conn, "nonexistent");
+        assert!(
+            result.is_err(),
+            "对不存在的 schedule_id 调用 mark_last_run 应返回 Err"
+        );
+    }
+
+    #[test]
+    fn mark_last_run_no_silent_recovery_on_zero_row_update() {
+        // 不插入 schedule,确保更新命中零行
+        let conn = test_conn();
+        let result = super::mark_last_run(&conn, "missing-schedule");
+        assert!(
+            result.is_err(),
+            "对不存在的 schedule 调用 mark_last_run 应返回 Err(防止 last_run_at 未更新却 emit)"
+        );
+    }
+
+    #[test]
+    fn mark_last_run_persists_timestamp_visible_via_read_schedules() {
+        let conn = test_conn();
+        insert_schedule(&conn, "s-1");
+        let result = super::mark_last_run(&conn, "s-1");
+        assert!(result.is_ok());
+
+        let schedules = read_schedules(&conn).unwrap();
+        let s = schedules.iter().find(|s| s.id == "s-1").unwrap();
+        assert!(s.last_run_at.is_some(), "last_run_at 应被持久化");
+    }
+
+    use crate::commands::report::delete_report_history_impl;
+
+    fn insert_history_row(conn: &rusqlite::Connection) -> i64 {
+        let now = chrono::Utc::now().timestamp();
+        conn.execute(
+            "INSERT INTO report_history (project_ids, date_from, date_to, range_label,
+                 author_mode, language, period_type, result, created_at)
+             VALUES ('[]', '2026-07-01', '2026-07-01', '', 'me', 'zh-CN', 'daily', '', ?1)",
+            rusqlite::params![now],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    fn count_history(conn: &rusqlite::Connection) -> i64 {
+        conn.query_row::<i64, _, _>("SELECT COUNT(*) FROM report_history", [], |r| r.get(0))
+            .unwrap()
+    }
+
+    #[test]
+    fn delete_report_history_row_removes_existing_row() {
+        let conn = test_conn();
+        let id = insert_history_row(&conn);
+        assert_eq!(count_history(&conn), 1);
+
+        let res = super::delete_report_history_row(&conn, id);
+        assert!(res.is_ok(), "删除存在的行应成功: {res:?}");
+        assert_eq!(count_history(&conn), 0, "行应已被删除");
+    }
+
+    #[test]
+    fn delete_report_history_row_returns_err_for_missing_id() {
+        let conn = test_conn();
+        let res = super::delete_report_history_row(&conn, 999_999);
+        assert!(res.is_err(), "删除不存在的 id 应返回 Err");
+    }
+
+    #[test]
+    fn delete_report_history_row_via_command_cascades_commits() {
+        // 通过命令实现验证 report_commits 的外键级联删除
+        let conn = test_conn();
+        let history_id = insert_history_row(&conn);
+        // 插入一条关联 commit 行,模拟 fire_schedule 写入的子表
+        let commits_json =
+            r#"[{"hash":"abc","author":"tester","date":"2026-07-01 09:00","subject":"x"}]"#;
+        conn.execute(
+            "INSERT INTO report_commits (report_id, project_id, project_name,
+                 project_description, commit_data)
+             VALUES (?1, NULL, '', '', ?2)",
+            rusqlite::params![history_id, commits_json],
+        )
+        .unwrap();
+        assert_eq!(count_history(&conn), 1);
+
+        delete_report_history_impl(&conn, history_id).unwrap();
+        assert_eq!(count_history(&conn), 0);
+        let commit_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM report_commits WHERE report_id = ?1",
+                rusqlite::params![history_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(commit_count, 0, "report_commits 应随外键级联删除");
     }
 }

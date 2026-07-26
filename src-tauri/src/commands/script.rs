@@ -25,10 +25,7 @@ fn parse_package_json(content: &str) -> Option<(Option<String>, Vec<PackageScrip
     if scripts.is_empty() {
         return None;
     }
-    let package_name = json
-        .get("name")
-        .and_then(|n| n.as_str())
-        .map(String::from);
+    let package_name = json.get("name").and_then(|n| n.as_str()).map(String::from);
     Some((package_name, scripts))
 }
 
@@ -231,7 +228,11 @@ pub fn run_in_terminal(
     if !std::path::Path::new(&work_dir).is_dir() {
         return Err(AppError::Invalid(format!("目录不存在: {work_dir}")));
     }
-    spawn_terminal(&work_dir, &format!("Project: {project_name}"), Some(&command))
+    spawn_terminal(
+        &work_dir,
+        &format!("Project: {project_name}"),
+        Some(&command),
+    )
 }
 
 #[cfg(test)]
@@ -295,7 +296,11 @@ mod tests {
         let dir = temp_project_dir("monorepo");
         let p = std::path::Path::new(&dir);
 
-        fs::write(p.join("package.json"), r#"{"name":"root","scripts":{"dev":"vite"}}"#).unwrap();
+        fs::write(
+            p.join("package.json"),
+            r#"{"name":"root","scripts":{"dev":"vite"}}"#,
+        )
+        .unwrap();
         fs::create_dir_all(p.join("packages/api")).unwrap();
         fs::write(
             p.join("packages/api/package.json"),
@@ -304,13 +309,21 @@ mod tests {
         .unwrap();
         // 无 scripts 字段 -> 跳过
         fs::create_dir_all(p.join("packages/empty")).unwrap();
-        fs::write(p.join("packages/empty/package.json"), r#"{"name":"@app/empty"}"#).unwrap();
+        fs::write(
+            p.join("packages/empty/package.json"),
+            r#"{"name":"@app/empty"}"#,
+        )
+        .unwrap();
         // scripts 为空对象 -> 跳过
         fs::create_dir_all(p.join("packages/none")).unwrap();
         fs::write(p.join("packages/none/package.json"), r#"{"scripts":{}}"#).unwrap();
         // node_modules 中的 package.json 恒跳过(即使未被 gitignore)
         fs::create_dir_all(p.join("node_modules/dep")).unwrap();
-        fs::write(p.join("node_modules/dep/package.json"), r#"{"scripts":{"x":"y"}}"#).unwrap();
+        fs::write(
+            p.join("node_modules/dep/package.json"),
+            r#"{"scripts":{"x":"y"}}"#,
+        )
+        .unwrap();
 
         let groups = package_scripts(&dir).unwrap();
         assert_eq!(groups.len(), 2);
@@ -330,7 +343,11 @@ mod tests {
 
         fs::write(p.join("package.json"), r#"{"scripts":{"dev":"vite"}}"#).unwrap();
         fs::create_dir_all(p.join("vendored/ui")).unwrap();
-        fs::write(p.join("vendored/ui/package.json"), r#"{"scripts":{"build":"x"}}"#).unwrap();
+        fs::write(
+            p.join("vendored/ui/package.json"),
+            r#"{"scripts":{"build":"x"}}"#,
+        )
+        .unwrap();
         fs::write(p.join(".gitignore"), "vendored/\n").unwrap();
 
         let groups = package_scripts(&dir).unwrap();

@@ -14,7 +14,15 @@ import type { Project } from "@/types";
 const { t } = useI18n();
 const store = useProjectsStore();
 
-onMounted(() => store.fetchArchivedProjects());
+onMounted(async () => {
+  try {
+    await store.fetchArchivedProjects();
+  } catch (e) {
+    toast.error(
+      t("settings.archive.loadFailed", { error: e instanceof Error ? e.message : String(e) }),
+    );
+  }
+});
 
 /** 搜索关键字,匹配名称/描述/路径 */
 const searchInput = ref("");
@@ -59,7 +67,7 @@ async function confirmAction() {
       toast.success(t("settings.archive.restored", { name: project.name }));
     }
   } catch (e) {
-    toast.error(String(e));
+    toast.error(e instanceof Error ? e.message : String(e));
   }
 }
 </script>
@@ -122,11 +130,12 @@ async function confirmAction() {
             </Button>
           </span>
         </div>
-        <p
-          v-if="!filteredProjects.length"
-          class="py-6 text-center text-xs text-muted-foreground"
-        >
-          {{ store.archivedProjects.length ? t("settings.archive.noMatch") : t("settings.archive.empty") }}
+        <p v-if="!filteredProjects.length" class="py-6 text-center text-xs text-muted-foreground">
+          {{
+            store.archivedProjects.length
+              ? t("settings.archive.noMatch")
+              : t("settings.archive.empty")
+          }}
         </p>
       </div>
     </ScrollArea>

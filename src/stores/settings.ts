@@ -10,6 +10,8 @@ export type ThemeMode = "system" | "light" | "dark";
 export type ThemeSkin = "default" | "island";
 export type MdTheme = "default" | "github" | "notion" | "serif";
 export type Language = SupportedLocale;
+export type ProjectsViewMode = "grid" | "table";
+export type ProjectsSortKey = "name" | "updated" | "created";
 
 // 应用数据统一存放于用户主目录下的 .pm 目录(与 Rust 端 APP_DATA_DIR_NAME 保持一致)
 const APP_DATA_DIR_NAME = ".pm";
@@ -30,6 +32,10 @@ export const useSettingsStore = defineStore("settings", () => {
   const aiModel = ref(AI_DEFAULT_MODEL);
   /** 批量生成报告的并发上限(1-5) */
   const reportBatchConcurrency = ref(2);
+  /** 项目列表视图模式(grid / table) */
+  const projectsViewMode = ref<ProjectsViewMode>("grid");
+  /** 项目列表排序方式 */
+  const projectsSortKey = ref<ProjectsSortKey>("name");
 
   let fileStore: Store | null = null;
   let initialized = false;
@@ -60,6 +66,8 @@ export const useSettingsStore = defineStore("settings", () => {
     if (theme.value === "system") applyTheme();
   }
 
+  // ── lifecycle ─────────────────────────────────────────────
+
   async function init() {
     if (initialized) return;
     initialized = true;
@@ -75,6 +83,8 @@ export const useSettingsStore = defineStore("settings", () => {
         aiApiKey: "",
         aiModel: AI_DEFAULT_MODEL,
         reportBatchConcurrency: "2",
+        projectsViewMode: "grid",
+        projectsSortKey: "name",
       },
     });
     const savedTheme = await fileStore.get<ThemeMode>("theme");
@@ -124,6 +134,16 @@ export const useSettingsStore = defineStore("settings", () => {
       if (Number.isFinite(n)) {
         reportBatchConcurrency.value = Math.min(5, Math.max(1, n));
       }
+    }
+    // 视图模式:白名单校验,非法值回退 grid
+    const savedViewMode = await fileStore.get<ProjectsViewMode>("projectsViewMode");
+    if (savedViewMode === "grid" || savedViewMode === "table") {
+      projectsViewMode.value = savedViewMode;
+    }
+    // 排序键:白名单校验,非法值回退 name
+    const savedSortKey = await fileStore.get<ProjectsSortKey>("projectsSortKey");
+    if (savedSortKey === "name" || savedSortKey === "updated" || savedSortKey === "created") {
+      projectsSortKey.value = savedSortKey;
     }
     applyTheme();
     applyMdTheme();
@@ -186,6 +206,18 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("reportBatchConcurrency", String(n));
   }
 
+  async function setProjectsViewMode(value: ProjectsViewMode) {
+    if (value !== "grid" && value !== "table") return;
+    projectsViewMode.value = value;
+    await persist("projectsViewMode", value);
+  }
+
+  async function setProjectsSortKey(value: ProjectsSortKey) {
+    if (value !== "name" && value !== "updated" && value !== "created") return;
+    projectsSortKey.value = value;
+    await persist("projectsSortKey", value);
+  }
+
   return {
     theme,
     themeSkin,
@@ -196,6 +228,8 @@ export const useSettingsStore = defineStore("settings", () => {
     aiApiKey,
     aiModel,
     reportBatchConcurrency,
+    projectsViewMode,
+    projectsSortKey,
     init,
     setTheme,
     setThemeSkin,
@@ -206,5 +240,7 @@ export const useSettingsStore = defineStore("settings", () => {
     setAiApiKey,
     setAiModel,
     setReportBatchConcurrency,
+    setProjectsViewMode,
+    setProjectsSortKey,
   };
 });

@@ -28,6 +28,12 @@ export default {
     hoursAgo: "{count} 小时前",
     daysAgo: "{count} 天前",
   },
+  errors: {
+    project_not_found: "项目不存在",
+    invalid_path: "路径无效或目录不存在",
+    schedule_not_found: "定时任务不存在",
+    ai_not_configured: "请先在设置页配置 AI 的 API Key",
+  },
   titleBar: {
     minimize: "最小化",
     restore: "还原",
@@ -213,6 +219,7 @@ export default {
     noProjects: "请至少选择一个项目",
     noCommits: "所选项目在该时间范围内没有提交记录",
     loadFailed: "读取提交记录失败:{error}",
+    missingProjectMapping: "以下项目未在当前项目列表中找到映射,已跳过写入历史:{names}",
     rangeLabel: "{from} 至 {to}",
     saved: "已保存到报告历史",
     history: "历史",
@@ -259,7 +266,6 @@ export default {
     backToList: "返回列表",
     commits: "提交记录",
     result: "日报内容",
-    weekdays: ["一", "二", "三", "四", "五", "六", "日"],
     holiday: "节假日",
     makeupWorkday: "调休上班",
     weekend: "周末",
@@ -399,6 +405,10 @@ export default {
       namePlaceholder: "例如: 启动后端",
       commandLabel: "命令",
       commandPlaceholder: "例如: cargo run",
+      safetyNotice:
+        "注意:此命令将在系统终端中作为 Shell 命令执行。请仅填写你完全信任的命令,避免使用来自不可信来源的拼接串。",
+      safetyNoticeEn:
+        "Note: this command runs in the system terminal as a shell command. Use only commands you fully trust.",
       descriptionLabel: "描述(可选)",
       descriptionPlaceholder: "命令用途说明",
       iconLabel: "图标(可选)",
@@ -587,6 +597,7 @@ export default {
       restoreConfirm: "确定恢复项目「{name}」吗?将重新显示在项目列表中。",
       deleteConfirm:
         "确定彻底删除项目「{name}」吗?此操作不可恢复,标签指派、自定义命令等历史数据将一并删除。(不会删除磁盘文件)",
+      loadFailed: "加载归档项目失败:{error}",
     },
   },
 };

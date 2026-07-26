@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS hidden_items (
     FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
 );
 
--- 代码托管平台账号绑定(GitHub / Gitee / 自建 GitLab),token 明文存储(仅本机使用)
+-- 代码托管平台账号绑定(GitHub / Gitee / 自建 GitLab),token 以明文存储在本机 SQLite
 CREATE TABLE IF NOT EXISTS git_accounts (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     provider   TEXT NOT NULL,

@@ -170,42 +170,59 @@ const beforeDownload = createBeforeDownload(t);
 
 // ── data loading ────────────────────────────────────────────────────────
 
+/** 单调递增请求令牌:用于丢弃已过期/被覆盖的请求结果,防止旧响应覆盖新状态 */
+let calendarRequestToken = 0;
+let reportsRequestToken = 0;
+
 async function loadCalendarMeta(year: number, month: number) {
+  const token = ++calendarRequestToken;
   calendarLoading.value = true;
   try {
-    calendarData.value = await cmd<CalendarMeta>("get_calendar_meta", {
+    const result = await cmd<CalendarMeta>("get_calendar_meta", {
       year,
       month,
       projectIds: filterProjectIds.value,
       tagIds: filterTagIds.value,
       reportType: reportTypeParam.value,
     });
+    // 期间已有更新的请求发起,丢弃本次响应
+    if (token !== calendarRequestToken) return;
+    calendarData.value = result;
   } catch (e) {
+    if (token !== calendarRequestToken) return;
     toast.error(t("reportHistory.loadCalendarFailed"));
   } finally {
-    calendarLoading.value = false;
+    if (token === calendarRequestToken) {
+      calendarLoading.value = false;
+    }
   }
 }
 
 async function loadReports(date: string) {
+  const token = ++reportsRequestToken;
   reportsLoading.value = true;
   expandedReportId.value = null;
   commitOpen.value = {};
   try {
-    reports.value = await cmd<ReportHistoryDetail[]>("get_reports_by_date", {
+    const result = await cmd<ReportHistoryDetail[]>("get_reports_by_date", {
       date,
       projectIds: filterProjectIds.value,
       tagIds: filterTagIds.value,
       reportType: reportTypeParam.value,
     });
+    if (token !== reportsRequestToken) return;
+    reports.value = result;
   } catch (e) {
+    if (token !== reportsRequestToken) return;
     toast.error(t("reportHistory.loadFailed"));
     reports.value = [];
   } finally {
-    reportsLoading.value = false;
-    // 手风琴模式：默认展开第一条
-    if (reports.value.length > 0) {
-      expandedReportId.value = reports.value[0].id;
+    if (token === reportsRequestToken) {
+      reportsLoading.value = false;
+      // 手风琴模式：默认展开第一条
+      if (reports.value.length > 0) {
+        expandedReportId.value = reports.value[0].id;
+      }
     }
   }
 }
@@ -219,7 +236,7 @@ async function deleteReport(id: number) {
     // 刷新日历标注
     loadCalendarMeta(calendarYear.value, calendarMonth.value);
   } catch (e) {
-    toast.error(String(e));
+    toast.error(e instanceof Error ? e.message : String(e));
   }
 }
 
@@ -254,9 +271,10 @@ watch(
   { immediate: true },
 );
 
+/** 选中日期或任一筛选条件变化时刷新报告列表(合并原 4 个重复 watch) */
 watch(
-  selectedDate,
-  (date) => {
+  () => [selectedDate.value, filterProjectIds.value, filterTagIds.value, filterType.value] as const,
+  ([date]) => {
     if (date) {
       loadReports(date);
     } else {
@@ -265,24 +283,6 @@ watch(
   },
   { immediate: true },
 );
-
-watch(filterProjectIds, () => {
-  if (selectedDate.value) {
-    loadReports(selectedDate.value);
-  }
-});
-
-watch(filterTagIds, () => {
-  if (selectedDate.value) {
-    loadReports(selectedDate.value);
-  }
-});
-
-watch(filterType, () => {
-  if (selectedDate.value) {
-    loadReports(selectedDate.value);
-  }
-});
 </script>
 
 <template>

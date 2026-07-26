@@ -23,7 +23,7 @@ const COMPOSE_MAX_BYTES: u64 = 256 * 1024;
 
 fn ensure_dir(path: &str) -> AppResult<()> {
     if !Path::new(path).is_dir() {
-        return Err(AppError::Invalid(format!("目录不存在: {path}")));
+        return Err(AppError::invalid_path(path));
     }
     Ok(())
 }
@@ -70,9 +70,8 @@ pub fn read_readme(path: String) -> AppResult<Option<ReadmeContent>> {
 }
 
 /// 写入文本到指定路径(供 Markdown 代码块/表格"下载"按钮走 Tauri save dialog 后调用)。
-/// 由前端在弹出的保存对话框中拿到目标路径后传入。
-/// 大小上限与 README 一致(512KB),超出报错 —— Markdown 表格/代码块正常不会这么大,
-/// 防止意外把几 MB 内容塞进对话框导致 UI 卡顿或误选 .log/.tmp 这类系统保留目录。
+/// 内容上限为 512KB,目标路径不能为空且父目录必须存在。
+/// 写入会创建或覆盖目标文件。
 const SAVE_TEXT_MAX_BYTES: usize = 512 * 1024;
 
 #[tauri::command]
@@ -86,7 +85,7 @@ pub fn save_text_file(path: String, content: String) -> AppResult<()> {
             SAVE_TEXT_MAX_BYTES
         )));
     }
-    // 父目录必须已存在(save dialog 选定的路径必然满足,但显式校验避免空字符串路径)
+    // 父目录必须存在
     let p = Path::new(&path);
     if let Some(parent) = p.parent() {
         if !parent.as_os_str().is_empty() && !parent.is_dir() {
@@ -159,10 +158,7 @@ fn port_from_short(s: &str) -> Option<u16> {
 /// 长语法:{ target: 80, published: 8080, protocol: tcp }
 fn port_from_long(m: &serde_yaml_ng::Mapping) -> Option<u16> {
     use serde_yaml_ng::Value;
-    let proto = m
-        .get("protocol")
-        .and_then(Value::as_str)
-        .unwrap_or("tcp");
+    let proto = m.get("protocol").and_then(Value::as_str).unwrap_or("tcp");
     if !proto.eq_ignore_ascii_case("tcp") {
         return None;
     }
@@ -226,9 +222,7 @@ pub fn scan_compose_files(path: String) -> AppResult<Vec<ComposeFile>> {
         .filter_map(|rel| {
             let content = std::fs::read_to_string(dir.join(rel)).ok()?;
             let services = parse_compose(&content)?;
-            let file_name = rel
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())?;
+            let file_name = rel.file_name().map(|n| n.to_string_lossy().into_owned())?;
             Some(ComposeFile {
                 path: walk::to_slash(rel),
                 file_name,
@@ -237,9 +231,7 @@ pub fn scan_compose_files(path: String) -> AppResult<Vec<ComposeFile>> {
         })
         .collect();
     // 根目录文件优先,同级按路径字典序
-    files.sort_by(|a, b| {
-        (a.path.contains('/'), &a.path).cmp(&(b.path.contains('/'), &b.path))
-    });
+    files.sort_by(|a, b| (a.path.contains('/'), &a.path).cmp(&(b.path.contains('/'), &b.path)));
     Ok(files)
 }
 
@@ -285,10 +277,8 @@ mod tests {
 
     #[test]
     fn readme_rejects_missing_dir() {
-        assert!(matches!(
-            read_readme("D:/no/such/dir-xyz".into()),
-            Err(AppError::Invalid(_))
-        ));
+        assert!(matches!(read_readme("D:/no/such/dir-xyz".into()),
+                Err(ref e) if e.is_code(crate::error::ErrorCode::InvalidPath)));
     }
 
     #[test]
@@ -368,11 +358,7 @@ mod tests {
 
         // 正常写入
         let target = p.join("out.csv");
-        save_text_file(
-            target.to_string_lossy().into_owned(),
-            "a,b\n1,2\n".into(),
-        )
-        .unwrap();
+        save_text_file(target.to_string_lossy().into_owned(), "a,b\n1,2\n".into()).unwrap();
         assert_eq!(fs::read_to_string(&target).unwrap(), "a,b\n1,2\n");
 
         // 空路径报错

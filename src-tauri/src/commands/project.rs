@@ -51,9 +51,8 @@ pub fn load_tags(conn: &Connection, project_id: i64) -> AppResult<Vec<Tag>> {
     Ok(rows.collect::<Result<Vec<_>, _>>()?)
 }
 
-fn with_tags(conn: &Connection, row: ProjectRow) -> AppResult<Project> {
-    let tags = load_tags(conn, row.id)?;
-    Ok(Project {
+fn project_from_row(row: ProjectRow, tags: Vec<Tag>) -> Project {
+    Project {
         id: row.id,
         path: row.path,
         name: row.name,
@@ -63,12 +62,67 @@ fn with_tags(conn: &Connection, row: ProjectRow) -> AppResult<Project> {
         archived_at: row.archived_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
-    })
+    }
+}
+
+fn load_tags_by_project(
+    conn: &Connection,
+    project_ids: &[i64],
+) -> AppResult<std::collections::HashMap<i64, Vec<Tag>>> {
+    let mut tags_by_project = std::collections::HashMap::new();
+    if project_ids.is_empty() {
+        return Ok(tags_by_project);
+    }
+
+    let placeholders = vec!["?"; project_ids.len()].join(",");
+    let sql = format!(
+        "SELECT pt.project_id, t.id, t.name, t.color
+         FROM project_tags pt
+         JOIN tags t ON pt.tag_id = t.id
+         WHERE pt.project_id IN ({placeholders})
+         ORDER BY pt.project_id, t.name COLLATE NOCASE"
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(params_from_iter(project_ids.iter()), |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            Tag {
+                id: r.get(1)?,
+                name: r.get(2)?,
+                color: r.get(3)?,
+            },
+        ))
+    })?;
+    for row in rows {
+        let (project_id, tag) = row?;
+        tags_by_project
+            .entry(project_id)
+            .or_insert_with(Vec::new)
+            .push(tag);
+    }
+    Ok(tags_by_project)
+}
+
+fn with_tags(conn: &Connection, row: ProjectRow) -> AppResult<Project> {
+    let tags = load_tags(conn, row.id)?;
+    Ok(project_from_row(row, tags))
+}
+
+fn projects_with_tags(conn: &Connection, rows: Vec<ProjectRow>) -> AppResult<Vec<Project>> {
+    let project_ids: Vec<_> = rows.iter().map(|row| row.id).collect();
+    let mut tags_by_project = load_tags_by_project(conn, &project_ids)?;
+    Ok(rows
+        .into_iter()
+        .map(|row| {
+            let project_id = row.id;
+            project_from_row(row, tags_by_project.remove(&project_id).unwrap_or_default())
+        })
+        .collect())
 }
 
 pub fn add(conn: &Connection, path: &str, name: &str, description: &str) -> AppResult<Project> {
     if !std::path::Path::new(path).is_dir() {
-        return Err(AppError::Invalid(format!("目录不存在: {path}")));
+        return Err(AppError::invalid_path(path));
     }
     let name = name.trim();
     if name.is_empty() {
@@ -96,7 +150,7 @@ pub fn get(conn: &Connection, id: i64) -> AppResult<Project> {
     let row = conn.query_row(&sql, params![id], map_row).optional()?;
     match row {
         Some(r) => with_tags(conn, r),
-        None => Err(AppError::NotFound(format!("project {id}"))),
+        None => Err(AppError::project_not_found(id)),
     }
 }
 
@@ -133,11 +187,8 @@ pub fn list(
 
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map(params_from_iter(binds.iter()), map_row)?;
-    let mut projects = Vec::new();
-    for row in rows {
-        projects.push(with_tags(conn, row?)?);
-    }
-    Ok(projects)
+    let project_rows = rows.collect::<Result<Vec<_>, _>>()?;
+    projects_with_tags(conn, project_rows)
 }
 
 pub fn update(conn: &Connection, id: i64, name: &str, description: &str) -> AppResult<Project> {
@@ -150,7 +201,7 @@ pub fn update(conn: &Connection, id: i64, name: &str, description: &str) -> AppR
         params![name, description, now(), id],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound(format!("project {id}")));
+        return Err(AppError::project_not_found(id));
     }
     get(conn, id)
 }
@@ -162,7 +213,7 @@ pub fn archive(conn: &Connection, id: i64) -> AppResult<()> {
         params![now(), id],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound(format!("project {id}")));
+        return Err(AppError::project_not_found(id));
     }
     Ok(())
 }
@@ -174,11 +225,8 @@ pub fn list_archived(conn: &Connection) -> AppResult<Vec<Project>> {
     );
     let mut stmt = conn.prepare(&sql)?;
     let rows = stmt.query_map([], map_row)?;
-    let mut projects = Vec::new();
-    for row in rows {
-        projects.push(with_tags(conn, row?)?);
-    }
-    Ok(projects)
+    let project_rows = rows.collect::<Result<Vec<_>, _>>()?;
+    projects_with_tags(conn, project_rows)
 }
 
 /// 取消归档:恢复到项目列表
@@ -188,7 +236,7 @@ pub fn unarchive(conn: &Connection, id: i64) -> AppResult<()> {
         params![id],
     )?;
     if changed == 0 {
-        return Err(AppError::NotFound(format!("archived project {id}")));
+        return Err(AppError::project_not_found(id));
     }
     Ok(())
 }
@@ -197,7 +245,7 @@ pub fn unarchive(conn: &Connection, id: i64) -> AppResult<()> {
 pub fn remove(conn: &Connection, id: i64) -> AppResult<()> {
     let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
     if changed == 0 {
-        return Err(AppError::NotFound(format!("project {id}")));
+        return Err(AppError::project_not_found(id));
     }
     Ok(())
 }
@@ -301,7 +349,9 @@ mod tests {
         let archived = get(&conn, p.id).unwrap();
         assert!(archived.archived_at.is_some());
 
-        assert!(matches!(archive(&conn, 9999), Err(AppError::NotFound(_))));
+        assert!(
+            matches!(archive(&conn, 9999), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
+        );
     }
 
     #[test]
@@ -323,8 +373,12 @@ mod tests {
         assert!(get(&conn, p.id).unwrap().archived_at.is_none());
 
         // 未归档 / 不存在的项目
-        assert!(matches!(unarchive(&conn, p.id), Err(AppError::NotFound(_))));
-        assert!(matches!(unarchive(&conn, 9999), Err(AppError::NotFound(_))));
+        assert!(
+            matches!(unarchive(&conn, p.id), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
+        );
+        assert!(
+            matches!(unarchive(&conn, 9999), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
+        );
     }
 
     #[test]
@@ -335,9 +389,13 @@ mod tests {
         archive(&conn, p.id).unwrap();
 
         remove(&conn, p.id).unwrap();
-        assert!(matches!(get(&conn, p.id), Err(AppError::NotFound(_))));
+        assert!(
+            matches!(get(&conn, p.id), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
+        );
         assert!(list_archived(&conn).unwrap().is_empty());
-        assert!(matches!(remove(&conn, p.id), Err(AppError::NotFound(_))));
+        assert!(
+            matches!(remove(&conn, p.id), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
+        );
     }
 
     #[test]
@@ -345,18 +403,22 @@ mod tests {
         let conn = test_conn();
         let dir = std::env::temp_dir().to_string_lossy().to_string();
         add(&conn, &dir, "a", "").unwrap();
-        assert!(matches!(add(&conn, &dir, "b", ""), Err(AppError::Conflict(_))));
+        assert!(matches!(
+            add(&conn, &dir, "b", ""),
+            Err(AppError::Conflict(_))
+        ));
     }
 
     #[test]
     fn rejects_bad_input() {
         let conn = test_conn();
+        assert!(matches!(add(&conn, "C:/definitely/not/exist", "x", ""),
+                Err(ref e) if e.is_code(crate::error::ErrorCode::InvalidPath)));
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
         assert!(matches!(
-            add(&conn, "C:/definitely/not/exist", "x", ""),
+            add(&conn, &dir, "   ", ""),
             Err(AppError::Invalid(_))
         ));
-        let dir = std::env::temp_dir().to_string_lossy().to_string();
-        assert!(matches!(add(&conn, &dir, "   ", ""), Err(AppError::Invalid(_))));
     }
 
     #[test]
@@ -368,12 +430,48 @@ mod tests {
         assert_eq!(p2.name, "new");
         assert_eq!(p2.description, "desc");
         assert!(p2.updated_at >= p.updated_at);
-        assert!(matches!(
-            update(&conn, 9999, "x", ""),
-            Err(AppError::NotFound(_))
-        ));
+        assert!(
+            matches!(update(&conn, 9999, "x", ""), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
+        );
     }
 
+    #[test]
+    fn list_loads_tags_in_project_order_and_keeps_empty_projects() {
+        let conn = test_conn();
+        let dir = std::env::temp_dir();
+        let a_path = dir.join("projectdev-batch-a");
+        let b_path = dir.join("projectdev-batch-b");
+        std::fs::create_dir_all(&a_path).unwrap();
+        std::fs::create_dir_all(&b_path).unwrap();
+        let a = add(&conn, &a_path.to_string_lossy(), "Alpha", "").unwrap();
+        let b = add(&conn, &b_path.to_string_lossy(), "Beta", "").unwrap();
+        conn.execute("INSERT INTO tags (name, color) VALUES ('zeta', '#z')", [])
+            .unwrap();
+        let zeta = conn.last_insert_rowid();
+        conn.execute("INSERT INTO tags (name, color) VALUES ('alpha', '#a')", [])
+            .unwrap();
+        let alpha = conn.last_insert_rowid();
+        conn.execute(
+            "INSERT INTO project_tags (project_id, tag_id) VALUES (?1, ?2), (?1, ?3)",
+            params![a.id, zeta, alpha],
+        )
+        .unwrap();
+
+        let projects = list(&conn, None, None).unwrap();
+        assert_eq!(
+            projects.iter().map(|p| p.id).collect::<Vec<_>>(),
+            vec![a.id, b.id]
+        );
+        assert_eq!(
+            projects[0]
+                .tags
+                .iter()
+                .map(|tag| tag.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["alpha", "zeta"]
+        );
+        assert!(projects[1].tags.is_empty());
+    }
     #[test]
     fn list_filters_by_name_and_tags() {
         let conn = test_conn();

@@ -3,7 +3,12 @@ import { toast } from "vue-sonner";
 import type { ComposerTranslation } from "vue-i18n";
 import type { Control, DownloadEvent } from "vue-stream-markdown";
 import { cmd } from "@/lib/tauri";
-import { extractTableData, tableDataToCSV, tableDataToMarkdown, tableDataToTSV } from "@/lib/table-format";
+import {
+  extractTableData,
+  tableDataToCSV,
+  tableDataToMarkdown,
+  tableDataToTSV,
+} from "@/lib/table-format";
 
 // vue-stream-markdown 没再导出 ContentDownloadEvent,本地按需声明
 type ContentDownloadType = "code" | "mermaid" | "table";

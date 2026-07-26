@@ -194,7 +194,7 @@ fn command_on_path(cli: &str) -> bool {
 #[tauri::command]
 pub fn open_with(path: String, kind: EditorKind) -> AppResult<()> {
     if !std::path::Path::new(&path).is_dir() {
-        return Err(AppError::Invalid(format!("目录不存在: {path}")));
+        return Err(AppError::invalid_path(&path));
     }
     match kind {
         EditorKind::Explorer => open_explorer(&path),
@@ -333,7 +333,11 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn wt_args_sanitizes_display_text_but_keeps_command() {
-        let args = build_wt_args(r#"D:\weird"path"#, r#"a&b"c"#, Some("cargo build && cargo run"));
+        let args = build_wt_args(
+            r#"D:\weird"path"#,
+            r#"a&b"c"#,
+            Some("cargo build && cargo run"),
+        );
         assert_eq!(args[1], "abc");
         assert_eq!(args[3], r"D:\weirdpath");
         assert_eq!(args[6], "cargo build && cargo run");

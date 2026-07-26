@@ -59,7 +59,8 @@ export function tableDataToCSV(data: TableData): string {
   for (const row of rows) {
     if (row.length < headers.length) {
       const paddedRow: string[] = new Array(headers.length);
-      for (let i = 0; i < headers.length; i += 1) paddedRow[i] = i < row.length ? escapeCSV(row[i]) : "";
+      for (let i = 0; i < headers.length; i += 1)
+        paddedRow[i] = i < row.length ? escapeCSV(row[i]) : "";
       csvRows[rowIndex] = paddedRow.join(",");
     } else {
       csvRows[rowIndex] = row.map(escapeCSV).join(",");
@@ -105,10 +106,12 @@ export function tableDataToMarkdown(data: TableData): string {
   for (const row of rows) {
     if (row.length < headers.length) {
       const paddedRow: string[] = new Array(headers.length);
-      for (let i = 0; i < headers.length; i += 1) paddedRow[i] = i < row.length ? escapeMarkdownTableCell(row[i]) : "";
+      for (let i = 0; i < headers.length; i += 1)
+        paddedRow[i] = i < row.length ? escapeMarkdownTableCell(row[i]) : "";
       markdownRows[rowIndex] = `| ${paddedRow.join(" | ")} |`;
     } else {
-      markdownRows[rowIndex] = `| ${row.map((cell) => escapeMarkdownTableCell(cell)).join(" | ")} |`;
+      markdownRows[rowIndex] =
+        `| ${row.map((cell) => escapeMarkdownTableCell(cell)).join(" | ")} |`;
     }
     rowIndex += 1;
   }
@@ -117,5 +120,9 @@ export function tableDataToMarkdown(data: TableData): string {
 
 function escapeMarkdownTableCell(value: string): string {
   // 跟库一致:把 | 与换行转成转义形式,以保证 markdown 表格语法不被破坏
-  return value.replace(/\\/g, "\\\\").replace(/\|/g, "\\|").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r");
 }

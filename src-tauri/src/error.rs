@@ -1,5 +1,32 @@
 use serde::Serialize;
 
+/// 业务错误码(可选,前端 i18n 用),未知错误保留原中文 message
+///
+/// 命名:小写蛇形,域_语义,如 `project_not_found` / `invalid_path`。
+/// 新增错误码时,前端 `src/i18n/locales/{zh-CN,en-US}.ts` 必须同时补 `errors.<code>` 文案。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ErrorCode {
+    /// 项目不存在
+    ProjectNotFound,
+    /// 目录/路径无效或不存在
+    InvalidPath,
+    /// 定时任务不存在
+    ScheduleNotFound,
+    /// AI 服务尚未配置
+    AiNotConfigured,
+}
+
+impl ErrorCode {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ErrorCode::ProjectNotFound => "project_not_found",
+            ErrorCode::InvalidPath => "invalid_path",
+            ErrorCode::ScheduleNotFound => "schedule_not_found",
+            ErrorCode::AiNotConfigured => "ai_not_configured",
+        }
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("数据库错误: {0}")]
@@ -16,15 +43,71 @@ pub enum AppError {
     #[allow(dead_code)]
     #[error("外部命令失败: {0}")]
     External(String),
+    /// 携带错误码和可显示消息的结构化错误
+    #[error("{message}")]
+    Coded { code: ErrorCode, message: String },
 }
 
-// Tauri 命令的 Err 必须实现 Serialize,序列化为错误文案传给前端
+impl AppError {
+    /// 构造"项目不存在"错误
+    pub fn project_not_found(id: i64) -> AppError {
+        AppError::Coded {
+            code: ErrorCode::ProjectNotFound,
+            message: format!("project {id}"),
+        }
+    }
+
+    /// 构造"路径无效/目录不存在"错误
+    pub fn invalid_path(path: &str) -> AppError {
+        AppError::Coded {
+            code: ErrorCode::InvalidPath,
+            message: format!("目录不存在: {path}"),
+        }
+    }
+
+    /// 构造"定时任务不存在"错误
+    pub fn schedule_not_found() -> AppError {
+        AppError::Coded {
+            code: ErrorCode::ScheduleNotFound,
+            message: "定时任务不存在".into(),
+        }
+    }
+
+    /// 构造 AI 未配置错误
+    pub fn ai_not_configured() -> AppError {
+        AppError::Coded {
+            code: ErrorCode::AiNotConfigured,
+            message: "AI 未配置".into(),
+        }
+    }
+
+    /// 取错误码(若有)
+    pub fn code(&self) -> Option<&'static str> {
+        match self {
+            AppError::Coded { code, .. } => Some(code.as_str()),
+            _ => None,
+        }
+    }
+
+    /// 测试断言用:是否为指定错误码
+    #[cfg(test)]
+    pub fn is_code(&self, expected: ErrorCode) -> bool {
+        matches!(self, AppError::Coded { code, .. } if *code == expected)
+    }
+}
+
+// Tauri 命令错误序列化为 `{"code": "...", "message": "..."}` 对象。
+// 前端按 code 本地化,无法识别 code 时显示 message。
 impl Serialize for AppError {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
-        serializer.serialize_str(&self.to_string())
+        use serde::ser::SerializeStruct;
+        let mut s = serializer.serialize_struct("AppError", 2)?;
+        s.serialize_field("code", &self.code().unwrap_or(""))?;
+        s.serialize_field("message", &self.to_string())?;
+        s.end()
     }
 }
 

@@ -66,7 +66,9 @@ mod tests {
         fs::create_dir_all(dir.join("node_modules/dep")).unwrap();
         fs::write(dir.join("node_modules/dep/package.json"), "{}").unwrap();
         let files = project_files(&dir);
-        assert!(!files.iter().any(|p| to_slash(p).starts_with("node_modules/")));
+        assert!(!files
+            .iter()
+            .any(|p| to_slash(p).starts_with("node_modules/")));
         // .gitignore 文件本身是隐藏文件,不出现在结果里
         assert!(!files.iter().any(|p| to_slash(p) == ".gitignore"));
 

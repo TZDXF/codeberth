@@ -311,16 +311,35 @@ fn is_nested_repo(path: &str, entry: &str) -> bool {
             .exists()
 }
 
+/// 在当前调用内缓存已确认的嵌套仓库目录。
+/// 仅缓存命中项,避免重复检查同一目录的 `.git` 路径。
+fn is_nested_repo_cached(
+    path: &str,
+    entry: &str,
+    cache: &mut std::collections::HashSet<String>,
+) -> bool {
+    if cache.contains(entry) {
+        return true;
+    }
+    let result = is_nested_repo(path, entry);
+    if result {
+        cache.insert(entry.to_string());
+    }
+    result
+}
+
 /// 列出未跟踪目录中的嵌套 git 仓库(返回不带结尾 / 的相对路径)。
 /// 嵌套仓库是独立项目,不算本仓库的未提交内容
 fn nested_repo_dirs(path: &str) -> Vec<String> {
     let Ok(out) = run_git(path, &["ls-files", "--others", "--exclude-standard"]) else {
         return Vec::new();
     };
+    // 缓存本次扫描中已确认的嵌套仓库
+    let mut cache: std::collections::HashSet<String> = std::collections::HashSet::new();
     String::from_utf8_lossy(&out.stdout)
         .lines()
         .map(str::trim)
-        .filter(|l| is_nested_repo(path, l))
+        .filter(|l| is_nested_repo_cached(path, l, &mut cache))
         .map(|l| l.trim_end_matches('/').to_string())
         .collect()
 }
@@ -498,10 +517,12 @@ fn commit_context_blocking(path: &str) -> AppResult<GitCommitContext> {
     )?;
 
     let untracked_out = run_git(path, &["ls-files", "--others", "--exclude-standard"])?;
+    // 缓存本次扫描中已确认的嵌套仓库
+    let mut nested_cache: std::collections::HashSet<String> = std::collections::HashSet::new();
     let untracked: Vec<String> = String::from_utf8_lossy(&untracked_out.stdout)
         .lines()
         .map(str::trim)
-        .filter(|l| !l.is_empty() && !is_nested_repo(path, l))
+        .filter(|l| !l.is_empty() && !is_nested_repo_cached(path, l, &mut nested_cache))
         .map(String::from)
         .collect();
 
@@ -543,7 +564,8 @@ fn commit_context_blocking(path: &str) -> AppResult<GitCommitContext> {
         Vec::new()
     };
 
-    let (diff, truncated) = truncate_chars(&String::from_utf8_lossy(&diff_out.stdout), DIFF_MAX_CHARS);
+    let (diff, truncated) =
+        truncate_chars(&String::from_utf8_lossy(&diff_out.stdout), DIFF_MAX_CHARS);
     Ok(GitCommitContext {
         stat: String::from_utf8_lossy(&stat_out.stdout).trim().to_string(),
         diff,
@@ -830,7 +852,10 @@ pub async fn list_project_remote_urls(db: State<'_, Db>) -> AppResult<Vec<String
     run_blocking(move || {
         let mut urls = Vec::new();
         for path in paths {
-            if let Ok(o) = git_command(&path).args(["remote", "get-url", "origin"]).output() {
+            if let Ok(o) = git_command(&path)
+                .args(["remote", "get-url", "origin"])
+                .output()
+            {
                 if o.status.success() {
                     let url = String::from_utf8_lossy(&o.stdout).trim().to_string();
                     if !url.is_empty() {
@@ -1025,7 +1050,10 @@ mod tests {
         assert_eq!(st.branch.as_deref(), Some("feature"));
 
         let branches = list_branches_blocking(dir.to_str().unwrap()).unwrap();
-        assert_eq!(branches.local, vec!["feature".to_string(), "main".to_string()]);
+        assert_eq!(
+            branches.local,
+            vec!["feature".to_string(), "main".to_string()]
+        );
 
         // 切回 main
         let st = checkout_blocking(dir.to_str().unwrap(), "main", false, false).unwrap();
@@ -1070,13 +1098,13 @@ mod tests {
         );
 
         // 检出远程分支:本地无同名分支 → 创建跟踪分支
-        let st = checkout_blocking(clone_b.to_str().unwrap(), "origin/feature", false, true)
-            .unwrap();
+        let st =
+            checkout_blocking(clone_b.to_str().unwrap(), "origin/feature", false, true).unwrap();
         assert_eq!(st.branch.as_deref(), Some("feature"));
 
         // 本地已有同名分支 → 直接切换(幂等,不报错)
-        let st = checkout_blocking(clone_b.to_str().unwrap(), "origin/feature", false, true)
-            .unwrap();
+        let st =
+            checkout_blocking(clone_b.to_str().unwrap(), "origin/feature", false, true).unwrap();
         assert_eq!(st.branch.as_deref(), Some("feature"));
 
         let _ = fs::remove_dir_all(&origin);
@@ -1373,8 +1401,14 @@ mod tests {
         let mine = run_git_log(dir.to_str().unwrap(), None, None, None, Some("test")).unwrap();
         assert_eq!(mine.len(), 2);
         assert!(mine.iter().all(|c| c.author == "test"));
-        let nobody =
-            run_git_log(dir.to_str().unwrap(), None, None, None, Some("no-such-author")).unwrap();
+        let nobody = run_git_log(
+            dir.to_str().unwrap(),
+            None,
+            None,
+            None,
+            Some("no-such-author"),
+        )
+        .unwrap();
         assert!(nobody.is_empty());
 
         // max_count 截断
@@ -1382,8 +1416,8 @@ mod tests {
         assert_eq!(one.len(), 1);
 
         // until 远早于提交时间 → 空
-        let none = run_git_log(dir.to_str().unwrap(), None, Some("2000-01-01"), None, None)
-            .unwrap();
+        let none =
+            run_git_log(dir.to_str().unwrap(), None, Some("2000-01-01"), None, None).unwrap();
         assert!(none.is_empty());
 
         // 非仓库 → 空数组而非报错

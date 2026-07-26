@@ -101,6 +101,15 @@ const activeProjects = computed(() => store.projects.filter((p) => !p.archived_a
 /** 详情页传入 presetProjectId 时锁定单项目,隐藏项目选择 */
 const locked = computed(() => props.presetProjectId != null);
 
+/** 实际参与生成/加载提交记录/批量派发的项目 id 列表。
+ *  锁定单项目时强制为 [presetProjectId];否则读取用户当前勾选。
+ *  把"locked ? [preset] : selectedIds"统一抽到一个 computed,
+ *  避免在 loadCommits/generate/startBatch/resolveSelfNames 等多处重复同一表达式,
+ *  并确保新代码引用了正确的"实际生效"集合(而非简单 selectedIds.value) */
+const effectiveProjectIds = computed<number[]>(() =>
+  props.presetProjectId != null ? [props.presetProjectId] : selectedIds.value,
+);
+
 const selectedIds = ref<number[]>([]);
 // 项目筛选:关键字(名称/路径)+ 标签(与首页一致,多标签为 AND 语义),仅作用于本弹窗
 const keyword = ref("");
@@ -212,8 +221,8 @@ async function resolveSelfNames(ids: number[]) {
 
 // 勾选变化时重新解析所选项目的 git 用户名
 watch(
-  () => [...selectedIds.value].sort((a, b) => a - b).join(","),
-  () => void resolveSelfNames(selectedIds.value),
+  () => [...effectiveProjectIds.value].sort((a, b) => a - b).join(","),
+  () => void resolveSelfNames(effectiveProjectIds.value),
 );
 
 // 表格/代码复制导出控件,与 ReadmeDrawer 保持一致
@@ -373,7 +382,7 @@ watch(open, (v) => {
   selectedIds.value = props.presetProjectId != null ? [props.presetProjectId] : [];
   // 锁定单项目时 selectedIds 可能与上次相同而不触发上面的 watch,这里显式解析一次
   selfNames.value = {};
-  void resolveSelfNames(selectedIds.value);
+  void resolveSelfNames(effectiveProjectIds.value);
   // 同理:各筛选值均未变时自动加载 watch 不触发,显式拉一次提交记录
   void loadCommits();
 });
@@ -392,7 +401,7 @@ let commitsToken = 0;
  *  批量模式下不预拉提交(跨度大,逐时段在执行时拉取) */
 async function loadCommits() {
   if (execMode.value === "batch") return;
-  const ids = props.presetProjectId != null ? [props.presetProjectId] : selectedIds.value;
+  const ids = effectiveProjectIds.value;
   const projects = activeProjects.value.filter((p) => ids.includes(p.id));
   const token = ++commitsToken;
   if (!projects.length) {
@@ -442,7 +451,7 @@ async function loadCommits() {
 watch(
   () =>
     [
-      [...selectedIds.value].sort((a, b) => a - b).join(","),
+      [...effectiveProjectIds.value].sort((a, b) => a - b).join(","),
       mode.value,
       fmt(range.value.from),
       fmt(range.value.to),
@@ -454,7 +463,7 @@ watch(
 
 async function generate() {
   if (generating.value || loadingCommits.value) return;
-  const ids = props.presetProjectId != null ? [props.presetProjectId] : selectedIds.value;
+  const ids = effectiveProjectIds.value;
   if (!ids.length) {
     toast.error(t("report.noProjects"));
     return;
@@ -476,19 +485,39 @@ async function generate() {
     result.value = await generateReport(data, rangeLabel, settings.language, mode.value);
 
     // 生成成功后自动保存到报告历史(仅含有提交的项目)
-    const commitDataForSave = data.map((d) => {
+    // 项目映射必须完整,否则中止保存并提示刷新项目列表。
+    const missingNames: string[] = [];
+    const commitDataForSave: {
+      projectId: number;
+      projectName: string;
+      projectDescription: string;
+      commits: GitCommitInfo[];
+    }[] = [];
+    for (const d of data) {
       const project = activeProjects.value.find((p) => p.name === d.projectName);
-      return {
-        projectId: project?.id ?? null,
+      if (!project) {
+        missingNames.push(d.projectName);
+        continue;
+      }
+      commitDataForSave.push({
+        projectId: project.id,
         projectName: d.projectName,
         projectDescription: d.projectDescription,
         commits: d.commits,
-      };
-    });
+      });
+    }
+    if (missingNames.length) {
+      toast.warning(t("report.missingProjectMapping", { names: missingNames.join(", ") }), {
+        duration: 8000,
+      });
+      return;
+    }
+    if (!commitDataForSave.length) {
+      toast.error(t("report.noProjects"));
+      return;
+    }
     savedHistoryId.value = await cmd<number>("save_report_history", {
-      projectIds: commitDataForSave
-        .map((c) => c.projectId)
-        .filter((id): id is number => id != null),
+      projectIds: commitDataForSave.map((c) => c.projectId),
       dateFrom,
       dateTo,
       rangeLabel,
@@ -517,7 +546,7 @@ async function copyResult() {
 /** 批量生成:规划时段后交给全局 store 执行,进度在右下角浮窗展示;启动即关闭弹窗 */
 async function startBatch() {
   if (batchStore.running || batchPlanning.value) return;
-  const ids = props.presetProjectId != null ? [props.presetProjectId] : selectedIds.value;
+  const ids = effectiveProjectIds.value;
   if (!ids.length) {
     toast.error(t("report.noProjects"));
     return;

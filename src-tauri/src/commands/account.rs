@@ -6,7 +6,7 @@ use crate::db::Db;
 use crate::error::{AppError, AppResult};
 
 /// 代码托管平台账号(GitHub / Gitee / 自建 GitLab)。
-/// token 只落库不回传,前端仅能看到 token_preview 脱敏预览
+/// token 以明文落库且不回传,前端仅能看到 token_preview 脱敏预览。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GitAccount {
@@ -84,7 +84,10 @@ fn api_base(provider: &str, base_url: &str) -> String {
 fn token_preview(token: &str) -> String {
     let chars: Vec<char> = token.chars().collect();
     if chars.len() >= 4 {
-        format!("****{}", chars[chars.len() - 4..].iter().collect::<String>())
+        format!(
+            "****{}",
+            chars[chars.len() - 4..].iter().collect::<String>()
+        )
     } else {
         "****".to_string()
     }
@@ -168,7 +171,11 @@ fn http_client() -> reqwest::Client {
 }
 
 /// 鉴权方式:GitHub/GitLab 走请求头,Gitee 走 access_token 查询参数(在 URL 里拼)
-fn apply_auth(req: reqwest::RequestBuilder, provider: &str, token: &str) -> reqwest::RequestBuilder {
+fn apply_auth(
+    req: reqwest::RequestBuilder,
+    provider: &str,
+    token: &str,
+) -> reqwest::RequestBuilder {
     match provider {
         "github" => req
             .header("Authorization", format!("Bearer {token}"))
@@ -215,7 +222,11 @@ async fn fetch_username(provider: &str, base_url: &str, token: &str) -> AppResul
         .json()
         .await
         .map_err(|e| AppError::External(format!("解析用户信息失败: {e}")))?;
-    let key = if provider == "gitlab" { "username" } else { "login" };
+    let key = if provider == "gitlab" {
+        "username"
+    } else {
+        "login"
+    };
     v.get(key)
         .and_then(|x| x.as_str())
         .map(str::to_string)
@@ -223,7 +234,10 @@ async fn fetch_username(provider: &str, base_url: &str, token: &str) -> AppResul
 }
 
 fn json_str(v: &serde_json::Value, key: &str) -> String {
-    v.get(key).and_then(|x| x.as_str()).unwrap_or("").to_string()
+    v.get(key)
+        .and_then(|x| x.as_str())
+        .unwrap_or("")
+        .to_string()
 }
 
 /// 取嵌套字段(如 v["owner"]["login"])
@@ -240,58 +254,70 @@ fn json_nested_str(v: &serde_json::Value, path: &[&str]) -> String {
 
 /// owner 兜底:从 full_name 去掉末段仓库名
 fn owner_from_full_name(full_name: &str) -> String {
-    full_name.rsplit_once('/').map(|(o, _)| o.to_string()).unwrap_or_default()
+    full_name
+        .rsplit_once('/')
+        .map(|(o, _)| o.to_string())
+        .unwrap_or_default()
 }
 
 fn parse_repos(provider: &str, items: &[serde_json::Value]) -> Vec<RemoteRepo> {
     items
         .iter()
         .map(|v| {
-            let (repo_id, owner, name, full_name, html_url, http_clone_url, ssh_clone_url, updated_at, is_private) =
-                match provider {
-                    "github" => (
+            let (
+                repo_id,
+                owner,
+                name,
+                full_name,
+                html_url,
+                http_clone_url,
+                ssh_clone_url,
+                updated_at,
+                is_private,
+            ) = match provider {
+                "github" => (
+                    v.get("id").map(|x| x.to_string()).unwrap_or_default(),
+                    json_nested_str(v, &["owner", "login"]),
+                    json_str(v, "name"),
+                    json_str(v, "full_name"),
+                    json_str(v, "html_url"),
+                    json_str(v, "clone_url"),
+                    json_str(v, "ssh_url"),
+                    json_str(v, "updated_at"),
+                    v.get("private").and_then(|x| x.as_bool()).unwrap_or(false),
+                ),
+                "gitee" => {
+                    let html = json_str(v, "html_url");
+                    let http = if html.is_empty() {
+                        String::new()
+                    } else {
+                        format!("{html}.git")
+                    };
+                    (
                         v.get("id").map(|x| x.to_string()).unwrap_or_default(),
-                        json_nested_str(v, &["owner", "login"]),
+                        json_nested_str(v, &["namespace", "path"]),
                         json_str(v, "name"),
                         json_str(v, "full_name"),
-                        json_str(v, "html_url"),
-                        json_str(v, "clone_url"),
+                        html,
+                        http,
                         json_str(v, "ssh_url"),
                         json_str(v, "updated_at"),
                         v.get("private").and_then(|x| x.as_bool()).unwrap_or(false),
-                    ),
-                    "gitee" => {
-                        let html = json_str(v, "html_url");
-                        let http = if html.is_empty() {
-                            String::new()
-                        } else {
-                            format!("{html}.git")
-                        };
-                        (
-                            v.get("id").map(|x| x.to_string()).unwrap_or_default(),
-                            json_nested_str(v, &["namespace", "path"]),
-                            json_str(v, "name"),
-                            json_str(v, "full_name"),
-                            html,
-                            http,
-                            json_str(v, "ssh_url"),
-                            json_str(v, "updated_at"),
-                            v.get("private").and_then(|x| x.as_bool()).unwrap_or(false),
-                        )
-                    }
-                    // gitlab
-                    _ => (
-                        v.get("id").map(|x| x.to_string()).unwrap_or_default(),
-                        json_nested_str(v, &["namespace", "full_path"]),
-                        json_str(v, "name"),
-                        json_str(v, "path_with_namespace"),
-                        json_str(v, "web_url"),
-                        json_str(v, "http_url_to_repo"),
-                        json_str(v, "ssh_url_to_repo"),
-                        json_str(v, "last_activity_at"),
-                        json_str(v, "visibility") != "public",
-                    ),
-                };
+                    )
+                }
+                // gitlab
+                _ => (
+                    v.get("id").map(|x| x.to_string()).unwrap_or_default(),
+                    json_nested_str(v, &["namespace", "full_path"]),
+                    json_str(v, "name"),
+                    json_str(v, "path_with_namespace"),
+                    json_str(v, "web_url"),
+                    json_str(v, "http_url_to_repo"),
+                    json_str(v, "ssh_url_to_repo"),
+                    json_str(v, "last_activity_at"),
+                    json_str(v, "visibility") != "public",
+                ),
+            };
             let owner = if owner.is_empty() {
                 owner_from_full_name(&full_name)
             } else {
@@ -327,7 +353,11 @@ async fn fetch_json_array(
 }
 
 /// 拉取单页仓库列表
-async fn fetch_repos_page(row: &AccountRow, page: u32, per_page: u32) -> AppResult<Vec<RemoteRepo>> {
+async fn fetch_repos_page(
+    row: &AccountRow,
+    page: u32,
+    per_page: u32,
+) -> AppResult<Vec<RemoteRepo>> {
     let api = api_base(&row.provider, &row.base_url);
     let url = match row.provider.as_str() {
         "github" => format!(
@@ -440,9 +470,14 @@ pub async fn update_git_account(
         let conn = db.0.lock().unwrap();
         get_account_row(&conn, id)?
     };
-    let new_token = token.map(|t| t.trim().to_string()).filter(|t| !t.is_empty());
+    let new_token = token
+        .map(|t| t.trim().to_string())
+        .filter(|t| !t.is_empty());
     let base = if existing.provider == "gitlab" {
-        resolve_base_url("gitlab", base_url.as_deref().or(Some(existing.base_url.as_str())))?
+        resolve_base_url(
+            "gitlab",
+            base_url.as_deref().or(Some(existing.base_url.as_str())),
+        )?
     } else {
         existing.base_url.clone()
     };
@@ -459,14 +494,7 @@ pub async fn update_git_account(
          SET label = ?1, base_url = ?2, username = ?3,
              token = COALESCE(?4, token), updated_at = ?5
          WHERE id = ?6",
-        params![
-            label.trim(),
-            base,
-            username,
-            new_token,
-            now(),
-            id
-        ],
+        params![label.trim(), base, username, new_token, now(), id],
     )?;
     let row = get_account_row(&conn, id)?;
     Ok(row_to_account(&row))
@@ -499,8 +527,10 @@ async fn fetch_all_repos(row: &AccountRow) -> AppResult<Vec<RemoteRepo>> {
     // 组织接口失败不阻断已拿到的个人仓库
     if row.provider == "gitee" {
         let orgs = fetch_gitee_orgs(row).await.unwrap_or_default();
-        let mut seen: std::collections::HashSet<String> =
-            all.iter().map(|r: &RemoteRepo| r.full_name.to_lowercase()).collect();
+        let mut seen: std::collections::HashSet<String> = all
+            .iter()
+            .map(|r: &RemoteRepo| r.full_name.to_lowercase())
+            .collect();
         for org in orgs {
             for page in 1..=MAX_PAGES {
                 let repos = fetch_gitee_org_repos_page(row, &org, page, PER_PAGE).await?;
@@ -543,8 +573,14 @@ mod tests {
 
     #[test]
     fn resolve_base_url_rules() {
-        assert_eq!(resolve_base_url("github", None).unwrap(), "https://github.com");
-        assert_eq!(resolve_base_url("gitee", None).unwrap(), "https://gitee.com");
+        assert_eq!(
+            resolve_base_url("github", None).unwrap(),
+            "https://github.com"
+        );
+        assert_eq!(
+            resolve_base_url("gitee", None).unwrap(),
+            "https://gitee.com"
+        );
         // gitlab: 去尾斜杠,允许 http 内网地址
         assert_eq!(
             resolve_base_url("gitlab", Some("https://gitlab.example.com/")).unwrap(),
@@ -597,7 +633,10 @@ mod tests {
         assert_eq!(account.provider, "github");
 
         let (provider, username, token) = get_credentials(&conn, 1).unwrap();
-        assert_eq!((provider.as_str(), username.as_str(), token.as_str()), ("github", "octo", "ghp_secret1234"));
+        assert_eq!(
+            (provider.as_str(), username.as_str(), token.as_str()),
+            ("github", "octo", "ghp_secret1234")
+        );
 
         assert!(get_account_row(&conn, 999).is_err());
     }

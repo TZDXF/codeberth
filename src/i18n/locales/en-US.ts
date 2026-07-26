@@ -27,6 +27,12 @@ export default {
     hoursAgo: "{count} hr ago",
     daysAgo: "{count} day ago",
   },
+  errors: {
+    project_not_found: "Project not found",
+    invalid_path: "Invalid path or directory does not exist",
+    schedule_not_found: "Schedule not found",
+    ai_not_configured: "Configure the AI API key in Settings first",
+  },
   titleBar: {
     minimize: "Minimize",
     restore: "Restore",
@@ -215,6 +221,8 @@ export default {
     noProjects: "Select at least one project",
     noCommits: "No commits found in the selected projects for this time range",
     loadFailed: "Failed to load commits: {error}",
+    missingProjectMapping:
+      "Skipped writing to history: could not map the following projects to current projects: {names}",
     rangeLabel: "{from} to {to}",
     saved: "Saved to report history",
     history: "History",
@@ -261,7 +269,6 @@ export default {
     backToList: "Back to list",
     commits: "Commits",
     result: "Report content",
-    weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
     holiday: "Holiday",
     makeupWorkday: "Makeup workday",
     weekend: "Weekend",
@@ -404,6 +411,10 @@ export default {
       namePlaceholder: "e.g. Start backend",
       commandLabel: "Command",
       commandPlaceholder: "e.g. cargo run",
+      safetyNotice:
+        "Note: this command runs in the system terminal as a shell command. Use only commands you fully trust.",
+      safetyNoticeEn:
+        "Note: this command runs in the system terminal as a shell command. Use only commands you fully trust.",
       descriptionLabel: "Description (optional)",
       descriptionPlaceholder: "What this command does",
       iconLabel: "Icon (optional)",
@@ -601,6 +612,7 @@ export default {
       restoreConfirm: 'Restore project "{name}"? It will be shown in the project list again.',
       deleteConfirm:
         'Permanently delete project "{name}"? This cannot be undone. All history including tag assignments and custom commands will be deleted. (Files on disk are not affected.)',
+      loadFailed: "Failed to load archived projects: {error}",
     },
   },
 };

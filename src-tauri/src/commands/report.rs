@@ -100,7 +100,7 @@ pub struct ReportHistoryDetail {
     pub commits: Vec<ReportCommitItem>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReportCommitItem {
     pub project_id: Option<i64>,
@@ -183,6 +183,19 @@ pub fn list_report_history(
     project_id: Option<i64>,
 ) -> AppResult<Vec<ReportHistoryItem>> {
     let conn = db.0.lock().unwrap();
+    list_report_history_impl(&conn, limit, offset, project_id)
+}
+
+/// 分页查询报告历史列表的实现(可在测试中传入内存连接)。
+///
+/// `project_id` 使用 `json_each` 在 `project_ids` JSON 数组中做精确元素匹配,
+/// 避免 LIKE '%pid%' 模糊匹配导致 1/12/123 互相命中。
+pub fn list_report_history_impl(
+    conn: &Connection,
+    limit: Option<usize>,
+    offset: Option<usize>,
+    project_id: Option<i64>,
+) -> AppResult<Vec<ReportHistoryItem>> {
     let limit = limit.unwrap_or(50).min(200);
     let offset = offset.unwrap_or(0);
 
@@ -191,15 +204,16 @@ pub fn list_report_history(
             "SELECT h.id, h.project_ids, h.date_from, h.date_to, h.range_label,
                     h.author_mode, h.language, h.period_type, h.created_at
              FROM report_history h
-             WHERE h.project_ids LIKE ?1
+             WHERE EXISTS (
+                 SELECT 1 FROM json_each(h.project_ids) WHERE CAST(value AS INTEGER) = ?1
+             )
              ORDER BY h.created_at DESC
              LIMIT ?2 OFFSET ?3",
         )?;
-        let pattern = format!("%{}%", pid); // JSON 数组中模糊匹配
-        let result = stmt
-            .query_map(params![pattern, limit as i64, offset as i64], map_row)?
+        let collected = stmt
+            .query_map(params![pid, limit as i64, offset as i64], map_row)?
             .collect::<Result<Vec<_>, _>>()?;
-        result
+        collected
     } else {
         let mut stmt = conn.prepare(
             "SELECT id, project_ids, date_from, date_to, range_label,
@@ -208,17 +222,34 @@ pub fn list_report_history(
              ORDER BY created_at DESC
              LIMIT ?1 OFFSET ?2",
         )?;
-        let result = stmt
+        let collected = stmt
             .query_map(params![limit as i64, offset as i64], map_row)?
             .collect::<Result<Vec<_>, _>>()?;
-        result
+        collected
     };
 
-    // 为每条记录补全 project_names 与 total_commits
+    // 一次查询所有项目的名称与提交数,避免 N+1
+    let (report_ids, project_id_set) = collect_report_pairs(&rows);
+    let name_map = if project_id_set.is_empty() {
+        HashMap::new()
+    } else {
+        resolve_project_names_batch(conn, &project_id_set)?
+    };
+    let count_map = if report_ids.is_empty() {
+        HashMap::new()
+    } else {
+        count_commits_batch(conn, &report_ids)?
+    };
+
     let mut items = Vec::with_capacity(rows.len());
     for (mut item, ids) in rows {
-        item.project_names = resolve_project_names(&conn, &ids)?;
-        item.total_commits = count_commits(&conn, item.id)?;
+        let mut names: Vec<String> = ids
+            .iter()
+            .filter_map(|id| name_map.get(id).cloned())
+            .collect();
+        names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        item.project_names = names;
+        item.total_commits = count_map.get(&item.id).copied().unwrap_or(0);
         items.push(item);
     }
 
@@ -274,6 +305,12 @@ pub fn get_report_history(db: State<'_, Db>, id: i64) -> AppResult<ReportHistory
 #[tauri::command]
 pub fn delete_report_history(db: State<'_, Db>, id: i64) -> AppResult<()> {
     let conn = db.0.lock().unwrap();
+    delete_report_history_impl(&conn, id)
+}
+
+/// 删除报告历史的纯实现(供 scheduler 的孤儿清理路径与测试复用)。
+/// `report_commits` 通过外键级联删除。
+pub fn delete_report_history_impl(conn: &Connection, id: i64) -> AppResult<()> {
     conn.execute("DELETE FROM report_history WHERE id = ?1", params![id])?;
     Ok(())
 }
@@ -355,47 +392,7 @@ pub fn get_calendar_meta(
     report_type: Option<String>,
 ) -> AppResult<CalendarMeta> {
     let conn = db.0.lock().unwrap();
-    let mut dates: HashMap<String, i64> = HashMap::new();
-
-    // 生成当月所有日期
-    let start = NaiveDate::from_ymd_opt(year, month, 1)
-        .ok_or_else(|| AppError::External("无效的年月".into()))?;
-    let days_in_month = if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1)
-    } else {
-        NaiveDate::from_ymd_opt(year, month + 1, 1)
-    }
-    .ok_or_else(|| AppError::External("无效的年月".into()))?
-    .signed_duration_since(start)
-    .num_days() as u32;
-
-    for d in 0..days_in_month {
-        let date = start + chrono::Duration::days(d as i64);
-        let ds = date.format("%Y-%m-%d").to_string();
-
-        let mut conditions = vec!["h.date_to = ?1".to_string()];
-        let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(ds.clone())];
-        let mut param_idx = 2;
-        append_history_filters(
-            &mut conditions,
-            &mut params_vec,
-            &mut param_idx,
-            &project_ids,
-            &tag_ids,
-            &report_type,
-        );
-
-        let sql = format!(
-            "SELECT COUNT(*) FROM report_history h WHERE {}",
-            conditions.join(" AND ")
-        );
-
-        let count: i64 =
-            conn.query_row(&sql, rusqlite::params_from_iter(params_vec), |r| r.get(0))?;
-        if count > 0 {
-            dates.insert(ds, count);
-        }
-    }
+    let dates = get_calendar_meta_impl(&conn, year, month, &project_ids, &tag_ids, &report_type)?;
 
     // 节假日/调休数据
     let data_dir = app
@@ -412,6 +409,59 @@ pub fn get_calendar_meta(
         holidays,
         workdays,
     })
+}
+
+/// 日历聚合实现:按月用一次 GROUP BY 查询各 `date_to` 的报告计数。
+pub fn get_calendar_meta_impl(
+    conn: &Connection,
+    year: i32,
+    month: u32,
+    project_ids: &[i64],
+    tag_ids: &[i64],
+    report_type: &Option<String>,
+) -> AppResult<HashMap<String, i64>> {
+    let start = NaiveDate::from_ymd_opt(year, month, 1)
+        .ok_or_else(|| AppError::External("无效的年月".into()))?;
+    let end_exclusive = if month == 12 {
+        NaiveDate::from_ymd_opt(year + 1, 1, 1)
+    } else {
+        NaiveDate::from_ymd_opt(year, month + 1, 1)
+    }
+    .ok_or_else(|| AppError::External("无效的年月".into()))?;
+    let date_from = start.format("%Y-%m-%d").to_string();
+    let date_to_inclusive = (end_exclusive - chrono::Duration::days(1))
+        .format("%Y-%m-%d")
+        .to_string();
+
+    let mut conditions = vec!["h.date_to BETWEEN ?1 AND ?2".to_string()];
+    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> =
+        vec![Box::new(date_from), Box::new(date_to_inclusive)];
+    let mut param_idx = 3;
+    append_history_filters(
+        &mut conditions,
+        &mut params_vec,
+        &mut param_idx,
+        project_ids,
+        tag_ids,
+        report_type,
+    );
+
+    let sql = format!(
+        "SELECT h.date_to, COUNT(*) FROM report_history h WHERE {} GROUP BY h.date_to",
+        conditions.join(" AND ")
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(rusqlite::params_from_iter(params_vec), |r| {
+        Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?))
+    })?;
+
+    let mut dates: HashMap<String, i64> = HashMap::new();
+    for row in rows {
+        let (d, c) = row?;
+        dates.insert(d, c);
+    }
+    Ok(dates)
 }
 
 /// 节假日/调休标注数据(全集),供报告生成弹窗等日期选择日历做高亮。
@@ -448,17 +498,27 @@ pub fn get_reports_by_date(
     report_type: Option<String>,
 ) -> AppResult<Vec<ReportHistoryDetail>> {
     let conn = db.0.lock().unwrap();
+    get_reports_by_date_impl(&conn, &date, &project_ids, &tag_ids, &report_type)
+}
 
+/// 按日期查询的实现:一次加载所有报告的 project_names/total_commits/commits。
+pub fn get_reports_by_date_impl(
+    conn: &Connection,
+    date: &str,
+    project_ids: &[i64],
+    tag_ids: &[i64],
+    report_type: &Option<String>,
+) -> AppResult<Vec<ReportHistoryDetail>> {
     let mut conditions = vec!["h.date_to = ?1".to_string()];
-    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(date.clone())];
+    let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(date.to_string())];
     let mut param_idx = 2;
     append_history_filters(
         &mut conditions,
         &mut params_vec,
         &mut param_idx,
-        &project_ids,
-        &tag_ids,
-        &report_type,
+        project_ids,
+        tag_ids,
+        report_type,
     );
 
     let sql = format!(
@@ -474,12 +534,34 @@ pub fn get_reports_by_date(
         .query_map(rusqlite::params_from_iter(params_vec), map_detail_row)?
         .collect::<Result<Vec<_>, _>>()?;
 
-    // 为每条记录补全 project_names、total_commits 和 commits
+    // 一次加载全部 project_names、total_commits、commits,避免 N+1
+    let (report_ids, project_id_set) = collect_report_triples(&rows);
+    let name_map = if project_id_set.is_empty() {
+        HashMap::new()
+    } else {
+        resolve_project_names_batch(conn, &project_id_set)?
+    };
+    let count_map = if report_ids.is_empty() {
+        HashMap::new()
+    } else {
+        count_commits_batch(conn, &report_ids)?
+    };
+    let commits_map = if report_ids.is_empty() {
+        HashMap::new()
+    } else {
+        load_report_commits_batch(conn, &report_ids)?
+    };
+
     let mut results = Vec::with_capacity(rows.len());
     for (mut item, ids, result) in rows {
-        item.project_names = resolve_project_names(&conn, &ids)?;
-        item.total_commits = count_commits(&conn, item.id)?;
-        let commits = load_report_commits(&conn, item.id)?;
+        let mut names: Vec<String> = ids
+            .iter()
+            .filter_map(|id| name_map.get(id).cloned())
+            .collect();
+        names.sort_by(|a, b| a.to_lowercase().cmp(&b.to_lowercase()));
+        item.project_names = names;
+        item.total_commits = count_map.get(&item.id).copied().unwrap_or(0);
+        let commits = commits_map.get(&item.id).cloned().unwrap_or_default();
 
         results.push(ReportHistoryDetail {
             item,
@@ -767,7 +849,7 @@ pub async fn run_report_schedule_now(
         let conn = db.0.lock().unwrap();
         let sql = format!("SELECT {SCHEDULE_COLS} FROM report_schedules WHERE id = ?1");
         conn.query_row(&sql, params![id], map_schedule_row)
-            .map_err(|_| AppError::External("定时任务不存在".into()))?
+            .map_err(|_| AppError::schedule_not_found())?
     };
     let data_dir = workday::data_dir(&app);
     let client = reqwest::Client::new();
@@ -851,8 +933,7 @@ fn load_report_commits(conn: &Connection, report_id: i64) -> AppResult<Vec<Repor
     let commits = stmt
         .query_map(params![report_id], |r| {
             let data_json: String = r.get(3)?;
-            let commits: Vec<GitCommitInfo> =
-                serde_json::from_str(&data_json).unwrap_or_default();
+            let commits: Vec<GitCommitInfo> = serde_json::from_str(&data_json).unwrap_or_default();
             Ok(ReportCommitItem {
                 project_id: r.get(0)?,
                 project_name: r.get(1)?,
@@ -862,6 +943,139 @@ fn load_report_commits(conn: &Connection, report_id: i64) -> AppResult<Vec<Repor
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(commits)
+}
+
+// ── batch helpers ─────────────────────────────────────────────────────
+
+/// 从一批 `(ReportHistoryItem, Vec<i64>)` 行中收集所有 report id 与关联 project id。
+/// 用于单次批量查询 `project_names`、`total_commits`、`commits`。
+fn collect_report_pairs(rows: &[(ReportHistoryItem, Vec<i64>)]) -> (Vec<i64>, Vec<i64>) {
+    let mut report_ids: Vec<i64> = Vec::with_capacity(rows.len());
+    let mut project_set: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    for (item, ids) in rows {
+        report_ids.push(item.id);
+        for pid in ids {
+            project_set.insert(*pid);
+        }
+    }
+    let project_ids: Vec<i64> = project_set.into_iter().collect();
+    (report_ids, project_ids)
+}
+
+/// 从一批 `(ReportHistoryItem, Vec<i64>, String)` 行中收集所有 report id 与关联 project id。
+/// `String` 是附加的 `result` 列,这里忽略。
+fn collect_report_triples(rows: &[(ReportHistoryItem, Vec<i64>, String)]) -> (Vec<i64>, Vec<i64>) {
+    let mut report_ids: Vec<i64> = Vec::with_capacity(rows.len());
+    let mut project_set: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    for (item, ids, _result) in rows {
+        report_ids.push(item.id);
+        for pid in ids {
+            project_set.insert(*pid);
+        }
+    }
+    let project_ids: Vec<i64> = project_set.into_iter().collect();
+    (report_ids, project_ids)
+}
+
+/// 一次性批量加载多个项目的名称(避免 N+1)。空 ids 直接返回空 map。
+pub fn resolve_project_names_batch(
+    conn: &Connection,
+    ids: &[i64],
+) -> AppResult<HashMap<i64, String>> {
+    let mut map = HashMap::new();
+    if ids.is_empty() {
+        return Ok(map);
+    }
+    let placeholders: Vec<String> = (0..ids.len()).map(|i| format!("?{}", i + 1)).collect();
+    let sql = format!(
+        "SELECT id, name FROM projects WHERE id IN ({})",
+        placeholders.join(",")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::types::ToSql> = ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
+    let rows = stmt.query_map(params.as_slice(), |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+    })?;
+    for row in rows {
+        let (id, name) = row?;
+        map.insert(id, name);
+    }
+    Ok(map)
+}
+
+/// 一次性批量统计多个报告的提交总数(避免 N+1)。空 ids 直接返回空 map。
+pub fn count_commits_batch(conn: &Connection, report_ids: &[i64]) -> AppResult<HashMap<i64, i64>> {
+    let mut map = HashMap::new();
+    if report_ids.is_empty() {
+        return Ok(map);
+    }
+    let placeholders: Vec<String> = (0..report_ids.len())
+        .map(|i| format!("?{}", i + 1))
+        .collect();
+    let sql = format!(
+        "SELECT report_id, COALESCE(SUM(json_array_length(commit_data)), 0)
+         FROM report_commits WHERE report_id IN ({}) GROUP BY report_id",
+        placeholders.join(",")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::types::ToSql> = report_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
+    let rows = stmt.query_map(params.as_slice(), |r| {
+        Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+    })?;
+    for row in rows {
+        let (rid, cnt) = row?;
+        map.insert(rid, cnt);
+    }
+    Ok(map)
+}
+
+/// 一次性批量加载多个报告的提交明细(避免 N+1)。空 ids 直接返回空 map。
+pub fn load_report_commits_batch(
+    conn: &Connection,
+    report_ids: &[i64],
+) -> AppResult<HashMap<i64, Vec<ReportCommitItem>>> {
+    let mut map: HashMap<i64, Vec<ReportCommitItem>> = HashMap::new();
+    if report_ids.is_empty() {
+        return Ok(map);
+    }
+    let placeholders: Vec<String> = (0..report_ids.len())
+        .map(|i| format!("?{}", i + 1))
+        .collect();
+    let sql = format!(
+        "SELECT report_id, project_id, project_name, project_description, commit_data
+         FROM report_commits WHERE report_id IN ({}) ORDER BY report_id, id",
+        placeholders.join(",")
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let params: Vec<&dyn rusqlite::types::ToSql> = report_ids
+        .iter()
+        .map(|id| id as &dyn rusqlite::types::ToSql)
+        .collect();
+    let rows = stmt.query_map(params.as_slice(), |r| {
+        let rid: i64 = r.get(0)?;
+        let data_json: String = r.get(4)?;
+        let commits: Vec<GitCommitInfo> = serde_json::from_str(&data_json).unwrap_or_default();
+        Ok((
+            rid,
+            ReportCommitItem {
+                project_id: r.get(1)?,
+                project_name: r.get(2)?,
+                project_description: r.get(3)?,
+                commits,
+            },
+        ))
+    })?;
+    for row in rows {
+        let (rid, item) = row?;
+        map.entry(rid).or_default().push(item);
+    }
+    Ok(map)
 }
 
 // ── scheduler helpers (used by scheduler.rs) ───────────────────────────
@@ -876,11 +1090,381 @@ pub fn read_schedules(conn: &Connection) -> AppResult<Vec<ReportSchedule>> {
     Ok(rows)
 }
 
-/// 供 scheduler 直接调用:更新 last_run_at
+/// 更新定时任务的 last_run_at。
+#[allow(dead_code)]
 pub fn update_last_run_at(conn: &Connection, schedule_id: &str, timestamp: i64) -> AppResult<()> {
     conn.execute(
         "UPDATE report_schedules SET last_run_at = ?1 WHERE id = ?2",
         params![timestamp, schedule_id],
     )?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db;
+
+    /// 创建内存 SQLite(应用所有迁移),用于报告测试
+    fn test_conn() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        db::init(&conn).unwrap();
+        conn
+    }
+
+    /// 直接向 projects 表插入一行(绕过 `add` 的目录存在检查)
+    fn insert_project(conn: &Connection, name: &str) -> i64 {
+        let now = chrono::Utc::now().timestamp();
+        conn.execute(
+            "INSERT INTO projects (path, name, description, created_at, updated_at)
+             VALUES (?1, ?2, '', ?3, ?3)",
+            params![format!("/tmp/{name}-{now}"), name, now],
+        )
+        .unwrap();
+        conn.last_insert_rowid()
+    }
+
+    /// 插入报告 + 关联 commits;commits_per_record 表示每个 project 的 commit 数。
+    /// created_at 显式传入,避免连续插入时 created_at 相同导致排序无法断言。
+    fn insert_report(
+        conn: &Connection,
+        project_ids: &[i64],
+        date_from: &str,
+        date_to: &str,
+        period_type: &str,
+        commits_per_record: usize,
+    ) -> i64 {
+        insert_report_with_ts(
+            conn,
+            project_ids,
+            date_from,
+            date_to,
+            period_type,
+            commits_per_record,
+            chrono::Utc::now().timestamp(),
+        )
+    }
+
+    /// 与 `insert_report` 类似,但允许指定 `created_at` 以便稳定断言排序。
+    fn insert_report_with_ts(
+        conn: &Connection,
+        project_ids: &[i64],
+        date_from: &str,
+        date_to: &str,
+        period_type: &str,
+        commits_per_record: usize,
+        created_at: i64,
+    ) -> i64 {
+        let ids_json = serde_json::to_string(project_ids).unwrap();
+        conn.execute(
+            "INSERT INTO report_history (project_ids, date_from, date_to, range_label,
+                 author_mode, language, period_type, result, created_at)
+             VALUES (?1, ?2, ?3, '', 'me', 'zh-CN', ?4, '', ?5)",
+            params![ids_json, date_from, date_to, period_type, created_at],
+        )
+        .unwrap();
+        let report_id = conn.last_insert_rowid();
+        for pid in project_ids {
+            let commits: Vec<GitCommitInfo> = (0..commits_per_record)
+                .map(|i| GitCommitInfo {
+                    hash: format!("h{i}"),
+                    author: "tester".into(),
+                    date: "2026-07-01 09:00".into(),
+                    subject: format!("commit {i}"),
+                })
+                .collect();
+            let commit_data = serde_json::to_string(&commits).unwrap();
+            conn.execute(
+                "INSERT INTO report_commits (report_id, project_id, project_name,
+                     project_description, commit_data)
+                 VALUES (?1, ?2, '', '', ?3)",
+                params![report_id, pid, commit_data],
+            )
+            .unwrap();
+        }
+        report_id
+    }
+
+    #[test]
+    fn list_filters_exact_project_id_not_substring() {
+        // json_each 按 JSON 数组元素精确匹配项目 ID
+        let conn = test_conn();
+        let p1 = insert_project(&conn, "p1");
+        let p12 = insert_project(&conn, "p12");
+        let p123 = insert_project(&conn, "p123");
+
+        insert_report(&conn, &[p1], "2026-07-01", "2026-07-01", "daily", 1);
+        insert_report(&conn, &[p12], "2026-07-02", "2026-07-02", "daily", 2);
+        insert_report(&conn, &[p123], "2026-07-03", "2026-07-03", "daily", 3);
+
+        let only_p12 = list_report_history_impl(&conn, None, None, Some(p12)).unwrap();
+        assert_eq!(
+            only_p12.len(),
+            1,
+            "筛选 12 必须只返回一条记录(不应包含 1/123)"
+        );
+        assert_eq!(only_p12[0].project_ids, vec![p12]);
+        assert_eq!(only_p12[0].project_names, vec!["p12".to_string()]);
+        assert_eq!(only_p12[0].total_commits, 2);
+
+        let only_p1 = list_report_history_impl(&conn, None, None, Some(p1)).unwrap();
+        assert_eq!(only_p1.len(), 1);
+        assert_eq!(only_p1[0].project_ids, vec![p1]);
+
+        let only_p123 = list_report_history_impl(&conn, None, None, Some(p123)).unwrap();
+        assert_eq!(only_p123.len(), 1);
+        assert_eq!(only_p123[0].project_ids, vec![p123]);
+
+        // 不筛选应返回全部
+        let all = list_report_history_impl(&conn, None, None, None).unwrap();
+        assert_eq!(all.len(), 3);
+    }
+
+    #[test]
+    fn list_returns_descending_by_created_at() {
+        let conn = test_conn();
+        let p = insert_project(&conn, "p");
+        let r1 = insert_report_with_ts(
+            &conn,
+            &[p],
+            "2026-07-01",
+            "2026-07-01",
+            "daily",
+            1,
+            1_000_000,
+        );
+        let r2 = insert_report_with_ts(
+            &conn,
+            &[p],
+            "2026-07-02",
+            "2026-07-02",
+            "daily",
+            1,
+            2_000_000,
+        );
+        let r3 = insert_report_with_ts(
+            &conn,
+            &[p],
+            "2026-07-03",
+            "2026-07-03",
+            "daily",
+            1,
+            3_000_000,
+        );
+        let items = list_report_history_impl(&conn, None, None, None).unwrap();
+        assert_eq!(items.len(), 3);
+        // 最后插入的(created_at 最大)应在第一位
+        assert_eq!(items[0].id, r3);
+        assert_eq!(items[2].id, r1);
+        assert!(items[0].created_at >= items[1].created_at);
+        assert!(items[1].created_at >= items[2].created_at);
+        let _ = (r1, r2);
+    }
+
+    #[test]
+    fn list_pagination_limit_offset() {
+        let conn = test_conn();
+        let p = insert_project(&conn, "p");
+        for _ in 0..5 {
+            insert_report(&conn, &[p], "2026-07-01", "2026-07-01", "daily", 1);
+        }
+        let page1 = list_report_history_impl(&conn, Some(2), Some(0), None).unwrap();
+        let page2 = list_report_history_impl(&conn, Some(2), Some(2), None).unwrap();
+        let page3 = list_report_history_impl(&conn, Some(2), Some(4), None).unwrap();
+        assert_eq!(page1.len(), 2);
+        assert_eq!(page2.len(), 2);
+        assert_eq!(page3.len(), 1);
+        // 三页 id 应互不重复
+        let mut ids: Vec<i64> = page1
+            .iter()
+            .chain(page2.iter())
+            .chain(page3.iter())
+            .map(|i| i.id)
+            .collect();
+        ids.sort();
+        ids.dedup();
+        assert_eq!(ids.len(), 5);
+    }
+
+    #[test]
+    fn list_clamps_limit_to_200() {
+        let conn = test_conn();
+        let p = insert_project(&conn, "p");
+        insert_report(&conn, &[p], "2026-07-01", "2026-07-01", "daily", 1);
+        let items = list_report_history_impl(&conn, Some(10_000), Some(0), None).unwrap();
+        assert_eq!(items.len(), 1);
+    }
+
+    #[test]
+    fn list_no_filter_returns_correct_names_and_counts() {
+        let conn = test_conn();
+        let a = insert_project(&conn, "alpha");
+        let b = insert_project(&conn, "beta");
+        insert_report(&conn, &[a, b], "2026-07-01", "2026-07-01", "daily", 3);
+        let items = list_report_history_impl(&conn, None, None, None).unwrap();
+        assert_eq!(items.len(), 1);
+        // 名称按 NOCASE 排序:alpha, beta
+        assert_eq!(
+            items[0].project_names,
+            vec!["alpha".to_string(), "beta".to_string()]
+        );
+        // total_commits = 3 + 3 = 6
+        assert_eq!(items[0].total_commits, 6);
+    }
+
+    #[test]
+    fn calendar_meta_groups_by_date_to() {
+        let conn = test_conn();
+        let p = insert_project(&conn, "p");
+        // 2026-07-01: 2 份日报
+        insert_report(&conn, &[p], "2026-07-01", "2026-07-01", "daily", 1);
+        insert_report(&conn, &[p], "2026-07-01", "2026-07-01", "daily", 1);
+        // 2026-07-05: 1 份周报
+        insert_report(&conn, &[p], "2026-06-29", "2026-07-05", "weekly", 2);
+        // 2026-07-10: 0 份,不应出现在 map 中
+        // 2026-07-15: 1 份日报
+        insert_report(&conn, &[p], "2026-07-15", "2026-07-15", "daily", 1);
+        // 7 月范围:2026-07-01 ~ 2026-07-31
+        let dates = get_calendar_meta_impl(&conn, 2026, 7, &[], &[], &None).unwrap();
+        assert_eq!(dates.get("2026-07-01").copied(), Some(2));
+        assert_eq!(dates.get("2026-07-05").copied(), Some(1));
+        assert_eq!(dates.get("2026-07-15").copied(), Some(1));
+        assert!(!dates.contains_key("2026-07-10"));
+    }
+
+    #[test]
+    fn calendar_meta_filters_by_project() {
+        let conn = test_conn();
+        let p1 = insert_project(&conn, "p1");
+        let p2 = insert_project(&conn, "p2");
+        insert_report(&conn, &[p1], "2026-07-01", "2026-07-01", "daily", 1);
+        insert_report(&conn, &[p2], "2026-07-01", "2026-07-01", "daily", 1);
+        let only_p1 = get_calendar_meta_impl(&conn, 2026, 7, &[p1], &[], &None).unwrap();
+        assert_eq!(only_p1.get("2026-07-01").copied(), Some(1));
+        let only_p2 = get_calendar_meta_impl(&conn, 2026, 7, &[p2], &[], &None).unwrap();
+        assert_eq!(only_p2.get("2026-07-01").copied(), Some(1));
+        let both = get_calendar_meta_impl(&conn, 2026, 7, &[p1, p2], &[], &None).unwrap();
+        assert_eq!(both.get("2026-07-01").copied(), Some(2));
+    }
+
+    #[test]
+    fn calendar_meta_filters_by_report_type() {
+        let conn = test_conn();
+        let p = insert_project(&conn, "p");
+        insert_report(&conn, &[p], "2026-07-01", "2026-07-01", "daily", 1);
+        insert_report(&conn, &[p], "2026-06-29", "2026-07-05", "weekly", 1);
+        let only_daily =
+            get_calendar_meta_impl(&conn, 2026, 7, &[], &[], &Some("daily".into())).unwrap();
+        assert_eq!(only_daily.get("2026-07-01").copied(), Some(1));
+        assert!(!only_daily.contains_key("2026-07-05"));
+        let only_weekly =
+            get_calendar_meta_impl(&conn, 2026, 7, &[], &[], &Some("weekly".into())).unwrap();
+        assert_eq!(only_weekly.get("2026-07-05").copied(), Some(1));
+        assert!(!only_weekly.contains_key("2026-07-01"));
+    }
+
+    #[test]
+    fn reports_by_date_returns_commits_and_aggregates() {
+        let conn = test_conn();
+        let a = insert_project(&conn, "alpha");
+        let b = insert_project(&conn, "beta");
+        // 同一天两条报告,使用显式 created_at 以稳定断言排序
+        let r1 = insert_report_with_ts(
+            &conn,
+            &[a],
+            "2026-07-01",
+            "2026-07-01",
+            "daily",
+            2,
+            1_000_000,
+        );
+        let r2 = insert_report_with_ts(
+            &conn,
+            &[b],
+            "2026-07-01",
+            "2026-07-01",
+            "daily",
+            3,
+            2_000_000,
+        );
+
+        let details = get_reports_by_date_impl(&conn, "2026-07-01", &[], &[], &None).unwrap();
+        assert_eq!(details.len(), 2);
+
+        // 顺序按 created_at DESC: r2 在前
+        let first = &details[0];
+        let second = &details[1];
+        let (first_id, second_id) = (first.item.id, second.item.id);
+        assert_eq!(first_id, r2);
+        assert_eq!(second_id, r1);
+
+        // first(r2): project_names=[beta], total_commits=3, commits.len()=3
+        assert_eq!(first.item.project_names, vec!["beta".to_string()]);
+        assert_eq!(first.item.total_commits, 3);
+        assert_eq!(first.commits.len(), 1);
+        assert_eq!(first.commits[0].commits.len(), 3);
+
+        // second(r1): project_names=[alpha], total_commits=2
+        assert_eq!(second.item.project_names, vec!["alpha".to_string()]);
+        assert_eq!(second.item.total_commits, 2);
+        assert_eq!(second.commits.len(), 1);
+        assert_eq!(second.commits[0].commits.len(), 2);
+    }
+
+    #[test]
+    fn reports_by_date_filters_by_project() {
+        let conn = test_conn();
+        let a = insert_project(&conn, "alpha");
+        let b = insert_project(&conn, "beta");
+        insert_report(&conn, &[a], "2026-07-01", "2026-07-01", "daily", 1);
+        insert_report(&conn, &[b], "2026-07-01", "2026-07-01", "daily", 1);
+        let only_a = get_reports_by_date_impl(&conn, "2026-07-01", &[a], &[], &None).unwrap();
+        assert_eq!(only_a.len(), 1);
+        assert_eq!(only_a[0].item.project_names, vec!["alpha".to_string()]);
+    }
+
+    #[test]
+    fn batch_helpers_handle_empty_input() {
+        let conn = test_conn();
+        let names = resolve_project_names_batch(&conn, &[]).unwrap();
+        assert!(names.is_empty());
+        let counts = count_commits_batch(&conn, &[]).unwrap();
+        assert!(counts.is_empty());
+        let commits = load_report_commits_batch(&conn, &[]).unwrap();
+        assert!(commits.is_empty());
+    }
+
+    #[test]
+    fn list_report_history_empty_db() {
+        let conn = test_conn();
+        let items = list_report_history_impl(&conn, None, None, None).unwrap();
+        assert!(items.is_empty());
+        let items2 = list_report_history_impl(&conn, None, None, Some(1)).unwrap();
+        assert!(items2.is_empty());
+    }
+
+    #[test]
+    fn exact_project_id_filter_avoids_substring_matches() {
+        let conn = test_conn();
+        let now = chrono::Utc::now().timestamp();
+        for (pid, label) in [(1i64, "p1"), (12, "p12"), (123, "p123")] {
+            conn.execute(
+                "INSERT INTO projects (id, path, name, description, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, '', ?4, ?4)",
+                params![pid, format!("/tmp/{label}-{now}"), label, now],
+            )
+            .unwrap();
+            conn.execute(
+                "INSERT INTO report_history (project_ids, date_from, date_to, range_label,
+                     author_mode, language, period_type, result, created_at)
+                 VALUES (?1, '2026-07-01', '2026-07-01', '', 'me', 'zh-CN', 'daily', '', ?2)",
+                params![format!("[{pid}]"), now],
+            )
+            .unwrap();
+        }
+
+        let exact = list_report_history_impl(&conn, None, None, Some(1)).unwrap();
+        assert_eq!(exact.len(), 1);
+        assert_eq!(exact[0].project_ids, vec![1]);
+    }
 }

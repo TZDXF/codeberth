@@ -32,14 +32,13 @@ import DailyReportDialog from "@/components/report/DailyReportDialog.vue";
 import TagCheckList from "@/components/tags/TagCheckList.vue";
 import TagManager from "@/components/tags/TagManager.vue";
 import { useProjectsStore } from "@/stores/projects";
+import { useSettingsStore, type ProjectsSortKey, type ProjectsViewMode } from "@/stores/settings";
 import { useTagsStore } from "@/stores/tags";
-
-type ViewMode = "grid" | "table";
-type SortKey = "name" | "updated" | "created";
 
 const { t } = useI18n();
 const store = useProjectsStore();
 const tagsStore = useTagsStore();
+const settings = useSettingsStore();
 const router = useRouter();
 
 // AI 日报弹窗
@@ -53,18 +52,17 @@ watch(searchInput, (value) => {
   debounceTimer = window.setTimeout(() => store.setQuery(value), 250);
 });
 
-// 视图模式与排序方式持久化到 localStorage
-const savedView = localStorage.getItem("project-dev:view");
-const viewMode = ref<ViewMode>(savedView === "table" ? "table" : "grid");
-watch(viewMode, (v) => localStorage.setItem("project-dev:view", v));
+// 视图模式与排序方式持久化到 settings store
+const viewMode = computed<ProjectsViewMode>({
+  get: () => settings.projectsViewMode,
+  set: (v) => settings.setProjectsViewMode(v),
+});
+const sortKey = computed<ProjectsSortKey>({
+  get: () => settings.projectsSortKey,
+  set: (v) => settings.setProjectsSortKey(v),
+});
 
-const savedSort = localStorage.getItem("project-dev:sort");
-const sortKey = ref<SortKey>(
-  savedSort === "updated" || savedSort === "created" ? savedSort : "name",
-);
-watch(sortKey, (v) => localStorage.setItem("project-dev:sort", v));
-
-const SORT_LABELS: Record<SortKey, string> = {
+const SORT_LABELS: Record<ProjectsSortKey, string> = {
   name: t("projects.home.sortByName"),
   updated: t("projects.home.sortByUpdated"),
   created: t("projects.home.sortByCreated"),

@@ -3,7 +3,7 @@
 // 解析逻辑复刻 tauri-plugin-http 的 scope.rs(URLPattern 语义,非 glob;
 // 端口未写 * 时只匹配默认端口,这是本次修复的坑)。
 use serde_json::Value;
-use urlpattern::{UrlPattern, UrlPatternInit, UrlPatternMatchInput};
+use urlpattern::{UrlPattern, UrlPatternMatchInput};
 
 fn parse_pattern(s: &str) -> UrlPattern {
     let mut init = urlpattern::UrlPatternInit::parse_constructor_string::<regex::Regex>(s, None)
@@ -55,9 +55,18 @@ fn http_scope_allows_custom_ai_endpoints() {
     assert!(!patterns.is_empty(), "http:default 缺少 allow scope");
 
     // 带显式端口的局域网 OpenAI 兼容服务(本次 bug 现场)
-    assert!(is_allowed(&patterns, "http://192.168.3.3:8084/v1/chat/completions"));
+    assert!(is_allowed(
+        &patterns,
+        "http://192.168.3.3:8084/v1/chat/completions"
+    ));
     // 标准 HTTPS API
-    assert!(is_allowed(&patterns, "https://api.openai.com/v1/chat/completions"));
+    assert!(is_allowed(
+        &patterns,
+        "https://api.openai.com/v1/chat/completions"
+    ));
     // 本地部署服务
-    assert!(is_allowed(&patterns, "http://localhost:11434/v1/chat/completions"));
+    assert!(is_allowed(
+        &patterns,
+        "http://localhost:11434/v1/chat/completions"
+    ));
 }

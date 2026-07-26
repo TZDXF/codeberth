@@ -13,7 +13,8 @@
     "lint": "oxlint .",
     "lint:fix": "oxlint . --fix",
     "format": "oxfmt --write src/",
-    "format:check": "oxfmt --check src/"
+    "format:check": "oxfmt --check src/",
+    "test:unit": "vitest run"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
@@ -57,6 +58,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~5.9.3",
     "vite": "^8.1.5",
+    "vitest": "^3.2.4",
     "vue-tsc": "^3.3.7"
   }
 }
