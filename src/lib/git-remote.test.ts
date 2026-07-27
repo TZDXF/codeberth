@@ -13,12 +13,19 @@ describe("parseGitRemote", () => {
       });
     });
 
-    it("https 端口非默认(端口不在归一化输出中)", () => {
-      // 当前实现只透传 hostname,不保留端口 —— 验证行为不假设将来扩展
+    it("https 端口非默认时保留端口", () => {
       const result = parseGitRemote("https://gitlab.example.com:8443/team/proj");
       expect(result).toEqual({
         provider: "gitlab",
-        url: "https://gitlab.example.com/team/proj",
+        url: "https://gitlab.example.com:8443/team/proj",
+      });
+    });
+
+    it("http 自建平台带端口(协议与端口都保留)", () => {
+      const result = parseGitRemote("http://192.168.1.3:12580/framework/gis/zc-gis-server.git");
+      expect(result).toEqual({
+        provider: "generic",
+        url: "http://192.168.1.3:12580/framework/gis/zc-gis-server",
       });
     });
 

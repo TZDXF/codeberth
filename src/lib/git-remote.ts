@@ -29,7 +29,9 @@ export function parseGitRemote(remote: string): GitRemoteInfo | null {
     return null;
   }
 
+  let scheme = "https";
   let host = "";
+  let port = "";
   let repoPath = "";
 
   // scp 风格: git@github.com:owner/repo.git(无协议头,且冒号不在端口位)
@@ -46,6 +48,13 @@ export function parseGitRemote(remote: string): GitRemoteInfo | null {
     }
     host = url.hostname;
     repoPath = url.pathname.replace(/^\//, "");
+    // http(s) 地址保留原始协议与端口(自建平台常带非默认端口,如 Gitea :12580);
+    // url.port 在端口等于协议默认端口时为空字符串,天然省去判断。
+    // ssh:// 的端口是 ssh 端口而非 web 端口,不保留。
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      scheme = url.protocol.replace(":", "");
+      port = url.port;
+    }
   }
 
   repoPath = repoPath.replace(/\.git$/i, "").replace(/\/+$/, "");
@@ -53,5 +62,6 @@ export function parseGitRemote(remote: string): GitRemoteInfo | null {
     return null;
   }
 
-  return { provider: detectProvider(host), url: `https://${host}/${repoPath}` };
+  const authority = port ? `${host}:${port}` : host;
+  return { provider: detectProvider(host), url: `${scheme}://${authority}/${repoPath}` };
 }
