@@ -17,6 +17,8 @@ export interface GitStatus {
   conflicted: number;
   remote_ahead: number;
   last_fetch_at: number | null;
+  /** HEAD 最新提交时间(Unix 秒);无提交的仓库为 null */
+  last_commit_at: number | null;
 }
 
 /** `git pull` 的结果:最新状态 + 产生的合并冲突文件(为空表示无冲突) */

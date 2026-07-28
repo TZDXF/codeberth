@@ -76,7 +76,11 @@ const sortedProjects = computed(() => {
   const list = [...store.projects];
   switch (sortKey.value) {
     case "updated":
-      return list.sort((a, b) => b.updated_at - a.updated_at);
+      // 以 git 最新提交时间衡量「最近更新」;非 git 仓库或状态未加载时回退到信息更新时间
+      return list.sort(
+        (a, b) =>
+          (b.git?.last_commit_at ?? b.updated_at) - (a.git?.last_commit_at ?? a.updated_at),
+      );
     case "created":
       return list.sort((a, b) => b.created_at - a.created_at);
     default:

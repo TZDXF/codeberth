@@ -21,6 +21,8 @@ pub struct GitStatus {
     pub conflicted: i32,
     pub remote_ahead: i32,
     pub last_fetch_at: Option<i64>,
+    /// HEAD 最新提交时间(Unix 秒);无提交的仓库为 None
+    pub last_commit_at: Option<i64>,
 }
 
 /// `git pull` 的结果:最新状态 + 产生的合并冲突文件(为空表示无冲突)

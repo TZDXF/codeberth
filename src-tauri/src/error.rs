@@ -14,6 +14,30 @@ pub enum ErrorCode {
     ScheduleNotFound,
     /// AI 服务尚未配置
     AiNotConfigured,
+    /// 本地修改与远端冲突(merge/checkout 会覆盖)
+    GitLocalChangesConflict,
+    /// 未跟踪文件与远端冲突(merge/checkout 会覆盖)
+    GitUntrackedConflict,
+    /// SSH 密钥认证失败
+    GitSshAuthFailed,
+    /// SSH 主机密钥校验失败
+    GitHostKeyFailed,
+    /// 用户名密码/Token 认证失败
+    GitAuthFailed,
+    /// 远端仓库不存在或无权限
+    GitRepoNotFound,
+    /// 远端主机名无法解析
+    GitNetworkDns,
+    /// 无法连接远端服务器
+    GitNetworkConnect,
+    /// 推送被拒绝(远端有更新)
+    GitPushRejected,
+    /// 本地与远端分支已分叉
+    GitDiverged,
+    /// 当前分支未关联远端分支
+    GitNoTracking,
+    /// 当前目录不是 Git 仓库
+    NotGitRepository,
 }
 
 impl ErrorCode {
@@ -23,6 +47,18 @@ impl ErrorCode {
             ErrorCode::InvalidPath => "invalid_path",
             ErrorCode::ScheduleNotFound => "schedule_not_found",
             ErrorCode::AiNotConfigured => "ai_not_configured",
+            ErrorCode::GitLocalChangesConflict => "git_local_changes_conflict",
+            ErrorCode::GitUntrackedConflict => "git_untracked_conflict",
+            ErrorCode::GitSshAuthFailed => "git_ssh_auth_failed",
+            ErrorCode::GitHostKeyFailed => "git_host_key_failed",
+            ErrorCode::GitAuthFailed => "git_auth_failed",
+            ErrorCode::GitRepoNotFound => "git_repo_not_found",
+            ErrorCode::GitNetworkDns => "git_network_dns",
+            ErrorCode::GitNetworkConnect => "git_network_connect",
+            ErrorCode::GitPushRejected => "git_push_rejected",
+            ErrorCode::GitDiverged => "git_diverged",
+            ErrorCode::GitNoTracking => "git_no_tracking",
+            ErrorCode::NotGitRepository => "not_git_repository",
         }
     }
 }

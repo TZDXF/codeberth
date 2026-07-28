@@ -53,7 +53,7 @@ pub(crate) fn git_command(path: &str) -> Command {
     cmd
 }
 
-/// 执行 git 命令,非零退出时取 stderr(兜底 stdout)转为 External 错误
+/// 执行 git 命令,非零退出时取 stderr(兜底 stdout)转为友好错误
 fn run_git(path: &str, args: &[&str]) -> AppResult<Output> {
     let output = git_command(path).args(args).output()?;
     if output.status.success() {
@@ -62,11 +62,137 @@ fn run_git(path: &str, args: &[&str]) -> AppResult<Output> {
     let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
     let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
     let detail = if stderr.is_empty() { stdout } else { stderr };
-    Err(AppError::External(if detail.is_empty() {
-        format!("git {} 退出码 {}", args.join(" "), output.status)
+    Err(if detail.is_empty() {
+        AppError::External(format!("git {} 退出码 {}", args.join(" "), output.status))
     } else {
-        detail
-    }))
+        friendly_git_error(&detail)
+    })
+}
+
+/// 将 git 原始 stderr 转为简洁友好的错误:
+/// 1. 过滤环境噪音行(如 OpenSSH 后量子密钥交换警告)
+/// 2. 常见错误模式映射为带错误码的 Coded 错误(前端按 code 走 i18n,
+///    此处 message 仅作回退);未识别时返回清理后的原文(External)
+///
+/// 注意:`push_blocking` 依赖原文匹配 "no upstream branch",映射规则不得覆盖该短语
+fn friendly_git_error(raw: &str) -> AppError {
+    use crate::error::ErrorCode;
+
+    // 噪音行:SSH/网络层打印的警告,与 git 操作结果无关
+    const NOISE: &[&str] = &[
+        "post-quantum",
+        "store now, decrypt later",
+        "openssh.com/pq.html",
+        "The server may need to be upgraded",
+    ];
+    let cleaned: Vec<&str> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .filter(|l| !l.starts_with("** "))
+        .filter(|l| !NOISE.iter().any(|n| l.contains(n)))
+        .collect();
+    let text = cleaned.join("\n");
+    if text.is_empty() {
+        return AppError::External("git 命令失败(详见应用日志)".into());
+    }
+    let coded = |code: ErrorCode, message: &str| AppError::Coded {
+        code,
+        message: message.into(),
+    };
+
+    // 本地修改/未跟踪文件会被合并或切换分支覆盖
+    if text.contains("Your local changes to the following files would be overwritten by") {
+        return coded(
+            ErrorCode::GitLocalChangesConflict,
+            "本地修改与远端冲突,请先提交或储藏(git stash)后再试",
+        );
+    }
+    if text.contains("The following untracked working tree files would be overwritten by") {
+        return coded(
+            ErrorCode::GitUntrackedConflict,
+            "有未跟踪的本地文件与远端冲突,请先移走或删除后再试",
+        );
+    }
+
+    // 认证与权限
+    if text.contains("Permission denied (publickey") {
+        return coded(
+            ErrorCode::GitSshAuthFailed,
+            "SSH 认证失败:请检查本机密钥是否已添加到远端账号,以及是否有仓库访问权限",
+        );
+    }
+    if text.contains("Host key verification failed") {
+        return coded(
+            ErrorCode::GitHostKeyFailed,
+            "SSH 主机密钥校验失败:请先在终端执行一次 git 操作并确认主机指纹",
+        );
+    }
+    if text.contains("Authentication failed") || text.contains("Invalid username or password") {
+        return coded(
+            ErrorCode::GitAuthFailed,
+            "认证失败:请检查用户名密码或访问令牌(Token)是否有效",
+        );
+    }
+    if text.contains("Repository not found") || text.contains("repository not found") {
+        return coded(
+            ErrorCode::GitRepoNotFound,
+            "远端仓库不存在或当前账号没有访问权限",
+        );
+    }
+
+    // 网络
+    if text.contains("Could not resolve host")
+        || text.contains("Temporary failure in name resolution")
+    {
+        return coded(
+            ErrorCode::GitNetworkDns,
+            "网络错误:无法解析远端主机名,请检查网络、DNS 或代理设置",
+        );
+    }
+    if text.contains("Connection timed out")
+        || text.contains("Connection refused")
+        || text.contains("Connection reset")
+        || text.contains("Failed to connect to")
+    {
+        return coded(
+            ErrorCode::GitNetworkConnect,
+            "网络错误:无法连接远端服务器,请检查网络或代理设置",
+        );
+    }
+
+    // 推送/拉取策略
+    if text.contains("failed to push some refs") {
+        if text.contains("non-fast-forward")
+            || text.contains("fetch first")
+            || text.contains("Updates were rejected")
+        {
+            return coded(
+                ErrorCode::GitPushRejected,
+                "推送被拒绝:远端有本地没有的新提交,请先拉取合并后再推送",
+            );
+        }
+        return AppError::External(format!("推送失败:{text}"));
+    }
+    if text.contains("You have divergent branches")
+        || text.contains("Need to specify how to reconcile divergent branches")
+    {
+        return coded(
+            ErrorCode::GitDiverged,
+            "本地与远端分支已分叉,请在终端执行 git pull --rebase 或配置合并策略后再试",
+        );
+    }
+    if text.contains("There is no tracking information") {
+        return coded(
+            ErrorCode::GitNoTracking,
+            "当前分支未关联远端分支,请先执行 git push -u origin <分支名>",
+        );
+    }
+    if text.contains("not a git repository") {
+        return coded(ErrorCode::NotGitRepository, "当前目录不是 Git 仓库");
+    }
+
+    AppError::External(text)
 }
 
 /// 阻塞任务放入 tokio 线程池执行。
@@ -88,7 +214,21 @@ pub fn status(path: &str) -> AppResult<GitStatus> {
         return Ok(GitStatus::default());
     }
     let text = String::from_utf8_lossy(&output.stdout);
-    Ok(parse_porcelain(path, &text))
+    let mut st = parse_porcelain(path, &text);
+    st.last_commit_at = last_commit_at(path);
+    Ok(st)
+}
+
+/// HEAD 最新提交时间(Unix 秒)。无提交(空仓库)或命令失败时返回 None
+fn last_commit_at(path: &str) -> Option<i64> {
+    let output = git_command(path)
+        .args(["log", "-1", "--format=%ct"])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout).trim().parse().ok()
 }
 
 /// fetch 远端(无 remote 时跳过),返回最新状态
@@ -393,11 +533,11 @@ fn pull_blocking(path: &str) -> AppResult<GitPullResult> {
         let stderr = String::from_utf8_lossy(&result.stderr).trim().to_string();
         let stdout = String::from_utf8_lossy(&result.stdout).trim().to_string();
         let detail = if stderr.is_empty() { stdout } else { stderr };
-        return Err(AppError::External(if detail.is_empty() {
-            "git pull 失败".into()
+        return Err(if detail.is_empty() {
+            AppError::External("git pull 失败".into())
         } else {
-            detail
-        }));
+            friendly_git_error(&detail)
+        });
     }
     Ok(GitPullResult {
         status: status(path)?,
@@ -637,11 +777,11 @@ pub(crate) fn run_git_log(
             return Ok(Vec::new());
         }
         let detail = stderr.trim();
-        return Err(AppError::External(if detail.is_empty() {
-            format!("git log 退出码 {}", output.status)
+        return Err(if detail.is_empty() {
+            AppError::External(format!("git log 退出码 {}", output.status))
         } else {
-            detail.to_string()
-        }));
+            friendly_git_error(detail)
+        });
     }
 
     let commits = String::from_utf8_lossy(&output.stdout)
@@ -814,11 +954,11 @@ pub async fn git_clone(
             Ok(Some(_)) => {
                 clone_jobs().lock().await.remove(&job_id);
                 let detail = stderr_buf.lock().unwrap().trim().to_string();
-                break Err(AppError::External(if detail.is_empty() {
-                    "git clone 失败".to_string()
+                break Err(if detail.is_empty() {
+                    AppError::External("git clone 失败".to_string())
                 } else {
-                    detail
-                }));
+                    friendly_git_error(&detail)
+                });
             }
             Ok(None) => tokio::time::sleep(std::time::Duration::from_millis(200)).await,
             Err(e) => {
@@ -930,6 +1070,76 @@ mod tests {
         let st = status(dir.to_str().unwrap()).unwrap();
         assert!(!st.is_repo);
         let _ = fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn friendly_error_strips_ssh_noise_and_maps_local_changes() {
+        let raw = "** WARNING: connection is not using a post-quantum key exchange algorithm.\n\
+                   ** This session may be vulnerable to \"store now, decrypt later\" attacks.\n\
+                   ** The server may need to be upgraded. See https://openssh.com/pq.html\n\
+                   error: Your local changes to the following files would be overwritten by merge:\n\
+                   \tpages/yudao/yudao-log/index.md\n\
+                   Please commit your changes or stash them before you merge.\n\
+                   error: The following untracked working tree files would be overwritten by merge:\n\
+                   \tpages/yudao/yudao-log/log-2026.md\n\
+                   Please move or remove them before you merge.\n\
+                   Aborting";
+        let msg = friendly_git_error(raw);
+        assert!(
+            msg.starts_with("拉取失败:本地修改与远端冲突"),
+            "实际输出: {msg}"
+        );
+        assert!(msg.contains("pages/yudao/yudao-log/index.md"), "实际输出: {msg}");
+        assert!(!msg.contains("post-quantum"), "实际输出: {msg}");
+        assert!(!msg.contains("Aborting"), "实际输出: {msg}");
+    }
+
+    #[test]
+    fn friendly_error_maps_untracked_overwritten() {
+        let raw = "error: The following untracked working tree files would be overwritten by checkout:\n\
+                   \tfoo.txt\n\
+                   Please move or remove them before you switch branches.\n\
+                   Aborting";
+        let msg = friendly_git_error(raw);
+        assert!(
+            msg.starts_with("切换分支失败:以下未跟踪的本地文件与远端冲突"),
+            "实际输出: {msg}"
+        );
+        assert!(msg.contains("foo.txt"), "实际输出: {msg}");
+    }
+
+    #[test]
+    fn friendly_error_keeps_no_upstream_branch_phrase() {
+        // push_blocking 依赖该原文短语判断首推回退,映射不得覆盖
+        let raw = "fatal: The current branch dev has no upstream branch.";
+        let msg = friendly_git_error(raw);
+        assert!(msg.contains("has no upstream branch"), "实际输出: {msg}");
+    }
+
+    #[test]
+    fn friendly_error_maps_common_cases() {
+        assert_eq!(
+            friendly_git_error("git@github.com: Permission denied (publickey)."),
+            "SSH 认证失败:请检查本机密钥是否已添加到远端账号,以及是否有仓库访问权限"
+        );
+        assert_eq!(
+            friendly_git_error("ssh: Could not resolve hostname github.com: Temporary failure in name resolution"),
+            "网络错误:无法解析远端主机名,请检查网络、DNS 或代理设置"
+        );
+        assert!(friendly_git_error(
+            "error: failed to push some refs to 'origin'\nhint: Updates were rejected because the tip of your current branch is behind"
+        )
+        .starts_with("推送被拒绝"),);
+        assert_eq!(
+            friendly_git_error("fatal: not a git repository (or any of the parent directories): .git"),
+            "当前目录不是 Git 仓库"
+        );
+    }
+
+    #[test]
+    fn friendly_error_all_noise_falls_back() {
+        let msg = friendly_git_error("** WARNING: connection is not using a post-quantum key exchange algorithm.");
+        assert_eq!(msg, "git 命令失败(详见应用日志)");
     }
 
     #[test]
