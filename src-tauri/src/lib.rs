@@ -12,7 +12,7 @@ use tauri::Manager;
 use tokio::sync::Notify;
 
 /// 应用数据目录名(位于用户主目录下)
-pub(crate) const APP_DATA_DIR_NAME: &str = ".codeberth";
+pub(crate) const APP_DATA_DIR_NAME: &str = ".repomeow";
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -25,8 +25,8 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .setup(|app| {
-            // 数据库文件: ~/.codeberth/projects.db
-            // (Windows: C:\Users\<user>\.codeberth\projects.db)
+            // 数据库文件: ~/.repomeow/projects.db
+            // (Windows: C:\Users\<user>\.repomeow\projects.db)
             let dir = app.path().home_dir()?.join(APP_DATA_DIR_NAME);
             let db = Db::open(&dir.join("projects.db"))?;
             app.manage(db);

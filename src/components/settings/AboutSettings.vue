@@ -47,7 +47,7 @@ function onCheck() {
         {{ t("settings.about.description") }}
       </p>
       <a
-        href="https://github.com/TZDXF/codeberth"
+        href="https://github.com/TZDXF/repomeow"
         target="_blank"
         rel="noopener noreferrer"
         class="mt-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"

@@ -2,16 +2,16 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CodeBerth</title>
+    <title>RepoMeow</title>
     <script>
       // 首帧绘制前同步应用主题,避免等待 tauri store 异步加载造成的主题闪烁。
       // 缓存由 src/stores/settings.ts 在主题变更/初始化时写入,仅作首屏快照,
       // 权威来源仍是 tauri-plugin-store 的 settings.json。
       (function () {
         try {
-          var raw = localStorage.getItem("codeberth:theme-cache");
+          var raw = localStorage.getItem("repomeow:theme-cache");
           var cache = raw ? JSON.parse(raw) : {};
           var dark =
             cache.theme === "dark" ||

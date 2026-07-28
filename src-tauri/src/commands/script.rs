@@ -255,7 +255,7 @@ mod tests {
 
     fn temp_project_dir(tag: &str) -> String {
         let dir = std::env::temp_dir().join(format!(
-            "codeberth-pkg-{tag}-{}-{}",
+            "repomeow-pkg-{tag}-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));

@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "CodeBerth",
+  "productName": "RepoMeow",
   "version": "0.1.2",
-  "identifier": "com.codeberth.app",
+  "identifier": "com.repomeow.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "CodeBerth",
+        "title": "RepoMeow",
         "width": 1280,
         "height": 800,
         "minWidth": 960,
@@ -44,7 +44,7 @@
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMyMjIxNEJGMDg3Qzk4NDMKUldSRG1Id0l2eFFpTWdWcDlEWG93QlpOclJibmF6NExEbVdoZGZueFd6VlR2RWo3YlpBU1Jua3AK",
       "endpoints": [
-        "https://github.com/TZDXF/codeberth/releases/latest/download/latest.json"
+        "https://github.com/TZDXF/repomeow/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

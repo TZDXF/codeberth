@@ -13,8 +13,8 @@ export type Language = SupportedLocale;
 export type ProjectsViewMode = "grid" | "table";
 export type ProjectsSortKey = "name" | "updated" | "created";
 
-// 应用数据统一存放于用户主目录下的 .codeberth 目录(与 Rust 端 APP_DATA_DIR_NAME 保持一致)
-const APP_DATA_DIR_NAME = ".codeberth";
+// 应用数据统一存放于用户主目录下的 .repomeow 目录(与 Rust 端 APP_DATA_DIR_NAME 保持一致)
+const APP_DATA_DIR_NAME = ".repomeow";
 const STORE_FILE = "settings.json";
 
 // AI 接入参数(OpenAI Chat Completions 兼容):baseUrl/apiKey/model 均无默认值,
@@ -48,7 +48,7 @@ export const useSettingsStore = defineStore("settings", () => {
   function syncThemeCache() {
     try {
       window.localStorage.setItem(
-        "codeberth:theme-cache",
+        "repomeow:theme-cache",
         JSON.stringify({
           theme: theme.value,
           themeSkin: themeSkin.value,

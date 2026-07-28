@@ -2,8 +2,8 @@
 // 命名规范:{域}.{模块}.{语义},全小写,点号分层
 export default {
   app: {
-    title: "CodeBerth",
-    name: "项目工作台",
+    title: "RepoMeow",
+    name: "喵库",
     repo: "GitHub 仓库",
   },
   common: {

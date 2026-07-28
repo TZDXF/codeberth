@@ -115,7 +115,7 @@ function languageName(language: SupportedLocale) {
   return language === "zh-CN" ? "中文" : "English";
 }
 
-/** 组装 system prompt:用户自定义(~/.codeberth/prompts/*.md)优先,空则回退内置默认;输出语言指令统一追加 */
+/** 组装 system prompt:用户自定义(~/.repomeow/prompts/*.md)优先,空则回退内置默认;输出语言指令统一追加 */
 function buildSystemPrompt(custom: string, fallback: string, language: SupportedLocale) {
   const base = custom.trim() || fallback;
   return `${base}\n\nRespond in ${languageName(language)}.`;

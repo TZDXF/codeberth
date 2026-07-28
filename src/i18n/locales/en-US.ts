@@ -1,8 +1,8 @@
 // English (US) translations
 export default {
   app: {
-    title: "CodeBerth",
-    name: "Project Workspace",
+    title: "RepoMeow",
+    name: "Meow Library",
     repo: "GitHub repository",
   },
   common: {

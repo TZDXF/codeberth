@@ -252,7 +252,7 @@ mod tests {
     /// 建一个带唯一名字的临时目录,返回路径字符串
     fn temp_project_dir(tag: &str) -> String {
         let dir = std::env::temp_dir().join(format!(
-            "codeberth-files-{tag}-{}-{}",
+            "repomeow-files-{tag}-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));

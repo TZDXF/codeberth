@@ -57,7 +57,7 @@ pub fn load_data(data_dir: &PathBuf) -> AppResult<(HashSet<String>, HashSet<Stri
 
     let resp = client
         .get(CDN_URL)
-        .header("User-Agent", "codeberth/0.1")
+        .header("User-Agent", "repomeow/0.1")
         .send()
         .map_err(|e| crate::error::AppError::External(format!("拉取中国工作日数据失败: {e}")))?;
 
@@ -137,7 +137,7 @@ fn parse_data(json: &str) -> AppResult<(HashSet<String>, HashSet<String>)> {
 /// * 若日期不在 holidays 集合中且为周一～周五 → `true`(常规工作日)
 /// * 其他情况 → `false`
 ///
-/// `data_dir` 为 `~/.codeberth` 目录路径。
+/// `data_dir` 为 `~/.repomeow` 目录路径。
 pub fn is_workday(date: NaiveDate, data_dir: &PathBuf) -> bool {
     // 数据拉取失败时回退为常规周一～周五判断
     let (holidays, workdays) = match load_data(data_dir) {
@@ -278,7 +278,7 @@ mod tests {
     #[test]
     fn try_load_envelope_accepts_fresh_envelope() {
         let dir = std::env::temp_dir().join(format!(
-            "codeberth-workday-test-fresh-{}-{}",
+            "repomeow-workday-test-fresh-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
@@ -302,7 +302,7 @@ mod tests {
     #[test]
     fn try_load_envelope_rejects_legacy_bare_json() {
         let dir = std::env::temp_dir().join(format!(
-            "codeberth-workday-test-legacy-{}-{}",
+            "repomeow-workday-test-legacy-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
@@ -321,7 +321,7 @@ mod tests {
     #[test]
     fn try_load_envelope_rejects_expired_envelope() {
         let dir = std::env::temp_dir().join(format!(
-            "codeberth-workday-test-expired-{}-{}",
+            "repomeow-workday-test-expired-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
@@ -358,7 +358,7 @@ mod tests {
     fn write_cache_then_parse_cache_roundtrip() {
         // 写盘 → 读盘 → parse_cache 应能拿到原始数据,时间戳取写入瞬间
         let dir = std::env::temp_dir().join(format!(
-            "codeberth-workday-test-{}-{}",
+            "repomeow-workday-test-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));

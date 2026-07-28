@@ -5,12 +5,12 @@ import { resolve as resolvePath } from "node:path";
 /**
  * 任务描述 ── settings store legacy migration 清除
  *
- * 旧版本在浏览器 localStorage 里直接存 `codeberth:view` / `codeberth:sort`
+ * 旧版本在浏览器 localStorage 里直接存 `repomeow:view` / `repomeow:sort`
  * 这两个键。settings store (tauri-plugin-store) 落地后,需要在初始化时把它们
  * 搬过去并删除旧键。本次清理之后:
  *
  * 1. `useSettingsStore` 不再 export 一个叫 `migrateLegacyLocalStorage` 的内部方法,
- *    也不再有 `codeberth:view` / `codeberth:sort` 的本地存储读写代码。
+ *    也不再有 `repomeow:view` / `repomeow:sort` 的本地存储读写代码。
  * 2. `init()` 不能再去访问 `window.localStorage` 的这两个旧键(不应触发读/写),
  *    以免后端 settings 启动时把"权威来源"误解。
  *
@@ -37,10 +37,10 @@ const CHECKS: { name: string; check: SourceCheck }[] = [
     check: {
       forbidden: [
         "migrateLegacyLocalStorage",
-        'getItem("codeberth:view")',
-        'getItem("codeberth:sort")',
-        'removeItem("codeberth:view")',
-        'removeItem("codeberth:sort")',
+        'getItem("repomeow:view")',
+        'getItem("repomeow:sort")',
+        'removeItem("repomeow:view")',
+        'removeItem("repomeow:sort")',
       ],
       required: ["projectsViewMode", "projectsSortKey"],
     },

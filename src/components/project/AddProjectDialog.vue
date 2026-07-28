@@ -39,7 +39,7 @@ const store = useProjectsStore();
 const router = useRouter();
 
 // 上一次添加项目用的存放位置,存 localStorage,作为下次的默认值
-const LAST_LOCATION_KEY = "codeberth:last-add-location";
+const LAST_LOCATION_KEY = "repomeow:last-add-location";
 
 function loadLastLocation(): string {
   return localStorage.getItem(LAST_LOCATION_KEY) ?? "";

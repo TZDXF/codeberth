@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <defs>
+    <!-- 磨砂颗粒:明/暗两层分形噪点,低透明度叠加出哑光质感 -->
+    <filter id="grainDark" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" seed="7"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0.9 0.9 0.9 0 0"/>
+    </filter>
+    <filter id="grainLight" x="0" y="0" width="100%" height="100%">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" seed="42"/>
+      <feColorMatrix type="matrix" values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0.9 0.9 0.9 0 0"/>
+    </filter>
+    <clipPath id="squircle">
+      <rect x="24" y="24" width="976" height="976" rx="232"/>
+    </clipPath>
+  </defs>
+
+  <!-- 奶油底色圆角方块 -->
+  <rect x="24" y="24" width="976" height="976" rx="232" fill="#FBF5E9"/>
+
+  <!-- 磨砂噪点层 -->
+  <g clip-path="url(#squircle)">
+    <rect x="24" y="24" width="976" height="976" filter="url(#grainDark)" opacity="0.10"/>
+    <rect x="24" y="24" width="976" height="976" filter="url(#grainLight)" opacity="0.08"/>
+  </g>
+
+  <!-- 青绿线条猫头 -->
+  <g stroke="#0D9488" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 头部轮廓一条线 -->
+    <path d="M 296 736
+             C 254 654 250 568 280 496
+             L 272 326
+             L 424 398
+             C 472 382 552 382 600 398
+             L 752 326
+             L 744 496
+             C 774 568 770 654 728 736
+             C 668 810 356 810 296 736 Z"
+          stroke-width="34"/>
+
+    <!-- 鼻下短线 + ω 嘴 -->
+    <path d="M 512 640 L 512 664
+             M 512 664 Q 496 690 470 682
+             M 512 664 Q 528 690 554 682"
+          stroke-width="22"/>
+
+    <!-- 胡须左右各两笔 -->
+    <path d="M 300 618 L 190 596" stroke-width="22"/>
+    <path d="M 302 664 L 194 678" stroke-width="22"/>
+    <path d="M 724 618 L 834 596" stroke-width="22"/>
+    <path d="M 722 664 L 830 678" stroke-width="22"/>
+  </g>
+
+  <!-- 眼睛 -->
+  <circle cx="420" cy="566" r="22" fill="#0D9488"/>
+  <circle cx="604" cy="566" r="22" fill="#0D9488"/>
+</svg>

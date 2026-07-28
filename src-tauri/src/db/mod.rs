@@ -54,7 +54,7 @@ mod tests {
     #[test]
     fn open_creates_db_file_and_tables() {
         let dir = std::env::temp_dir().join(format!(
-            "codeberth-test-{}-{}",
+            "repomeow-test-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));

@@ -13,7 +13,7 @@ const COMMIT_PROMPT_FILE: &str = "commit.md";
 const REPORT_PROMPT_FILE: &str = "report.md";
 const REPORT_WEEKLY_PROMPT_FILE: &str = "report-weekly.md";
 
-/// 用户自定义 AI 提示词(存为 ~/.codeberth/prompts/*.md);空字符串表示使用内置默认模板
+/// 用户自定义 AI 提示词(存为 ~/.repomeow/prompts/*.md);空字符串表示使用内置默认模板
 #[derive(Debug, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AiPrompts {
@@ -84,7 +84,7 @@ mod tests {
     #[test]
     fn prompt_write_read_delete_roundtrip() {
         let dir = std::env::temp_dir().join(format!(
-            "codeberth-prompts-{}-{}",
+            "repomeow-prompts-{}-{}",
             std::process::id(),
             chrono::Utc::now().timestamp_nanos_opt().unwrap_or(0)
         ));
