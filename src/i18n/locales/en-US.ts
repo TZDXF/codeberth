@@ -411,12 +411,11 @@ export default {
     restart: "Restart",
     stop: "Stop",
     started: "Started docker compose {args} in terminal",
-    serviceCount: "1 service | {count} services",
     hideFile: "Hide this compose file",
     running: "Running",
     stopped: "Stopped",
     statusUnknown: "Status unknown (docker unavailable or not started)",
-    openPort: "Open localhost:{port} in browser",
+    openPort: "Open in browser",
   },
   readme: {
     title: "README",

@@ -228,9 +228,6 @@ async function run(
                 <span class="min-w-0 flex-1 truncate font-mono text-xs" :title="d.file.path">
                   {{ d.file.path }}
                 </span>
-                <span v-if="!open" class="shrink-0 text-xs text-muted-foreground">
-                  {{ t("docker.serviceCount", { count: d.file.services.length }) }}
-                </span>
               </CollapsibleTrigger>
               <template v-else>
                 <FileCode class="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -302,12 +299,12 @@ async function run(
                 </span>
                 <button
                   v-for="p in s.ports"
-                  :key="p"
+                  :key="p.published"
                   class="shrink-0 rounded border border-border px-1 font-mono text-[10px] leading-4 text-sky-600 hover:bg-accent dark:text-sky-400"
-                  :title="t('docker.openPort', { port: p })"
-                  @click.stop="openPort(p)"
+                  :title="t('docker.openPort')"
+                  @click.stop="openPort(p.published)"
                 >
-                  :{{ p }}
+                  {{ p.published }}:{{ p.target }}
                 </button>
                 <span class="min-w-0 flex-1" />
                 <Button

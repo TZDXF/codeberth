@@ -398,12 +398,11 @@ export default {
     restart: "重启",
     stop: "停止",
     started: "已在终端启动 docker compose {args}",
-    serviceCount: "{count} 个服务",
     hideFile: "隐藏该 compose 文件",
     running: "运行中",
     stopped: "未运行",
     statusUnknown: "状态未知(docker 不可用或未启动)",
-    openPort: "在浏览器打开 localhost:{port}",
+    openPort: "浏览器打开",
   },
   readme: {
     title: "README",

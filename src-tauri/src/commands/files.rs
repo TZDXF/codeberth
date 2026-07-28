@@ -422,8 +422,12 @@ services:
         let services = parse_compose(content).unwrap();
         assert_eq!(services.len(), 3);
         // web: 8080/9090/8443 可访问;udp、仅容器端口、端口段范围跳过;去重升序
-        assert_eq!(services[0].ports, vec![8080, 8443, 9090]);
-        assert_eq!(services[1].ports, vec![8000]);
+        let port = |published: u16, target: u16| ComposePort { published, target };
+        assert_eq!(
+            services[0].ports,
+            vec![port(8080, 80), port(8443, 443), port(9090, 90)]
+        );
+        assert_eq!(services[1].ports, vec![port(8000, 8000)]);
         assert!(services[2].ports.is_empty());
     }
 }

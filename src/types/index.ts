@@ -129,11 +129,19 @@ export interface ReadmeContent {
   content: string;
 }
 
+/** 一条可浏览器访问的端口映射:宿主机发布端口 -> 容器端口 */
+export interface ComposePort {
+  /** 宿主机发布端口(浏览器访问入口) */
+  published: number;
+  /** 容器内目标端口 */
+  target: number;
+}
+
 /** compose 文件中的一个服务及其对外可访问的宿主机端口 */
 export interface ComposeService {
   name: string;
-  /** 映射到宿主机的端口(去重升序);仅含可浏览器访问的固定发布端口 */
-  ports: number[];
+  /** 端口映射(按发布端口去重升序);仅含可浏览器访问的固定发布端口 */
+  ports: ComposePort[];
 }
 
 export interface ComposeFile {
