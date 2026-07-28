@@ -147,6 +147,7 @@ fn strip_thinking(text: &str) -> String {
 /// 按服务商/模型名给出"关闭思考模式"请求参数(仅匹配已知支持方,避免严格网关因未知字段 400)
 fn thinking_off_params(base_url: &str, model: &str) -> serde_json::Map<String, Value> {
     let s = format!("{} {}", base_url.to_lowercase(), model.to_lowercase());
+    let m = model.to_lowercase();
     let mut map = serde_json::Map::new();
     if s.contains("qwen") || s.contains("dashscope") || s.contains("aliyuncs") {
         // 阿里云百炼 / DashScope 兼容模式
@@ -166,6 +167,10 @@ fn thinking_off_params(base_url: &str, model: &str) -> serde_json::Map<String, V
     {
         // 智谱 GLM / 火山方舟(豆包)系
         map.insert("thinking".into(), serde_json::json!({ "type": "disabled" }));
+    } else if m.starts_with("step-3") || m.starts_with("step-r") {
+        // 阶跃星辰 Step 推理系(Step 3.5/3.7 Flash 等):官方接口无完全关闭思考的开关,
+        // 用最低推理档尽量缩短思考;思考内容经独立 reasoning 字段返回,不混入正文
+        map.insert("reasoning_effort".into(), Value::String("low".into()));
     }
     map
 }

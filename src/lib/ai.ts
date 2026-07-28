@@ -33,10 +33,11 @@ function requireConfig() {
 
 /**
  * 按服务商/模型名给出"关闭思考模式"的请求参数。
- * 只对已知支持该参数的提供方注入(Qwen/GLM/豆包系),避免严格 OpenAI 兼容网关因未知字段 400
+ * 只对已知支持该参数的提供方注入(Qwen/GLM/豆包/阶跃 Step 系),避免严格 OpenAI 兼容网关因未知字段 400
  */
 function thinkingOffParams(baseURL: string, model: string): Record<string, unknown> {
   const s = `${baseURL} ${model}`.toLowerCase();
+  const m = model.toLowerCase();
   if (s.includes("qwen") || s.includes("dashscope") || s.includes("aliyuncs")) {
     if (s.includes("dashscope") || s.includes("aliyuncs")) {
       // 阿里云百炼 / DashScope 兼容模式
@@ -54,6 +55,11 @@ function thinkingOffParams(baseURL: string, model: string): Record<string, unkno
   ) {
     // 智谱 GLM / 火山方舟(豆包)系
     return { thinking: { type: "disabled" } };
+  }
+  if (m.startsWith("step-3") || m.startsWith("step-r")) {
+    // 阶跃星辰 Step 推理系(Step 3.5/3.7 Flash 等):官方接口无完全关闭思考的开关,
+    // 用最低推理档尽量缩短思考;思考内容经独立 reasoning 字段返回,不混入正文
+    return { reasoning_effort: "low" };
   }
   return {};
 }
