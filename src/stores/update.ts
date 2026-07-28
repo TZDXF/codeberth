@@ -1,4 +1,4 @@
-import { computed, ref } from "vue";
+import { computed, shallowRef, ref } from "vue";
 import { defineStore } from "pinia";
 import { check, type Update } from "@tauri-apps/plugin-updater";
 import { relaunch } from "@tauri-apps/plugin-process";
@@ -16,8 +16,8 @@ export type UpdateStatus =
 
 export const useUpdateStore = defineStore("update", () => {
   const status = ref<UpdateStatus>("idle");
-  /** 检查到的可用更新(由插件返回,含版本号/更新说明/下载安装方法) */
-  const update = ref<Update | null>(null);
+  /** 检查到的可用更新(由插件返回,含版本号/更新说明/下载安装方法;类实例含私有字段,必须 shallowRef 避免被响应式代理) */
+  const update = shallowRef<Update | null>(null);
   /** 当前应用版本号 */
   const currentVersion = ref("");
   /** 下载进度(字节) */
