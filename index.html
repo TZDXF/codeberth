@@ -5,6 +5,31 @@
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CodeBerth</title>
+    <script>
+      // 首帧绘制前同步应用主题,避免等待 tauri store 异步加载造成的主题闪烁。
+      // 缓存由 src/stores/settings.ts 在主题变更/初始化时写入,仅作首屏快照,
+      // 权威来源仍是 tauri-plugin-store 的 settings.json。
+      (function () {
+        try {
+          var raw = localStorage.getItem("codeberth:theme-cache");
+          var cache = raw ? JSON.parse(raw) : {};
+          var dark =
+            cache.theme === "dark" ||
+            (cache.theme !== "light" &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          var root = document.documentElement;
+          root.classList.toggle("dark", dark);
+          if (cache.themeSkin === "island") {
+            root.setAttribute("data-theme", "island");
+          }
+          if (cache.mdTheme && cache.mdTheme !== "default") {
+            root.setAttribute("data-md-theme", cache.mdTheme);
+          }
+        } catch (e) {
+          /* 缓存缺失/损坏时按默认主题渲染,不影响后续初始化 */
+        }
+      })();
+    </script>
   </head>
 
   <body>

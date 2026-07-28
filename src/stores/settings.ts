@@ -43,6 +43,23 @@ export const useSettingsStore = defineStore("settings", () => {
 
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)");
 
+  // 将主题相关键镜像到 localStorage,供 index.html 内联脚本在首帧绘制前同步读取,
+  // 避免异步加载 settings.json 期间的主题闪烁。权威来源仍是 tauri-plugin-store。
+  function syncThemeCache() {
+    try {
+      window.localStorage.setItem(
+        "codeberth:theme-cache",
+        JSON.stringify({
+          theme: theme.value,
+          themeSkin: themeSkin.value,
+          mdTheme: mdTheme.value,
+        }),
+      );
+    } catch {
+      /* localStorage 不可用时静默降级:首屏可能仍闪烁一次,不影响功能 */
+    }
+  }
+
   function applyTheme() {
     const dark = theme.value === "dark" || (theme.value === "system" && systemDark.matches);
     const root = document.documentElement;
@@ -52,6 +69,7 @@ export const useSettingsStore = defineStore("settings", () => {
     } else {
       root.removeAttribute("data-theme");
     }
+    syncThemeCache();
   }
 
   function applyMdTheme() {
@@ -61,6 +79,7 @@ export const useSettingsStore = defineStore("settings", () => {
     } else {
       root.setAttribute("data-md-theme", mdTheme.value);
     }
+    syncThemeCache();
   }
 
   function onSystemThemeChange() {

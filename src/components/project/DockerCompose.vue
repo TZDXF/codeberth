@@ -9,6 +9,7 @@ import {
   Eye,
   EyeOff,
   FileCode,
+  Hammer,
   Play,
   RotateCw,
   Square,
@@ -161,7 +162,7 @@ async function openPort(port: number) {
 /** 在项目终端执行 docker compose 命令;service 为空表示作用于该文件的所有服务 */
 async function run(
   file: ComposeFile,
-  action: "up -d" | "restart" | "down" | "stop",
+  action: "up -d" | "up -d --build" | "restart" | "down" | "stop",
   service?: string,
 ) {
   const args = `-f "${file.path}" ${service ? `${action} ${service}` : action}`;
@@ -252,7 +253,7 @@ async function run(
                 variant="ghost"
                 size="icon"
                 class="h-7 w-7 shrink-0 text-emerald-600"
-                :title="t('docker.upAll')"
+                :title="t('docker.up')"
                 @click="run(d.file, 'up -d')"
               >
                 <Play class="h-3.5 w-3.5" />
@@ -260,8 +261,17 @@ async function run(
               <Button
                 variant="ghost"
                 size="icon"
+                class="h-7 w-7 shrink-0 text-sky-600"
+                :title="t('docker.rebuild')"
+                @click="run(d.file, 'up -d --build')"
+              >
+                <Hammer class="h-3.5 w-3.5" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
                 class="h-7 w-7 shrink-0 text-amber-600"
-                :title="t('docker.restartAll')"
+                :title="t('docker.restart')"
                 @click="run(d.file, 'restart')"
               >
                 <RotateCw class="h-3.5 w-3.5" />
@@ -270,7 +280,7 @@ async function run(
                 variant="ghost"
                 size="icon"
                 class="h-7 w-7 shrink-0 text-red-600"
-                :title="t('docker.stopAll')"
+                :title="t('docker.stop')"
                 @click="run(d.file, 'down')"
               >
                 <Square class="h-3.5 w-3.5" />
@@ -304,7 +314,7 @@ async function run(
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7 shrink-0 text-emerald-600 opacity-0 transition-opacity group-hover:opacity-100"
-                  :title="t('docker.upService', { service: s.name })"
+                  :title="t('docker.up')"
                   @click="run(d.file, 'up -d', s.name)"
                 >
                   <Play class="h-3.5 w-3.5" />
@@ -312,8 +322,17 @@ async function run(
                 <Button
                   variant="ghost"
                   size="icon"
+                  class="h-7 w-7 shrink-0 text-sky-600 opacity-0 transition-opacity group-hover:opacity-100"
+                  :title="t('docker.rebuild')"
+                  @click="run(d.file, 'up -d --build', s.name)"
+                >
+                  <Hammer class="h-3.5 w-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
                   class="h-7 w-7 shrink-0 text-amber-600 opacity-0 transition-opacity group-hover:opacity-100"
-                  :title="t('docker.restartService', { service: s.name })"
+                  :title="t('docker.restart')"
                   @click="run(d.file, 'restart', s.name)"
                 >
                   <RotateCw class="h-3.5 w-3.5" />
@@ -322,7 +341,7 @@ async function run(
                   variant="ghost"
                   size="icon"
                   class="h-7 w-7 shrink-0 text-red-600 opacity-0 transition-opacity group-hover:opacity-100"
-                  :title="t('docker.stopService', { service: s.name })"
+                  :title="t('docker.stop')"
                   @click="run(d.file, 'stop', s.name)"
                 >
                   <Square class="h-3.5 w-3.5" />

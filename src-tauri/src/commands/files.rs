@@ -2,7 +2,7 @@ use std::path::Path;
 
 use crate::commands::walk;
 use crate::error::{AppError, AppResult};
-use crate::models::{ComposeFile, ComposeService, ReadmeContent};
+use crate::models::{ComposeFile, ComposePort, ComposeService, ReadmeContent};
 
 /// README 候选文件名,按优先级排列(大小写常见变体)
 const README_CANDIDATES: &[&str] = &[
@@ -109,7 +109,7 @@ fn parse_compose(content: &str) -> Option<Vec<ComposeService>> {
             .iter()
             .filter_map(|(k, v)| {
                 let mut ports = extract_ports(v);
-                ports.sort_unstable();
+                ports.sort_by_key(|p| (p.published, p.target));
                 ports.dedup();
                 Some(ComposeService {
                     name: k.as_str()?.to_string(),
@@ -120,10 +120,10 @@ fn parse_compose(content: &str) -> Option<Vec<ComposeService>> {
     )
 }
 
-/// 提取服务 ports 中可访问的宿主机端口:
+/// 提取服务 ports 中可访问的宿主机端口映射:
 /// 短语法 "8080:80" / "127.0.0.1:8080:80" / 长语法 { target, published } 取发布端口;
 /// 仅容器端口(宿主机随机分配)、UDP、端口段范围无法确定入口,跳过。
-fn extract_ports(service: &serde_yaml_ng::Value) -> Vec<u16> {
+fn extract_ports(service: &serde_yaml_ng::Value) -> Vec<ComposePort> {
     use serde_yaml_ng::Value;
     let Some(list) = service.get("ports").and_then(Value::as_sequence) else {
         return Vec::new();
@@ -140,7 +140,7 @@ fn extract_ports(service: &serde_yaml_ng::Value) -> Vec<u16> {
 
 /// 短语法:"[IP:]发布端口:容器端口[/协议]"。发布端口恒为末段容器端口前的一段,
 /// IPv6 带括号写法([::1]:8080:80)按 ':' 切分后该规律仍成立。
-fn port_from_short(s: &str) -> Option<u16> {
+fn port_from_short(s: &str) -> Option<ComposePort> {
     let resolved = resolve_env(s)?;
     let (addr, proto) = resolved
         .split_once('/')
@@ -152,21 +152,30 @@ fn port_from_short(s: &str) -> Option<u16> {
     if parts.len() < 2 {
         return None; // 仅容器端口,宿主机端口随机
     }
-    parse_published(parts[parts.len() - 2])
+    Some(ComposePort {
+        published: parse_port(parts[parts.len() - 2])?,
+        target: parse_port(parts[parts.len() - 1])?,
+    })
 }
 
 /// 长语法:{ target: 80, published: 8080, protocol: tcp }
-fn port_from_long(m: &serde_yaml_ng::Mapping) -> Option<u16> {
+fn port_from_long(m: &serde_yaml_ng::Mapping) -> Option<ComposePort> {
     use serde_yaml_ng::Value;
     let proto = m.get("protocol").and_then(Value::as_str).unwrap_or("tcp");
     if !proto.eq_ignore_ascii_case("tcp") {
         return None;
     }
-    match m.get("published")? {
-        Value::Number(n) => n.as_u64().and_then(|v| u16::try_from(v).ok()),
-        Value::String(s) => parse_published(&resolve_env(s)?),
-        _ => None,
-    }
+    let parse_field = |key: &str| -> Option<u16> {
+        match m.get(key)? {
+            Value::Number(n) => n.as_u64().and_then(|v| u16::try_from(v).ok()),
+            Value::String(s) => parse_port(&resolve_env(s)?),
+            _ => None,
+        }
+    };
+    Some(ComposePort {
+        published: parse_field("published")?,
+        target: parse_field("target")?,
+    })
 }
 
 /// 替换 "${VAR:-default}" / "${VAR-default}" 为默认值;
@@ -190,8 +199,8 @@ fn resolve_env(s: &str) -> Option<String> {
     Some(out)
 }
 
-/// 解析发布端口文本:纯数字直接取;端口段范围(8080-8081)无法确定,跳过。
-fn parse_published(raw: &str) -> Option<u16> {
+/// 解析端口文本:纯数字直接取;端口段范围(8080-8081)无法确定,跳过。
+fn parse_port(raw: &str) -> Option<u16> {
     let s = raw.trim();
     if s.contains('-') {
         return None;

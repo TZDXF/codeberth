@@ -128,12 +128,21 @@ pub struct ReadmeContent {
     pub content: String,
 }
 
+/// 一条可浏览器访问的端口映射:宿主机发布端口 -> 容器端口
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct ComposePort {
+    /// 宿主机发布端口(浏览器访问入口)
+    pub published: u16,
+    /// 容器内目标端口
+    pub target: u16,
+}
+
 /// compose 文件中的一个服务及其对外可访问的宿主机端口
 #[derive(Debug, Clone, Serialize)]
 pub struct ComposeService {
     pub name: String,
-    /// 映射到宿主机的端口(去重升序);仅含可浏览器访问的固定发布端口
-    pub ports: Vec<u16>,
+    /// 端口映射(按发布端口去重升序);仅含可浏览器访问的固定发布端口
+    pub ports: Vec<ComposePort>,
 }
 
 #[derive(Debug, Clone, Serialize)]
