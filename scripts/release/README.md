@@ -52,8 +52,8 @@ pnpm release:latest
 
 `src-tauri/target/release/bundle/nsis/`(均在 gitignore 内):
 
-- `CodeBerth_<ver>_x64-setup.exe` — NSIS 安装包
-- `CodeBerth_<ver>_x64-setup.exe.sig` — 签名
+- `RepoMeow_<ver>_x64-setup.exe` — NSIS 安装包
+- `RepoMeow_<ver>_x64-setup.exe.sig` — 签名
 - `latest.json` — updater 元数据
 
 ## 重要:Tauri 2.11.4 signer 的一个静默 bug
@@ -74,12 +74,12 @@ pnpm release:latest
 
 ```sh
 gh release create v0.1.0 \
-  --repo TZDXF/codeberth \
+  --repo TZDXF/repomeow \
   --title "v0.1.0" \
   --notes "..." \
   --draft \
-  src-tauri/target/release/bundle/nsis/CodeBerth_0.1.0_x64-setup.exe \
-  src-tauri/target/release/bundle/nsis/CodeBerth_0.1.0_x64-setup.exe.sig \
+  src-tauri/target/release/bundle/nsis/RepoMeow_0.1.0_x64-setup.exe \
+  src-tauri/target/release/bundle/nsis/RepoMeow_0.1.0_x64-setup.exe.sig \
   src-tauri/target/release/bundle/nsis/latest.json
 ```
 
@@ -98,5 +98,5 @@ gh release create v0.1.0 \
 | `Public key mismatch: ...` | `~/.tauri/*.key.pub` 与 `tauri.conf.json` 的 `pubkey` 不一致(私钥与配置错配)。要么把 tauri.conf.json 的 pubkey 改成跟 `.pub` 一样,要么用 `--key` 指向真正对应的私钥 |
 | `No .key file found in ~/.tauri` | 没私钥;`cargo tauri signer generate` 生成一对,把 `.key` + `.key.pub` 放到 `~/.tauri/` 下,并把 `.pub` 内容(去掉换行后单行 base64)写进 `tauri.conf.json` 的 `plugins.updater.pubkey` |
 | `Multiple .key files in ~/.tauri` | 目录里有多个私钥;用 `--key <path>` 指定 |
-| `Cannot read github remote` | 没配 `github` remote;用 `--repo owner/name` 覆盖,或 `git remote add github git@github.com:TZDXF/codeberth.git` |
+| `Cannot read github remote` | 没配 `github` remote;用 `--repo owner/name` 覆盖,或 `git remote add github git@github.com:TZDXF/repomeow.git` |
 | `installer not found` | `--skip-build` 跳过了构建但产物不在;先跑 `pnpm release:build` |

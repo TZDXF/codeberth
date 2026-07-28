@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Local release pipeline for CodeBerth.
+// Local release pipeline for RepoMeow.
 //
 // Commands:
 //   check    verify tauri.conf.json / package.json / Cargo.toml all share the
@@ -188,7 +188,7 @@ function detectRepo() {
 }
 
 function installerPath(version) {
-  return join(BUNDLE_DIR, `CodeBerth_${version}_x64-setup.exe`);
+  return join(BUNDLE_DIR, `RepoMeow_${version}_x64-setup.exe`);
 }
 
 function sigPath(version) {
@@ -347,7 +347,7 @@ function cmdLatest(opts) {
       encoding: "utf8",
     }).trim();
   } catch {
-    notes = `CodeBerth v${version}`;
+    notes = `RepoMeow v${version}`;
   }
   const latest = {
     version,
@@ -356,7 +356,7 @@ function cmdLatest(opts) {
     platforms: {
       "windows-x86_64": {
         signature,
-        url: `https://github.com/${repo}/releases/latest/download/CodeBerth_${version}_x64-setup.exe`,
+        url: `https://github.com/${repo}/releases/latest/download/RepoMeow_${version}_x64-setup.exe`,
       },
     },
   };
