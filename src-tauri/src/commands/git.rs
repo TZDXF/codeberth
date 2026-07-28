@@ -1084,12 +1084,12 @@ mod tests {
                    \tpages/yudao/yudao-log/log-2026.md\n\
                    Please move or remove them before you merge.\n\
                    Aborting";
-        let msg = friendly_git_error(raw);
+        let err = friendly_git_error(raw);
         assert!(
-            msg.starts_with("拉取失败:本地修改与远端冲突"),
-            "实际输出: {msg}"
+            err.is_code(crate::error::ErrorCode::GitLocalChangesConflict),
+            "实际输出: {err}"
         );
-        assert!(msg.contains("pages/yudao/yudao-log/index.md"), "实际输出: {msg}");
+        let msg = err.to_string();
         assert!(!msg.contains("post-quantum"), "实际输出: {msg}");
         assert!(!msg.contains("Aborting"), "实际输出: {msg}");
     }
@@ -1100,46 +1100,66 @@ mod tests {
                    \tfoo.txt\n\
                    Please move or remove them before you switch branches.\n\
                    Aborting";
-        let msg = friendly_git_error(raw);
+        let err = friendly_git_error(raw);
         assert!(
-            msg.starts_with("切换分支失败:以下未跟踪的本地文件与远端冲突"),
-            "实际输出: {msg}"
+            err.is_code(crate::error::ErrorCode::GitUntrackedConflict),
+            "实际输出: {err}"
         );
-        assert!(msg.contains("foo.txt"), "实际输出: {msg}");
     }
 
     #[test]
     fn friendly_error_keeps_no_upstream_branch_phrase() {
         // push_blocking 依赖该原文短语判断首推回退,映射不得覆盖
         let raw = "fatal: The current branch dev has no upstream branch.";
-        let msg = friendly_git_error(raw);
-        assert!(msg.contains("has no upstream branch"), "实际输出: {msg}");
+        let err = friendly_git_error(raw);
+        assert!(err.code().is_none(), "不应映射为错误码: {err}");
+        assert!(
+            err.to_string().contains("has no upstream branch"),
+            "实际输出: {err}"
+        );
     }
 
     #[test]
     fn friendly_error_maps_common_cases() {
-        assert_eq!(
-            friendly_git_error("git@github.com: Permission denied (publickey)."),
-            "SSH 认证失败:请检查本机密钥是否已添加到远端账号,以及是否有仓库访问权限"
-        );
-        assert_eq!(
-            friendly_git_error("ssh: Could not resolve hostname github.com: Temporary failure in name resolution"),
-            "网络错误:无法解析远端主机名,请检查网络、DNS 或代理设置"
-        );
-        assert!(friendly_git_error(
-            "error: failed to push some refs to 'origin'\nhint: Updates were rejected because the tip of your current branch is behind"
-        )
-        .starts_with("推送被拒绝"),);
-        assert_eq!(
-            friendly_git_error("fatal: not a git repository (or any of the parent directories): .git"),
-            "当前目录不是 Git 仓库"
-        );
+        use crate::error::ErrorCode;
+        let cases: &[(&str, ErrorCode)] = &[
+            (
+                "git@github.com: Permission denied (publickey).",
+                ErrorCode::GitSshAuthFailed,
+            ),
+            (
+                "ssh: Could not resolve hostname github.com: Temporary failure in name resolution",
+                ErrorCode::GitNetworkDns,
+            ),
+            (
+                "error: failed to push some refs to 'origin'\nhint: Updates were rejected because the tip of your current branch is behind",
+                ErrorCode::GitPushRejected,
+            ),
+            (
+                "fatal: not a git repository (or any of the parent directories): .git",
+                ErrorCode::NotGitRepository,
+            ),
+            (
+                "remote: Repository not found.",
+                ErrorCode::GitRepoNotFound,
+            ),
+            (
+                "fatal: You have divergent branches and need to specify how to reconcile them.",
+                ErrorCode::GitDiverged,
+            ),
+        ];
+        for (raw, expected) in cases {
+            let err = friendly_git_error(raw);
+            assert!(err.is_code(*expected), "输入 {raw:?} 实际输出: {err}");
+        }
     }
 
     #[test]
     fn friendly_error_all_noise_falls_back() {
-        let msg = friendly_git_error("** WARNING: connection is not using a post-quantum key exchange algorithm.");
-        assert_eq!(msg, "git 命令失败(详见应用日志)");
+        let err = friendly_git_error(
+            "** WARNING: connection is not using a post-quantum key exchange algorithm.",
+        );
+        assert_eq!(err.to_string(), "外部命令失败: git 命令失败(详见应用日志)");
     }
 
     #[test]

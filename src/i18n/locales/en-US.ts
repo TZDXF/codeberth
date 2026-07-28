@@ -34,6 +34,24 @@ export default {
     invalid_path: "Invalid path or directory does not exist",
     schedule_not_found: "Schedule not found",
     ai_not_configured: "Configure the AI API key in Settings first",
+    git_local_changes_conflict:
+      "Local changes conflict with the remote. Commit or stash (git stash) them first",
+    git_untracked_conflict:
+      "Untracked local files conflict with the remote. Move or remove them first",
+    git_ssh_auth_failed:
+      "SSH authentication failed: add your local key to the remote account and check repo access",
+    git_host_key_failed:
+      "SSH host key verification failed: run a git command in a terminal once and confirm the host fingerprint",
+    git_auth_failed: "Authentication failed: check your username/password or access token",
+    git_repo_not_found: "Remote repository does not exist or you do not have access",
+    git_network_dns: "Network error: cannot resolve the remote host. Check network, DNS or proxy",
+    git_network_connect: "Network error: cannot connect to the remote server. Check network or proxy",
+    git_push_rejected: "Push rejected: the remote has new commits. Pull and merge first",
+    git_diverged:
+      "Local and remote branches have diverged. Run git pull --rebase in a terminal or configure a merge strategy",
+    git_no_tracking:
+      "Current branch has no upstream. Run git push -u origin <branch> first",
+    not_git_repository: "Current directory is not a Git repository",
   },
   titleBar: {
     minimize: "Minimize",
