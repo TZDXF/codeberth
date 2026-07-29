@@ -471,8 +471,8 @@ function switchMode(m: "local" | "clone" | "account") {
               spellcheck="false"
               class="min-w-0 flex-1"
             />
-            <DropdownMenu v-if="ownerOptions.length > 1">
-              <DropdownMenuTrigger as-child>
+            <Popover v-if="ownerOptions.length > 1" v-model:open="ownerPickerOpen">
+              <PopoverTrigger as-child>
                 <Button
                   variant="outline"
                   class="h-8 w-32 shrink-0 justify-between gap-2 font-normal"
@@ -482,18 +482,51 @@ function switchMode(m: "local" | "clone" | "account") {
                   </span>
                   <ChevronDown class="h-4 w-4 shrink-0 opacity-60" />
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuRadioGroup v-model="selectedOwner">
-                  <DropdownMenuRadioItem value="">
-                    {{ t("projects.add.repoOwnerAll") }}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem v-for="owner in ownerOptions" :key="owner" :value="owner">
-                    {{ owner }}
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-              </DropdownMenuContent>
-            </DropdownMenu>
+              </PopoverTrigger>
+              <PopoverContent
+                align="end"
+                class="w-56 min-w-[var(--reka-popover-trigger-width)] gap-1 p-1"
+                @open-auto-focus="focusOwnerSearch"
+              >
+                <Input
+                  v-if="showOwnerSearch"
+                  ref="ownerSearchInput"
+                  v-model="ownerSearch"
+                  :placeholder="t('projects.add.ownerSearchPlaceholder')"
+                  spellcheck="false"
+                  class="mb-1"
+                />
+                <div class="max-h-56 overflow-y-auto">
+                  <button
+                    type="button"
+                    class="flex w-full items-center gap-2 rounded-sm px-1.5 py-1.5 text-left text-sm hover:bg-accent"
+                    @click="pickOwner('')"
+                  >
+                    <Check class="h-3.5 w-3.5 shrink-0" :class="selectedOwner && 'opacity-0'" />
+                    <span class="truncate">{{ t("projects.add.repoOwnerAll") }}</span>
+                  </button>
+                  <button
+                    v-for="owner in filteredOwnerOptions"
+                    :key="owner"
+                    type="button"
+                    class="flex w-full items-center gap-2 rounded-sm px-1.5 py-1.5 text-left text-sm hover:bg-accent"
+                    @click="pickOwner(owner)"
+                  >
+                    <Check
+                      class="h-3.5 w-3.5 shrink-0"
+                      :class="selectedOwner !== owner && 'opacity-0'"
+                    />
+                    <span class="truncate">{{ owner }}</span>
+                  </button>
+                  <p
+                    v-if="filteredOwnerOptions.length === 0"
+                    class="px-2 py-4 text-center text-sm text-muted-foreground"
+                  >
+                    {{ t("projects.add.ownerSearchEmpty") }}
+                  </p>
+                </div>
+              </PopoverContent>
+            </Popover>
           </div>
           <div class="max-h-64 overflow-x-hidden overflow-y-auto rounded-md border">
             <div

@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Ban, Plus, TerminalSquare } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -112,15 +112,17 @@ async function run(c: CustomCommand) {
 
 <template>
   <Card>
-    <CardHeader class="flex-row items-center justify-between pb-3">
+    <CardHeader class="pb-3">
       <CardTitle class="flex items-center gap-2 text-sm font-semibold">
         <TerminalSquare class="h-4 w-4" />
         {{ t("scripts.custom.title") }}
       </CardTitle>
-      <Button size="sm" variant="outline" @click="openCreate">
-        <Plus class="h-4 w-4" />
-        {{ t("scripts.custom.new") }}
-      </Button>
+      <CardAction>
+        <Button size="sm" variant="outline" @click="openCreate">
+          <Plus class="h-4 w-4" />
+          {{ t("scripts.custom.new") }}
+        </Button>
+      </CardAction>
     </CardHeader>
     <CardContent>
       <p v-if="!commands.length" class="text-sm text-muted-foreground">

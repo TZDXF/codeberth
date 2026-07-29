@@ -132,6 +132,8 @@ export default {
       accountEmpty: "还没有绑定账号,请先到「设置 → 账号绑定」添加 GitHub / Gitee / GitLab 账号",
       repoSearchPlaceholder: "搜索组织、仓库名或描述...",
       repoOwnerAll: "全部组织",
+      ownerSearchPlaceholder: "搜索组织...",
+      ownerSearchEmpty: "没有匹配的组织",
       repoEmpty: "没有可显示的仓库",
       repoPrivate: "私有",
       repoAdded: "已添加",
@@ -433,10 +435,6 @@ export default {
       namePlaceholder: "例如: 启动后端",
       commandLabel: "命令",
       commandPlaceholder: "例如: cargo run",
-      safetyNotice:
-        "注意:此命令将在系统终端中作为 Shell 命令执行。请仅填写你完全信任的命令,避免使用来自不可信来源的拼接串。",
-      safetyNoticeEn:
-        "Note: this command runs in the system terminal as a shell command. Use only commands you fully trust.",
       descriptionLabel: "描述(可选)",
       descriptionPlaceholder: "命令用途说明",
       iconLabel: "图标(可选)",

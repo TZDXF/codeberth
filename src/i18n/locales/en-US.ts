@@ -45,12 +45,12 @@ export default {
     git_auth_failed: "Authentication failed: check your username/password or access token",
     git_repo_not_found: "Remote repository does not exist or you do not have access",
     git_network_dns: "Network error: cannot resolve the remote host. Check network, DNS or proxy",
-    git_network_connect: "Network error: cannot connect to the remote server. Check network or proxy",
+    git_network_connect:
+      "Network error: cannot connect to the remote server. Check network or proxy",
     git_push_rejected: "Push rejected: the remote has new commits. Pull and merge first",
     git_diverged:
       "Local and remote branches have diverged. Run git pull --rebase in a terminal or configure a merge strategy",
-    git_no_tracking:
-      "Current branch has no upstream. Run git push -u origin <branch> first",
+    git_no_tracking: "Current branch has no upstream. Run git push -u origin <branch> first",
     not_git_repository: "Current directory is not a Git repository",
   },
   titleBar: {
@@ -139,6 +139,8 @@ export default {
         "No linked accounts yet. Go to Settings → Accounts to add a GitHub / Gitee / GitLab account first.",
       repoSearchPlaceholder: "Search by org, name or description...",
       repoOwnerAll: "All orgs",
+      ownerSearchPlaceholder: "Search organizations...",
+      ownerSearchEmpty: "No matching orgs",
       repoEmpty: "No repositories to show",
       repoPrivate: "Private",
       repoAdded: "Added",
@@ -224,8 +226,7 @@ export default {
     },
   },
   ai: {
-    notConfigured:
-      "Configure AI integration in Settings first (base URL, API key, model)",
+    notConfigured: "Configure AI integration in Settings first (base URL, API key, model)",
     entry: "Report",
   },
   report: {
@@ -446,10 +447,6 @@ export default {
       namePlaceholder: "e.g. Start backend",
       commandLabel: "Command",
       commandPlaceholder: "e.g. cargo run",
-      safetyNotice:
-        "Note: this command runs in the system terminal as a shell command. Use only commands you fully trust.",
-      safetyNoticeEn:
-        "Note: this command runs in the system terminal as a shell command. Use only commands you fully trust.",
       descriptionLabel: "Description (optional)",
       descriptionPlaceholder: "What this command does",
       iconLabel: "Icon (optional)",
