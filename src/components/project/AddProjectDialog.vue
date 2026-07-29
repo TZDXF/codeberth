@@ -115,16 +115,13 @@ const filteredRepos = computed(() => {
   if (selectedOwner.value) {
     list = list.filter((r) => r.owner === selectedOwner.value);
   }
-  const q = repoSearch.value.trim().toLowerCase();
-  if (!q) return list;
-  // 组织名(owner)、全名、仓库名、描述均参与匹配
-  return list.filter(
-    (r) =>
-      r.owner.toLowerCase().includes(q) ||
-      r.fullName.toLowerCase().includes(q) ||
-      r.name.toLowerCase().includes(q) ||
-      r.description.toLowerCase().includes(q),
-  );
+  // 空格切分为多个查询词,词间 AND:每个词至少命中组织名/全名/仓库名/描述之一
+  const terms = repoSearch.value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return list;
+  return list.filter((r) => {
+    const fields = [r.owner, r.fullName, r.name, r.description].map((s) => s.toLowerCase());
+    return terms.every((q) => fields.some((f) => f.includes(q)));
+  });
 });
 
 /** 首次进入账号模式时加载账号列表与本地项目 remote 地址(「已添加」匹配用) */

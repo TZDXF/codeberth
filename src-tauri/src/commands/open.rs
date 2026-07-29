@@ -50,6 +50,8 @@ fn hidden(#[allow(unused_mut)] mut cmd: Command) -> Command {
 /// 优先用 Windows Terminal(wt.exe);未安装或启动失败时退回 cmd。
 #[cfg(windows)]
 pub fn spawn_terminal(path: &str, title: &str, command: Option<&str>) -> AppResult<()> {
+    let command = flatten_multiline(command, " & ");
+    let command = command.as_deref();
     if let Some(wt) = find_wt() {
         // wt 是 GUI 子系统进程,自己创建窗口,不存在句柄透传问题,直接启动即可
         let spawned = Command::new(wt)
@@ -91,6 +93,27 @@ fn build_start_cmdline(path: &str, title: &str, command: Option<&str>) -> String
         None => format!("cd /d \"{path}\""),
     };
     format!("/C start \"{title}\" cmd /K \"{inner}\"")
+}
+
+/// 多行命令摊平成单行:cmd /k 与 AppleScript 的 do script 都无法携带换行
+/// (换行即终结当前命令串,只有第一行会被执行)。
+/// 逐行 trim、丢弃空行后用顺序分隔符连接(cmd 用 ` & `、sh 用 `; `),
+/// 语义等同在终端逐行回车:前一条失败不阻断后续(故不用 `&&`)。
+/// 单行命令原样借用返回,不产生分配。
+#[cfg(any(windows, target_os = "macos"))]
+fn flatten_multiline<'a>(command: Option<&'a str>, sep: &str) -> Option<std::borrow::Cow<'a, str>> {
+    use std::borrow::Cow;
+    let c = command?;
+    if !c.contains(['\n', '\r']) {
+        return Some(Cow::Borrowed(c));
+    }
+    let joined = c
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty())
+        .collect::<Vec<_>>()
+        .join(sep);
+    Some(Cow::Owned(joined))
 }
 
 /// 剥掉会破坏 cmd 命令行解析的元字符(仅用于 title 这类展示文本;
@@ -142,6 +165,8 @@ fn build_wt_args(path: &str, title: &str, command: Option<&str>) -> Vec<String> 
 
 #[cfg(target_os = "macos")]
 pub fn spawn_terminal(path: &str, _title: &str, command: Option<&str>) -> AppResult<()> {
+    let command = flatten_multiline(command, "; ");
+    let command = command.as_deref();
     let inner = match command {
         Some(c) => format!(
             "cd '{}' && {}",
@@ -341,6 +366,38 @@ mod tests {
         assert_eq!(args[1], "abc");
         assert_eq!(args[3], r"D:\weirdpath");
         assert_eq!(args[6], "cargo build && cargo run");
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn flatten_multiline_keeps_single_line_borrowed() {
+        let c = flatten_multiline(Some("npm run dev"), " & ").unwrap();
+        assert_eq!(c, "npm run dev");
+        assert!(matches!(c, std::borrow::Cow::Borrowed(_)));
+        assert!(flatten_multiline(None, " & ").is_none());
+    }
+
+    #[cfg(any(windows, target_os = "macos"))]
+    #[test]
+    fn flatten_multiline_joins_lines_sequentially() {
+        // 逐行 trim、丢弃空行,用顺序分隔符连接(前一条失败不阻断后续)
+        let c = flatten_multiline(Some("  cargo build\n\n  cargo run  "), " & ").unwrap();
+        assert_eq!(c, "cargo build & cargo run");
+        // \r\n 同样处理;sh 语义用 `; `
+        let c = flatten_multiline(Some("echo a\r\necho b"), "; ").unwrap();
+        assert_eq!(c, "echo a; echo b");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn start_cmdline_flattens_multiline_command() {
+        let s = build_start_cmdline(
+            r"D:\p",
+            "t",
+            flatten_multiline(Some("echo a\necho b"), " & ")
+                .as_deref(),
+        );
+        assert!(s.ends_with("&& echo a & echo b\""));
     }
 
     #[cfg(windows)]
