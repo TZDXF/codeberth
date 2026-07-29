@@ -69,10 +69,16 @@ export const useProjectsStore = defineStore("projects", () => {
   }
 
   async function refreshGitStatus(project: Project) {
+    const run = () => cmd<GitStatus>("get_git_status", { path: project.path });
     try {
-      project.git = await cmd<GitStatus>("get_git_status", { path: project.path });
+      project.git = await run();
     } catch {
-      project.git = null;
+      // 失败重试一次;仍失败时保留旧值(原本就没有则保持 null),避免卡片 git 信息闪烁丢失
+      try {
+        project.git = await run();
+      } catch {
+        /* 保留旧值,等待下一轮定时刷新 */
+      }
     }
   }
 
@@ -89,6 +95,35 @@ export const useProjectsStore = defineStore("projects", () => {
 
   function triggerAllRemoteFetches() {
     projects.value.forEach(triggerRemoteFetch);
+  }
+
+  /** git 状态定时刷新间隔(本地 status + 后台远端 fetch) */
+  const GIT_REFRESH_INTERVAL_MS = 30_000;
+  let gitRefreshTimer: ReturnType<typeof setInterval> | null = null;
+  let gitRefreshing = false;
+
+  /** 启动 git 状态定时刷新(App 挂载时调用,重复调用会重置计时) */
+  function startGitAutoRefresh() {
+    stopGitAutoRefresh();
+    gitRefreshTimer = setInterval(async () => {
+      // 上一轮未结束时跳过,避免慢仓库上刷新堆叠
+      if (gitRefreshing || !projects.value.length) return;
+      gitRefreshing = true;
+      try {
+        await refreshAllGitStatus();
+        triggerAllRemoteFetches();
+      } finally {
+        gitRefreshing = false;
+      }
+    }, GIT_REFRESH_INTERVAL_MS);
+  }
+
+  /** 停止 git 状态定时刷新(App 卸载时调用) */
+  function stopGitAutoRefresh() {
+    if (gitRefreshTimer) {
+      clearInterval(gitRefreshTimer);
+      gitRefreshTimer = null;
+    }
   }
 
   async function addProject(path: string, name: string, description?: string) {
@@ -226,6 +261,8 @@ export const useProjectsStore = defineStore("projects", () => {
     deleteProject,
     refreshGitStatus,
     triggerRemoteFetch,
+    startGitAutoRefresh,
+    stopGitAutoRefresh,
     updateGitRemote,
     listBranches,
     checkoutBranch,

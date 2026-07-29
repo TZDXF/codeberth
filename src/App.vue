@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted } from "vue";
+import { onMounted, onUnmounted } from "vue";
 import { toast } from "vue-sonner";
 import { Toaster } from "@/components/ui/sonner";
 import TitleBar from "@/components/TitleBar.vue";
@@ -25,6 +25,7 @@ onMounted(() => {
     }
   });
   store.fetchProjects();
+  store.startGitAutoRefresh();
   tagsStore.fetchTags();
   onListen<GitUpdatedPayload>("git://updated", (payload) => {
     store.updateGitRemote(payload.project_id, payload);
@@ -40,6 +41,10 @@ onMounted(() => {
       },
     });
   });
+});
+
+onUnmounted(() => {
+  store.stopGitAutoRefresh();
 });
 </script>
 
