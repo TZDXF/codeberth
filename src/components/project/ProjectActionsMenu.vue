@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Archive, FolderSync, MoreHorizontal } from "@lucide/vue";
+import { Archive, FolderInput, FolderSync, MoreHorizontal } from "@lucide/vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
+import MoveProjectDialog from "@/components/project/MoveProjectDialog.vue";
 import RelocateProjectDialog from "@/components/project/RelocateProjectDialog.vue";
 import { Button } from "@/components/ui/button";
 import {
@@ -46,6 +47,7 @@ async function openWith(kind: EditorKind) {
 
 const archiveConfirmOpen = ref(false);
 const relocateOpen = ref(false);
+const moveOpen = ref(false);
 
 async function archive() {
   try {
@@ -81,6 +83,10 @@ async function archive() {
         {{ t(opt.descKey) }}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
+      <DropdownMenuItem v-if="project.path_exists" class="gap-2 text-xs" @click="moveOpen = true">
+        <FolderInput class="h-3.5 w-3.5" />
+        {{ t("projects.actions.moveDir") }}
+      </DropdownMenuItem>
       <DropdownMenuItem class="gap-2 text-xs" @click="relocateOpen = true">
         <FolderSync class="h-3.5 w-3.5" />
         {{ t("projects.actions.relocate") }}
@@ -102,4 +108,5 @@ async function archive() {
     @confirm="archive"
   />
   <RelocateProjectDialog v-model:open="relocateOpen" :project="project" />
+  <MoveProjectDialog v-model:open="moveOpen" :project="project" />
 </template>

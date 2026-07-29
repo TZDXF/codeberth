@@ -236,6 +236,146 @@ pub fn update_path(conn: &Connection, id: i64, path: &str) -> AppResult<Project>
     get(conn, id)
 }
 
+/// 一次目录移动的校验结果(源/目标路径)
+struct MovePlan {
+    src: std::path::PathBuf,
+    target: std::path::PathBuf,
+    target_str: String,
+}
+
+/// 校验移动参数并计算目标路径(不触碰磁盘)
+fn prepare_move(conn: &Connection, id: i64, target_parent: &str, dir_name: &str) -> AppResult<MovePlan> {
+    let project = get(conn, id)?;
+    let src = std::path::PathBuf::from(&project.path);
+    if !src.is_dir() {
+        return Err(AppError::invalid_path(&project.path));
+    }
+    let parent = std::path::Path::new(target_parent.trim());
+    if !parent.is_dir() {
+        return Err(AppError::invalid_path(target_parent.trim()));
+    }
+    let dir_name = dir_name.trim();
+    if dir_name.is_empty() || dir_name == "." || dir_name == ".." || dir_name.contains('/')
+        || dir_name.contains('\\')
+    {
+        return Err(AppError::Invalid(format!("目录名不合法: {dir_name}")));
+    }
+    let target = parent.join(dir_name);
+    // Windows 文件系统大小写不敏感,统一按忽略大小写判断"位置未变化"
+    if target.to_string_lossy().eq_ignore_ascii_case(&project.path) {
+        return Err(AppError::Invalid("新位置与原位置相同".into()));
+    }
+    if target.starts_with(&src) {
+        return Err(AppError::Invalid("不能移动到项目目录内部".into()));
+    }
+    if target.exists() {
+        return Err(AppError::Conflict(format!("目标目录已存在: {}", target.display())));
+    }
+    let target_str = target.to_string_lossy().to_string();
+    // 目标路径已被其他项目登记时提前报错,避免移动后数据库唯一键冲突
+    let registered = conn
+        .query_row(
+            "SELECT id FROM projects WHERE path = ?1 AND id != ?2",
+            params![target_str, id],
+            |r| r.get::<_, i64>(0),
+        )
+        .optional()?;
+    if registered.is_some() {
+        return Err(AppError::Conflict(format!("项目已存在: {target_str}")));
+    }
+    Ok(MovePlan { src, target, target_str })
+}
+
+/// 磁盘移动:同盘直接 rename;跨盘退回"复制 + 删除源"
+fn move_folder(src: &std::path::Path, target: &std::path::Path) -> AppResult<()> {
+    match std::fs::rename(src, target) {
+        Ok(()) => Ok(()),
+        // Windows ERROR_NOT_SAME_DEVICE(17) / Unix EXDEV(18)
+        Err(e) if matches!(e.raw_os_error(), Some(17) | Some(18)) => {
+            copy_across_devices(src, target)
+        }
+        Err(e) => Err(AppError::Io(e)),
+    }
+}
+
+/// 跨盘移动(Windows):robocopy 复制(保留 junction/symlink 结构,/SL)成功后删除源。
+/// 不用 /MOVE:复制失败时源目录保持完整;目标半成品尽力清理。
+#[cfg(windows)]
+fn copy_across_devices(src: &std::path::Path, target: &std::path::Path) -> AppResult<()> {
+    use std::os::windows::process::CommandExt;
+    let output = std::process::Command::new("robocopy")
+        .arg(src)
+        .arg(target)
+        .args([
+            "/E", "/SL", "/COPY:DAT", "/DCOPY:T", "/R:1", "/W:1", "/NFL", "/NDL", "/NJH", "/NJS",
+            "/NP",
+        ])
+        .creation_flags(0x0800_0000) // CREATE_NO_WINDOW
+        .output()
+        .map_err(AppError::Io)?;
+    // robocopy 退出码是位标记,< 8 均表示成功(0=无变化 1=已复制 2/4=额外/不匹配文件)
+    let code = output.status.code().unwrap_or(16);
+    if code >= 8 {
+        let _ = std::fs::remove_dir_all(target);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let tail: String = stdout.chars().rev().take(200).collect::<String>().chars().rev().collect();
+        return Err(AppError::External(format!("robocopy 退出码 {code}: {tail}")));
+    }
+    std::fs::remove_dir_all(src).map_err(AppError::Io)
+}
+
+/// 跨盘移动(非 Windows):递归复制(符号链接按链接重建)成功后删除源
+#[cfg(not(windows))]
+fn copy_across_devices(src: &std::path::Path, target: &std::path::Path) -> AppResult<()> {
+    if let Err(e) = copy_dir_recursive(src, target) {
+        let _ = std::fs::remove_dir_all(target);
+        return Err(AppError::Io(e));
+    }
+    std::fs::remove_dir_all(src).map_err(AppError::Io)
+}
+
+#[cfg(not(windows))]
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let to = dst.join(entry.file_name());
+        if ty.is_symlink() {
+            let link = std::fs::read_link(entry.path())?;
+            std::os::unix::fs::symlink(&link, &to)?;
+        } else if ty.is_dir() {
+            copy_dir_recursive(&entry.path(), &to)?;
+        } else {
+            std::fs::copy(entry.path(), &to)?;
+        }
+    }
+    Ok(())
+}
+
+/// 落库:更新登记路径;失败时尽力把文件夹移回原位
+fn apply_move(conn: &Connection, id: i64, plan: &MovePlan) -> AppResult<()> {
+    if let Err(e) = conn.execute(
+        "UPDATE projects SET path = ?1, updated_at = ?2 WHERE id = ?3",
+        params![plan.target_str, now(), id],
+    ) {
+        let _ = std::fs::rename(&plan.target, &plan.src);
+        return Err(AppError::Db(e));
+    }
+    Ok(())
+}
+
+/// 应用内移动项目目录:把项目文件夹移动到新的父目录下(可同时改名),并更新登记路径。
+/// 同盘直接 rename;跨盘自动退回"复制 + 删除源"(大目录耗时较长,由异步命令承载)。
+// 命令端为不持锁移动拆成了 prepare_move/move_folder/apply_move 三阶段,此组合函数供测试使用
+#[allow(dead_code)]
+pub fn move_dir(conn: &Connection, id: i64, target_parent: &str, dir_name: &str) -> AppResult<Project> {
+    let plan = prepare_move(conn, id, target_parent, dir_name)?;
+    move_folder(&plan.src, &plan.target)?;
+    apply_move(conn, id, &plan)?;
+    get(conn, id)
+}
+
 /// 归档项目:软删除,保留历史数据(标签、自定义命令等关联数据不动)
 pub fn archive(conn: &Connection, id: i64) -> AppResult<()> {
     let changed = conn.execute(
@@ -325,6 +465,25 @@ pub fn update_project(
 pub fn update_project_path(db: State<'_, Db>, id: i64, path: String) -> AppResult<Project> {
     let conn = db.0.lock().unwrap();
     update_path(&conn, id, &path)
+}
+
+// 异步命令:跨盘移动退回复制后大目录耗时较长,避免阻塞主线程。
+// 校验与落库仍持锁快速完成,磁盘移动阶段不持有数据库锁。
+#[tauri::command]
+pub async fn move_project_dir(
+    db: State<'_, Db>,
+    id: i64,
+    target_parent: String,
+    dir_name: String,
+) -> AppResult<Project> {
+    let plan = {
+        let conn = db.0.lock().unwrap();
+        prepare_move(&conn, id, &target_parent, &dir_name)?
+    };
+    move_folder(&plan.src, &plan.target)?;
+    let conn = db.0.lock().unwrap();
+    apply_move(&conn, id, &plan)?;
+    get(&conn, id)
 }
 
 #[tauri::command]
@@ -505,6 +664,54 @@ mod tests {
                 Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
         );
         drop(b);
+    }
+
+    #[test]
+    fn move_dir_renames_and_validates() {
+        let conn = test_conn();
+        let dir = std::env::temp_dir();
+        let src = dir.join("repomeow-move-src");
+        let other = dir.join("repomeow-move-other");
+        let taken = dir.join("repomeow-move-taken");
+        let dst = dir.join("repomeow-move-dst");
+        // 清理上一轮测试残留,保证可重复运行
+        std::fs::remove_dir_all(&dst).ok();
+        std::fs::create_dir_all(&src).unwrap();
+        std::fs::create_dir_all(&other).unwrap();
+        std::fs::create_dir_all(&taken).unwrap();
+        let p = add(&conn, &src.to_string_lossy(), "demo", "").unwrap();
+        let _other_p = add(&conn, &other.to_string_lossy(), "other", "").unwrap();
+
+        // 目标已存在 / 已被其他项目登记 / 移入自身内部 / 位置未变化 / 目录名带分隔符,均拒绝
+        assert!(matches!(
+            move_dir(&conn, p.id, &dir.to_string_lossy(), "repomeow-move-taken"),
+            Err(AppError::Conflict(_))
+        ));
+        assert!(matches!(
+            move_dir(&conn, p.id, &dir.to_string_lossy(), "repomeow-move-other"),
+            Err(AppError::Conflict(_))
+        ));
+        assert!(matches!(
+            move_dir(&conn, p.id, &src.to_string_lossy(), "inner"),
+            Err(AppError::Invalid(_))
+        ));
+        assert!(matches!(
+            move_dir(&conn, p.id, &dir.to_string_lossy(), "repomeow-move-src"),
+            Err(AppError::Invalid(_))
+        ));
+        assert!(matches!(
+            move_dir(&conn, p.id, &dir.to_string_lossy(), "bad/name"),
+            Err(AppError::Invalid(_))
+        ));
+
+        // 正常移动 + 改名:磁盘目录移动,登记路径同步更新
+        let moved = move_dir(&conn, p.id, &dir.to_string_lossy(), "repomeow-move-dst").unwrap();
+        assert!(!src.exists() && dst.is_dir());
+        assert_eq!(moved.path, dst.to_string_lossy());
+        assert!(moved.path_exists);
+
+        std::fs::remove_dir_all(&dst).ok();
+        std::fs::remove_dir_all(&taken).ok();
     }
 
     #[test]

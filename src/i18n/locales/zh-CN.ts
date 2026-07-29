@@ -145,6 +145,7 @@ export default {
     },
     actions: {
       more: "更多操作",
+      moveDir: "移动目录...",
       relocate: "重新指定目录",
       archive: "归档项目",
       archiveConfirm: "确定归档项目「{name}」吗?\n归档后将不再显示,历史数据会保留。",
@@ -160,6 +161,20 @@ export default {
       browse: "浏览",
       confirm: "更新目录",
       success: "已更新项目「{name}」的目录",
+    },
+    moveDir: {
+      title: "移动项目目录",
+      description:
+        "将项目「{name}」的文件夹移动到新的位置,登记路径会同步更新。跨盘移动通过复制完成,大目录可能需要一些时间。",
+      dialogTitle: "选择新的父目录",
+      parentLabel: "新父目录",
+      parentPlaceholder: "选择文件夹...",
+      nameLabel: "目录名",
+      preview: "目标位置",
+      browse: "浏览",
+      confirm: "移动",
+      moving: "移动中...",
+      success: "已移动到 {path}",
     },
     detail: {
       backToList: "返回项目列表",

@@ -171,6 +171,16 @@ export const useProjectsStore = defineStore("projects", () => {
     return project;
   }
 
+  /** 应用内移动项目目录到新的父目录下(可改名),成功后重新探测 git 状态 */
+  async function moveProjectDir(id: number, targetParent: string, dirName: string) {
+    const project = await cmd<Project>("move_project_dir", { id, targetParent, dirName });
+    const idx = projects.value.findIndex((p) => p.id === id);
+    if (idx >= 0) projects.value[idx] = project;
+    await refreshGitStatus(project);
+    triggerRemoteFetch(project);
+    return project;
+  }
+
   /** 归档项目:软删除,历史数据保留;归档后不再展示、不再获取 git 状态 */
   async function archiveProject(id: number) {
     await cmd("archive_project", { id });
@@ -268,6 +278,7 @@ export const useProjectsStore = defineStore("projects", () => {
     cancelClone,
     updateProject,
     updateProjectPath,
+    moveProjectDir,
     archiveProject,
     fetchArchivedProjects,
     unarchiveProject,

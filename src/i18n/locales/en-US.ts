@@ -153,6 +153,7 @@ export default {
     },
     actions: {
       more: "More actions",
+      moveDir: "Move directory...",
       relocate: "Relocate directory",
       archive: "Archive project",
       archiveConfirm:
@@ -170,6 +171,20 @@ export default {
       browse: "Browse",
       confirm: "Update directory",
       success: 'Directory of project "{name}" updated.',
+    },
+    moveDir: {
+      title: "Move project directory",
+      description:
+        'Move the folder of project "{name}" to a new location. The registered path will be updated. Moving across drives copies the folder, which may take a while for large directories.',
+      dialogTitle: "Select new parent folder",
+      parentLabel: "New parent folder",
+      parentPlaceholder: "Select a folder...",
+      nameLabel: "Directory name",
+      preview: "Target location",
+      browse: "Browse",
+      confirm: "Move",
+      moving: "Moving...",
+      success: "Moved to {path}",
     },
     detail: {
       backToList: "Back to projects",
