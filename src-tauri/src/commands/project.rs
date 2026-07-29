@@ -165,10 +165,13 @@ pub fn list(
     let mut binds: Vec<Box<dyn ToSql>> = Vec::new();
 
     if let Some(q) = query.filter(|q| !q.trim().is_empty()) {
-        conditions.push("(name LIKE ? OR description LIKE ?)".to_string());
-        let pattern = format!("%{}%", q.trim());
-        binds.push(Box::new(pattern.clone()));
-        binds.push(Box::new(pattern));
+        // 空格切分为多个查询词,词间 AND:每个词命中名称或描述之一
+        for term in q.split_whitespace() {
+            conditions.push("(name LIKE ? OR description LIKE ?)".to_string());
+            let pattern = format!("%{}%", term);
+            binds.push(Box::new(pattern.clone()));
+            binds.push(Box::new(pattern));
+        }
     }
     if let Some(ids) = tag_ids.filter(|v| !v.is_empty()) {
         let placeholders = vec!["?"; ids.len()].join(",");
@@ -503,5 +506,28 @@ mod tests {
 
         let empty = list(&conn, None, Some(vec![tag_id + 100])).unwrap();
         assert!(empty.is_empty());
+    }
+
+    #[test]
+    fn list_query_splits_space_separated_terms_with_and() {
+        let conn = test_conn();
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
+        let dir_b = std::env::temp_dir().join("repomeow-test-beta");
+        std::fs::create_dir_all(&dir_b).unwrap();
+        let dir_b = dir_b.to_string_lossy().to_string();
+        add(&conn, &dir, "Alpha", "web 前端").unwrap();
+        add(&conn, &dir_b, "Beta", "web 后端").unwrap();
+
+        // 两词分别命中名称与描述:AND 后只剩 Alpha
+        let hit = list(&conn, Some("alpha web".into()), None).unwrap();
+        assert_eq!(hit.len(), 1);
+        assert_eq!(hit[0].name, "Alpha");
+
+        // 任一词不命中即无结果;多余空白不影响切分
+        assert!(
+            list(&conn, Some("web  alpha   beta ".into()), None)
+                .unwrap()
+                .is_empty()
+        );
     }
 }

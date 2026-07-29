@@ -100,7 +100,7 @@ const ownerOptions = computed(() => {
 });
 
 /** 组织超过该数量时,组织下拉内显示搜索框 */
-const OWNER_SEARCH_THRESHOLD = 5;
+const OWNER_SEARCH_THRESHOLD = 3;
 const showOwnerSearch = computed(() => ownerOptions.value.length > OWNER_SEARCH_THRESHOLD);
 
 /** 按搜索词过滤后的组织选项 */

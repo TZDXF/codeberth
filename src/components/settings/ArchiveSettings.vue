@@ -28,14 +28,13 @@ onMounted(async () => {
 const searchInput = ref("");
 
 const filteredProjects = computed(() => {
-  const q = searchInput.value.trim().toLowerCase();
-  if (!q) return store.archivedProjects;
-  return store.archivedProjects.filter(
-    (p) =>
-      p.name.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      p.path.toLowerCase().includes(q),
-  );
+  // 空格切分为多个查询词,词间 AND:每个词至少命中名称/描述/路径之一
+  const terms = searchInput.value.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return store.archivedProjects;
+  return store.archivedProjects.filter((p) => {
+    const fields = [p.name, p.description, p.path].map((s) => s.toLowerCase());
+    return terms.every((q) => fields.some((f) => f.includes(q)));
+  });
 });
 
 /** 待确认的二次操作:恢复归档或彻底删除 */
