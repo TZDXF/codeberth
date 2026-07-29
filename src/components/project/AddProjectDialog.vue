@@ -4,7 +4,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { open } from "@tauri-apps/plugin-dialog";
 import { toast } from "vue-sonner";
-import { ChevronDown, FolderOpen, FolderGit2, KeyRound, Loader2 } from "@lucide/vue";
+import { Check, ChevronDown, FolderOpen, FolderGit2, KeyRound, Loader2 } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -24,6 +24,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   listAccountRepos,
   listGitAccounts,
@@ -87,12 +88,26 @@ const repos = ref<RemoteRepo[]>([]);
 const reposLoading = ref(false);
 const repoSearch = ref("");
 const selectedOwner = ref("");
+const ownerPickerOpen = ref(false);
+const ownerSearch = ref("");
+const ownerSearchInput = ref<{ $el: HTMLInputElement } | null>(null);
 const addedRemotes = ref<Set<string>>(new Set());
 
 /** 当前账号下仓库涉及的组织/用户(去重,按名称排序) */
 const ownerOptions = computed(() => {
   const owners = new Set(repos.value.map((r) => r.owner).filter(Boolean));
   return [...owners].sort((a, b) => a.localeCompare(b));
+});
+
+/** 组织超过该数量时,组织下拉内显示搜索框 */
+const OWNER_SEARCH_THRESHOLD = 5;
+const showOwnerSearch = computed(() => ownerOptions.value.length > OWNER_SEARCH_THRESHOLD);
+
+/** 按搜索词过滤后的组织选项 */
+const filteredOwnerOptions = computed(() => {
+  const q = ownerSearch.value.trim().toLowerCase();
+  if (!q) return ownerOptions.value;
+  return ownerOptions.value.filter((o) => o.toLowerCase().includes(q));
 });
 
 const filteredRepos = computed(() => {
@@ -146,8 +161,23 @@ watch(selectedAccountId, (id) => {
   repos.value = [];
   repoSearch.value = "";
   selectedOwner.value = "";
+  ownerPickerOpen.value = false;
   if (id != null) loadRepos();
 });
+
+/** 选中组织(空串为「全部组织」)后收起下拉 */
+function pickOwner(owner: string) {
+  selectedOwner.value = owner;
+  ownerPickerOpen.value = false;
+}
+
+/** 组织下拉打开时清空上次搜索,并把焦点交给搜索框(超过阈值才有搜索框) */
+function focusOwnerSearch(e: Event) {
+  ownerSearch.value = "";
+  if (!showOwnerSearch.value) return;
+  e.preventDefault();
+  ownerSearchInput.value?.$el?.focus();
+}
 
 /** 仓库是否已添加为本地项目(remote URL 归一化后匹配) */
 function isAdded(repo: RemoteRepo): boolean {

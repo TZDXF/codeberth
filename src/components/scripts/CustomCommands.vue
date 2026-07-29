@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { Ban, Plus, TerminalSquare } from "@lucide/vue";
@@ -13,15 +13,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ScriptItem from "@/components/scripts/ScriptItem.vue";
 import { COMMAND_ICONS } from "@/lib/command-icons";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import type { CustomCommand, Project } from "@/types";
 
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
-const showEnglishFallback = computed(() => locale.value !== "en-US");
 
 const commands = ref<CustomCommand[]>([]);
 
@@ -159,19 +159,11 @@ async function run(c: CustomCommand) {
         </div>
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">{{ t("scripts.custom.commandLabel") }}</label>
-          <Input
+          <Textarea
             v-model="formCommand"
             :placeholder="t('scripts.custom.commandPlaceholder')"
-            class="font-mono"
+            class="max-h-48 overflow-y-auto font-mono"
           />
-          <div
-            class="rounded-md border border-amber-500/40 bg-amber-50/60 px-2.5 py-1.5 text-xs text-amber-900 dark:bg-amber-900/20 dark:text-amber-200"
-          >
-            <p>{{ t("scripts.custom.safetyNotice") }}</p>
-            <p v-if="showEnglishFallback" class="mt-0.5 text-amber-800/80 dark:text-amber-200/80">
-              {{ t("scripts.custom.safetyNoticeEn") }}
-            </p>
-          </div>
         </div>
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">{{ t("scripts.custom.descriptionLabel") }}</label>
