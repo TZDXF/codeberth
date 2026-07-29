@@ -46,8 +46,18 @@ function open(id: number) {
           </span>
         </td>
         <td class="max-w-64 px-3 py-2">
-          <span class="block truncate font-mono text-xs text-muted-foreground" :title="p.path">
-            {{ p.path }}
+          <span class="flex items-center gap-1.5">
+            <span class="block truncate font-mono text-xs text-muted-foreground" :title="p.path">
+              {{ p.path }}
+            </span>
+            <Badge
+              v-if="!p.path_exists"
+              variant="destructive"
+              class="shrink-0 px-1.5 py-0 text-[11px]"
+              :title="t('projects.status.pathMissingHint')"
+            >
+              {{ t("projects.status.pathMissing") }}
+            </Badge>
           </span>
         </td>
         <td class="px-3 py-2">

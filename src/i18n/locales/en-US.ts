@@ -108,6 +108,11 @@ export default {
     card: {
       remoteAhead: "Remote ahead",
     },
+    status: {
+      pathMissing: "Directory missing",
+      pathMissingHint:
+        "The project directory has been moved, deleted, or is temporarily unavailable. Relocate it to continue using this project.",
+    },
     add: {
       dialogTitle: "Select project folder",
       title: "Add project",
@@ -148,10 +153,23 @@ export default {
     },
     actions: {
       more: "More actions",
+      relocate: "Relocate directory",
       archive: "Archive project",
       archiveConfirm:
         'Archive project "{name}"?\nIt will be hidden from the list, but its history will be kept.',
       archiveSuccess: 'Project "{name}" archived.',
+    },
+    relocate: {
+      title: "Relocate directory",
+      description:
+        'Pick a new directory for project "{name}". Tags, custom commands and other data will be kept.',
+      dialogTitle: "Select new project directory",
+      currentPath: "Current path",
+      pathLabel: "New directory",
+      pathPlaceholder: "Select a folder...",
+      browse: "Browse",
+      confirm: "Update directory",
+      success: 'Directory of project "{name}" updated.',
     },
     detail: {
       backToList: "Back to projects",

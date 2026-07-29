@@ -95,6 +95,8 @@ export interface Project {
   description: string;
   tags: Tag[];
   git: GitStatus | null;
+  /** 登记的目录当前是否仍存在(被移动/删除/盘符离线时为 false) */
+  path_exists: boolean;
   archived_at: number | null;
   created_at: number;
   updated_at: number;

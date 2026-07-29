@@ -3,13 +3,14 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { ArrowLeft, BookOpen, FileText, Pencil } from "@lucide/vue";
+import { ArrowLeft, BookOpen, FileText, FolderSync, Pencil, TriangleAlert } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import GitStatusBar from "@/components/git/GitStatusBar.vue";
 import GitActions from "@/components/git/GitActions.vue";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
 import DockerCompose from "@/components/project/DockerCompose.vue";
 import ReadmeDrawer from "@/components/project/ReadmeDrawer.vue";
+import RelocateProjectDialog from "@/components/project/RelocateProjectDialog.vue";
 import DailyReportDialog from "@/components/report/DailyReportDialog.vue";
 import CustomCommands from "@/components/scripts/CustomCommands.vue";
 import PackageScripts from "@/components/scripts/PackageScripts.vue";
@@ -27,16 +28,20 @@ const project = computed(() => {
 });
 
 // 选中项目进入详情页时刷新本地工作区状态,并触发一次远端 fetch
+// 目录已失效的项目跳过,git 命令必然失败且没有展示意义
 watch(
   () => project.value?.id,
   () => {
-    if (project.value) {
+    if (project.value?.path_exists) {
       store.refreshGitStatus(project.value);
       store.triggerRemoteFetch(project.value);
     }
   },
   { immediate: true },
 );
+
+// --- 重新指定目录弹窗 ---
+const relocateOpen = ref(false);
 
 // 切换项目时退出编辑态
 watch(
@@ -145,17 +150,29 @@ async function saveDesc() {
             <FileText class="h-4 w-4" />
             {{ t("ai.entry") }}
           </Button>
-          <Button variant="outline" size="sm" @click="readmeOpen = true">
+          <Button v-if="project.path_exists" variant="outline" size="sm" @click="readmeOpen = true">
             <BookOpen class="h-4 w-4" />
             {{ t("readme.title") }}
           </Button>
-          <OpenWithMenu :project="project" />
+          <OpenWithMenu v-if="project.path_exists" :project="project" />
         </div>
       </div>
 
       <p class="mt-1 truncate pl-10 text-sm text-muted-foreground" :title="project.path">
         {{ project.path }}
       </p>
+
+      <div
+        v-if="!project.path_exists"
+        class="ml-10 mt-2 flex items-center gap-2 rounded-md border border-destructive/40 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+      >
+        <TriangleAlert class="h-4 w-4 shrink-0" />
+        <span class="min-w-0 flex-1">{{ t("projects.status.pathMissingHint") }}</span>
+        <Button variant="outline" size="sm" class="shrink-0" @click="relocateOpen = true">
+          <FolderSync class="h-4 w-4" />
+          {{ t("projects.actions.relocate") }}
+        </Button>
+      </div>
 
       <div class="mt-1 pl-10">
         <textarea
@@ -185,12 +202,15 @@ async function saveDesc() {
 
       <div class="mt-2.5 flex flex-wrap items-center gap-x-6 gap-y-2 pl-10">
         <TagPicker :project="project" />
-        <GitStatusBar :project="project" />
-        <GitActions :project="project" />
+        <template v-if="project.path_exists">
+          <GitStatusBar :project="project" />
+          <GitActions :project="project" />
+        </template>
       </div>
     </header>
 
     <div
+      v-if="project.path_exists"
       class="grid items-start gap-4 p-6 [grid-template-columns:repeat(auto-fill,minmax(360px,1fr))]"
     >
       <PackageScripts :project="project" />
@@ -200,6 +220,7 @@ async function saveDesc() {
 
     <ReadmeDrawer v-model:open="readmeOpen" :project="project" />
     <DailyReportDialog v-model:open="reportOpen" :preset-project-id="project.id" />
+    <RelocateProjectDialog v-model:open="relocateOpen" :project="project" />
   </div>
 
   <div

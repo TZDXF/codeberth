@@ -22,7 +22,17 @@ function open() {
     @click="open"
   >
     <div class="flex items-center justify-between gap-2">
-      <span class="truncate text-sm font-medium">{{ project.name }}</span>
+      <span class="flex min-w-0 items-center gap-1.5">
+        <span class="truncate text-sm font-medium">{{ project.name }}</span>
+        <Badge
+          v-if="!project.path_exists"
+          variant="destructive"
+          class="shrink-0 px-1.5 py-0 text-[11px]"
+          :title="t('projects.status.pathMissingHint')"
+        >
+          {{ t("projects.status.pathMissing") }}
+        </Badge>
+      </span>
       <div class="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
         <ProjectActionsMenu :project="project" />
       </div>

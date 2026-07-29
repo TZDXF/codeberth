@@ -52,6 +52,7 @@ pub fn load_tags(conn: &Connection, project_id: i64) -> AppResult<Vec<Tag>> {
 }
 
 fn project_from_row(row: ProjectRow, tags: Vec<Tag>) -> Project {
+    let path_exists = std::path::Path::new(&row.path).is_dir();
     Project {
         id: row.id,
         path: row.path,
@@ -59,6 +60,7 @@ fn project_from_row(row: ProjectRow, tags: Vec<Tag>) -> Project {
         description: row.description,
         tags,
         git: None,
+        path_exists,
         archived_at: row.archived_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
@@ -209,6 +211,31 @@ pub fn update(conn: &Connection, id: i64, name: &str, description: &str) -> AppR
     get(conn, id)
 }
 
+/// 重新指定项目目录(项目被移动后修复登记路径;标签、自定义命令等关联随 id 保留)
+pub fn update_path(conn: &Connection, id: i64, path: &str) -> AppResult<Project> {
+    let path = path.trim();
+    if path.is_empty() || !std::path::Path::new(path).is_dir() {
+        return Err(AppError::invalid_path(path));
+    }
+    let changed = conn
+        .execute(
+            "UPDATE projects SET path = ?1, updated_at = ?2 WHERE id = ?3",
+            params![path, now(), id],
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::SqliteFailure(err, _)
+                if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                AppError::Conflict(format!("项目已存在: {path}"))
+            }
+            other => AppError::Db(other),
+        })?;
+    if changed == 0 {
+        return Err(AppError::project_not_found(id));
+    }
+    get(conn, id)
+}
+
 /// 归档项目:软删除,保留历史数据(标签、自定义命令等关联数据不动)
 pub fn archive(conn: &Connection, id: i64) -> AppResult<()> {
     let changed = conn.execute(
@@ -292,6 +319,12 @@ pub fn update_project(
 ) -> AppResult<Project> {
     let conn = db.0.lock().unwrap();
     update(&conn, id, &name, &description)
+}
+
+#[tauri::command]
+pub fn update_project_path(db: State<'_, Db>, id: i64, path: String) -> AppResult<Project> {
+    let conn = db.0.lock().unwrap();
+    update_path(&conn, id, &path)
 }
 
 #[tauri::command]
@@ -436,6 +469,42 @@ mod tests {
         assert!(
             matches!(update(&conn, 9999, "x", ""), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
         );
+    }
+
+    #[test]
+    fn update_path_relocates_and_validates() {
+        let conn = test_conn();
+        let dir = std::env::temp_dir();
+        let a_path = dir.join("repomeow-relocate-a");
+        let b_path = dir.join("repomeow-relocate-b");
+        std::fs::create_dir_all(&a_path).unwrap();
+        std::fs::create_dir_all(&b_path).unwrap();
+        let a = add(&conn, &a_path.to_string_lossy(), "a", "").unwrap();
+        let b = add(&conn, &b_path.to_string_lossy(), "b", "").unwrap();
+
+        // 不存在的目录 / 已被其他项目登记的目录都拒绝
+        assert!(
+            matches!(update_path(&conn, a.id, "C:/definitely/not/exist"),
+                Err(ref e) if e.is_code(crate::error::ErrorCode::InvalidPath))
+        );
+        assert!(matches!(
+            update_path(&conn, a.id, &b.path),
+            Err(AppError::Conflict(_))
+        ));
+
+        // 换到一个新目录:path 更新,path_exists 重新计算
+        let new_path = dir.join("repomeow-relocate-c");
+        std::fs::create_dir_all(&new_path).unwrap();
+        let moved = update_path(&conn, a.id, &new_path.to_string_lossy()).unwrap();
+        assert_eq!(moved.path, new_path.to_string_lossy());
+        assert!(moved.path_exists);
+        assert!(moved.updated_at >= a.updated_at);
+
+        assert!(
+            matches!(update_path(&conn, 9999, &new_path.to_string_lossy()),
+                Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
+        );
+        drop(b);
     }
 
     #[test]

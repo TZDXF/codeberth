@@ -90,6 +90,8 @@ pub struct Project {
     pub description: String,
     pub tags: Vec<Tag>,
     pub git: Option<GitStatus>,
+    /// 运行时计算:登记的目录当前是否仍存在(被移动/删除/盘符离线时为 false)
+    pub path_exists: bool,
     pub archived_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,

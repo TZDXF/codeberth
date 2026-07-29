@@ -103,6 +103,10 @@ export default {
     card: {
       remoteAhead: "远端领先",
     },
+    status: {
+      pathMissing: "目录缺失",
+      pathMissingHint: "项目目录已被移动、删除或暂时不可用,重新指定目录后即可恢复使用。",
+    },
     add: {
       dialogTitle: "选择项目文件夹",
       title: "添加项目",
@@ -141,9 +145,21 @@ export default {
     },
     actions: {
       more: "更多操作",
+      relocate: "重新指定目录",
       archive: "归档项目",
       archiveConfirm: "确定归档项目「{name}」吗?\n归档后将不再显示,历史数据会保留。",
       archiveSuccess: "已归档项目「{name}」",
+    },
+    relocate: {
+      title: "重新指定目录",
+      description: "为项目「{name}」选择新的目录,标签、自定义命令等数据会保留。",
+      dialogTitle: "选择新的项目目录",
+      currentPath: "当前登记路径",
+      pathLabel: "新目录",
+      pathPlaceholder: "选择文件夹...",
+      browse: "浏览",
+      confirm: "更新目录",
+      success: "已更新项目「{name}」的目录",
     },
     detail: {
       backToList: "返回项目列表",

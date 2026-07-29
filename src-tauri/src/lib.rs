@@ -56,6 +56,7 @@ pub fn run() {
             commands::project::list_projects,
             commands::project::get_project,
             commands::project::update_project,
+            commands::project::update_project_path,
             commands::project::archive_project,
             commands::project::list_archived_projects,
             commands::project::unarchive_project,
