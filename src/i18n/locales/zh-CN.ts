@@ -648,6 +648,8 @@ export default {
       defaultDesc: "简洁中性的默认外观",
       island: "动森小岛",
       islandDesc: "奶油底色、青绿点缀的绘本风",
+      glass: "科技玻璃",
+      glassDesc: "深空蓝底、霓虹青光效的磨砂玻璃风",
     },
     mdTheme: {
       title: "Markdown 主题",

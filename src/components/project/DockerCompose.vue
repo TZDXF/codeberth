@@ -55,6 +55,20 @@ const showHidden = ref(false);
 
 const stateKey = (f: ComposeFile, name: string) => `${f.path}\n${name}`;
 
+/** 服务行「更多」菜单打开中的行 key:关闭时延迟清除,保证关闭动画期间触发按钮仍显示,内容锚点不丢失 */
+const openMoreKey = ref<string | null>(null);
+
+function onMoreOpenChange(key: string, open: boolean) {
+  if (open) {
+    openMoreKey.value = key;
+  } else {
+    // 菜单关闭动画 100ms,动画结束后再允许按钮随 group-hover 隐藏
+    setTimeout(() => {
+      if (openMoreKey.value === key) openMoreKey.value = null;
+    }, 150);
+  }
+}
+
 const hiddenCount = computed(() => hiddenFiles.value.size);
 
 /** 当前应展示的文件:过滤隐藏文件;showHidden 时全部显示但标记 hidden 灰显 */
@@ -495,12 +509,19 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
                 >
                   <Square class="h-3.5 w-3.5" />
                 </Button>
-                <DropdownMenu>
+                <DropdownMenu
+                  @update:open="(v: boolean) => onMoreOpenChange(stateKey(d.file, s.name), v)"
+                >
                   <DropdownMenuTrigger as-child>
                     <Button
                       variant="ghost"
                       size="icon"
-                      class="h-7 w-7 shrink-0 text-muted-foreground hidden group-hover:inline-flex"
+                      class="h-7 w-7 shrink-0 text-muted-foreground"
+                      :class="
+                        openMoreKey === stateKey(d.file, s.name)
+                          ? 'inline-flex'
+                          : 'hidden group-hover:inline-flex'
+                      "
                       :title="t('docker.more')"
                     >
                       <MoreHorizontal class="h-3.5 w-3.5" />

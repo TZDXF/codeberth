@@ -7,7 +7,7 @@ import { OPEN_WITH_OPTIONS } from "@/lib/open-with";
 import type { EditorKind } from "@/types";
 
 export type ThemeMode = "system" | "light" | "dark";
-export type ThemeSkin = "default" | "island";
+export type ThemeSkin = "default" | "island" | "glass";
 export type MdTheme = "default" | "github" | "notion" | "serif";
 export type Language = SupportedLocale;
 export type ProjectsViewMode = "grid" | "table";
@@ -70,10 +70,10 @@ export const useSettingsStore = defineStore("settings", () => {
     const dark = theme.value === "dark" || (theme.value === "system" && systemDark.matches);
     const root = document.documentElement;
     root.classList.toggle("dark", dark);
-    if (themeSkin.value === "island") {
-      root.setAttribute("data-theme", "island");
-    } else {
+    if (themeSkin.value === "default") {
       root.removeAttribute("data-theme");
+    } else {
+      root.setAttribute("data-theme", themeSkin.value);
     }
     syncThemeCache();
   }
@@ -121,7 +121,7 @@ export const useSettingsStore = defineStore("settings", () => {
       theme.value = savedTheme;
     }
     const savedSkin = await fileStore.get<ThemeSkin>("themeSkin");
-    if (savedSkin === "default" || savedSkin === "island") {
+    if (savedSkin === "default" || savedSkin === "island" || savedSkin === "glass") {
       themeSkin.value = savedSkin;
     }
     const savedMdTheme = await fileStore.get<MdTheme>("mdTheme");

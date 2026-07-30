@@ -672,6 +672,8 @@ export default {
       defaultDesc: "Clean and neutral look",
       island: "Animal Island",
       islandDesc: "Creamy picture-book style with teal accents",
+      glass: "Tech Glass",
+      glassDesc: "Frosted glass over deep space blue with neon cyan glow",
     },
     mdTheme: {
       title: "Markdown theme",

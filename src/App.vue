@@ -25,6 +25,10 @@ const updateStore = useUpdateStore();
 const isTrayPopup = getCurrentWindow().label === "tray-popup";
 
 onMounted(() => {
+  // 托盘弹窗窗口已开 OS 级透明,body 不再刷底色,让玻璃皮肤能透出桌面
+  if (isTrayPopup) {
+    document.body.classList.add("tray-popup-window");
+  }
   settingsStore.init().then(() => {
     if (isTrayPopup) return;
     updateStore.init();
@@ -74,7 +78,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <main class="flex h-screen flex-col overflow-hidden bg-background text-foreground">
+  <!-- 托盘弹窗窗口:整体透明,背景交给 TrayPopup 根节点(玻璃皮肤下透出系统模糊) -->
+  <main
+    class="flex h-screen flex-col overflow-hidden text-foreground"
+    :class="isTrayPopup ? 'bg-transparent' : 'bg-background'"
+  >
     <TitleBar v-if="!isTrayPopup" />
     <div class="min-h-0 flex-1">
       <router-view />

@@ -68,7 +68,10 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="flex h-full flex-col overflow-hidden border bg-background shadow-2xl">
+  <div
+    data-slot="tray-popup"
+    class="flex h-full flex-col overflow-hidden border bg-background shadow-2xl"
+  >
     <header class="shrink-0 border-b px-3 py-2">
       <div class="relative">
         <Search class="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />

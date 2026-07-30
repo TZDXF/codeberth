@@ -43,6 +43,12 @@ const SKINS: { value: ThemeSkin; labelKey: string; descriptionKey: string; swatc
       descriptionKey: "settings.skin.islandDesc",
       swatches: ["#f8f8f0", "#19c8b9", "#794f27"],
     },
+    {
+      value: "glass",
+      labelKey: "settings.skin.glass",
+      descriptionKey: "settings.skin.glassDesc",
+      swatches: ["#070d1f", "#22d3ee", "#8b5cf6"],
+    },
   ];
 </script>
 

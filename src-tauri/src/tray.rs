@@ -8,6 +8,10 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
     App, AppHandle, Emitter, Manager, PhysicalPosition, WebviewUrl, WebviewWindowBuilder,
 };
+#[cfg(target_os = "windows")]
+use tauri::window::{Effect, EffectsBuilder};
+#[cfg(target_os = "macos")]
+use tauri::window::{Effect, EffectState, EffectsBuilder};
 use tauri_plugin_store::StoreExt;
 
 use crate::APP_DATA_DIR_NAME;
@@ -32,6 +36,19 @@ static CLICK_GENERATION: AtomicU64 = AtomicU64::new(0);
 static LAST_DOUBLE_CLICK_MS: AtomicU64 = AtomicU64::new(0);
 /// 双击后忽略尾随单击的时间窗口
 const DOUBLE_CLICK_SUPPRESS: Duration = Duration::from_millis(500);
+
+/// 弹窗最近一次显示完成的时间戳(ms,UNIX epoch)
+static LAST_POPUP_SHOWN_MS: AtomicU64 = AtomicU64::new(0);
+/// 显示后忽略失焦自动收起的宽限期:首次显示时,顶层窗口先经 set_focus 拿到键盘焦点,
+/// 随后 WebView2 子窗口初始化完成 / 页面 autofocus 把焦点移进子 HWND,顶层窗口会收到
+/// 一次 WM_KILLFOCUS(tao 转为 Focused(false)),若照常 hide 弹窗便一闪即收
+const BLUR_SUPPRESS: Duration = Duration::from_millis(800);
+
+/// 弹窗显示后的宽限期内,失焦事件视为显示过程的焦点迁移,不应触发自动收起。
+pub(crate) fn should_ignore_popup_blur() -> bool {
+    now_millis().saturating_sub(LAST_POPUP_SHOWN_MS.load(Ordering::SeqCst))
+        < BLUR_SUPPRESS.as_millis() as u64
+}
 
 fn now_millis() -> u64 {
     std::time::SystemTime::now()
@@ -153,7 +170,9 @@ fn show_popup(app: &AppHandle, anchor: PhysicalPosition<f64>) {
     let window = match app.get_webview_window(TRAY_POPUP_LABEL) {
         Some(window) => window,
         None => {
-            let result = WebviewWindowBuilder::new(
+            // 透明窗口 + 系统级背景模糊(Windows Acrylic / macOS Vibrancy),
+            // 让玻璃拟态皮肤下弹窗能透出桌面;其余皮肤根节点仍是不透明底色,外观不变
+            let mut builder = WebviewWindowBuilder::new(
                 app,
                 TRAY_POPUP_LABEL,
                 WebviewUrl::App("index.html#/tray".into()),
@@ -167,7 +186,21 @@ fn show_popup(app: &AppHandle, anchor: PhysicalPosition<f64>) {
             .skip_taskbar(true)
             .always_on_top(true)
             .visible(false)
-            .build();
+            .transparent(true);
+            #[cfg(target_os = "windows")]
+            {
+                builder = builder.effects(EffectsBuilder::new().effect(Effect::Acrylic).build());
+            }
+            #[cfg(target_os = "macos")]
+            {
+                builder = builder.effects(
+                    EffectsBuilder::new()
+                        .effect(Effect::Popover)
+                        .state(EffectState::FollowsWindowActiveState)
+                        .build(),
+                );
+            }
+            let result = builder.build();
             match result {
                 Ok(window) => window,
                 Err(e) => {
@@ -197,6 +230,7 @@ fn show_popup(app: &AppHandle, anchor: PhysicalPosition<f64>) {
     let _ = window.set_position(PhysicalPosition::new(x as i32, y as i32));
     let _ = window.show();
     let _ = window.set_focus();
+    LAST_POPUP_SHOWN_MS.store(now_millis(), Ordering::SeqCst);
     // 通知弹窗刷新项目列表(主窗口的数据变更不会同步到弹窗的独立 Pinia 实例)
     let _ = window.emit("tray-popup://refresh", ());
 }
