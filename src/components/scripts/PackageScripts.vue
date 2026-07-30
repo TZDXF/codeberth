@@ -138,7 +138,8 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
        全部隐藏时保留头部,以便通过「显示已隐藏」恢复 -->
   <Card v-if="loaded && (displayGroups.length || hiddenCount)" class="group/card">
     <CardHeader class="pb-3">
-      <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+      <!-- min-h-6 与 hover 才显示的 h-6 按钮同高,避免按钮出现时头部跳动 -->
+      <CardTitle class="flex min-h-6 items-center gap-2 text-sm font-semibold">
         <Package class="h-4 w-4" />
         {{ t("scripts.package.title") }}
         <template v-if="hiddenCount">
