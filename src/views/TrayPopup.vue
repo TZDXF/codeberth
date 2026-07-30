@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
-import { cmd } from "@/lib/tauri";
+import { cmd, onListen } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import type { Project } from "@/types";
 
@@ -16,16 +16,19 @@ const { t } = useI18n();
 const store = useProjectsStore();
 const searchInput = ref("");
 
-// 客户端过滤:弹窗有独立 Pinia 实例,与主窗口的查询状态互不影响
+// 客户端过滤 + 按最近更新倒序;弹窗有独立 Pinia 实例,与主窗口的查询状态互不影响
 const filtered = computed(() => {
   const q = searchInput.value.trim().toLowerCase();
-  if (!q) return store.projects;
-  return store.projects.filter(
-    (p) =>
-      p.name.toLowerCase().includes(q) ||
-      p.path.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q),
-  );
+  const list = q
+    ? store.projects.filter(
+        (p) =>
+          p.name.toLowerCase().includes(q) ||
+          p.path.toLowerCase().includes(q) ||
+          p.description.toLowerCase().includes(q) ||
+          p.tags.some((tag) => tag.name.toLowerCase().includes(q)),
+      )
+    : store.projects;
+  return [...list].sort((a, b) => b.updated_at - a.updated_at);
 });
 
 /** 点击项目行:显示主窗口并跳转到该项目详情页(弹窗随后因失焦自动收起) */
@@ -46,6 +49,10 @@ function onKeydown(e: KeyboardEvent) {
 onMounted(() => {
   // 项目列表由 App.vue 统一拉取(弹窗内 withGit: false,不拉 git 状态)
   window.addEventListener("keydown", onKeydown);
+  // 每次弹窗显示时后端会发刷新事件,重新拉取以同步主窗口的数据变更
+  onListen("tray-popup://refresh", () => {
+    store.fetchProjects({ withGit: false });
+  });
 });
 
 onUnmounted(() => {
@@ -76,7 +83,7 @@ onUnmounted(() => {
           @click="openProject(project)"
         >
           <div class="min-w-0 flex-1">
-            <div class="flex items-center gap-1.5">
+            <div class="flex min-w-0 items-center gap-1.5">
               <span class="truncate text-sm font-medium">{{ project.name }}</span>
               <Badge
                 v-if="!project.path_exists"
@@ -86,9 +93,27 @@ onUnmounted(() => {
               >
                 {{ t("projects.status.pathMissing") }}
               </Badge>
+              <div
+                v-if="project.tags.length"
+                class="flex min-w-0 items-center gap-1 overflow-hidden"
+              >
+                <Badge
+                  v-for="tag in project.tags"
+                  :key="tag.id"
+                  variant="secondary"
+                  class="shrink-0 px-1.5 py-0 text-[11px]"
+                  :style="{ backgroundColor: tag.color + '22', color: tag.color }"
+                >
+                  {{ tag.name }}
+                </Badge>
+              </div>
             </div>
-            <p class="truncate text-xs text-muted-foreground" :title="project.path">
-              {{ project.path }}
+            <p
+              v-if="project.description"
+              class="mt-0.5 truncate text-xs text-muted-foreground"
+              :title="project.description"
+            >
+              {{ project.description }}
             </p>
           </div>
           <div class="shrink-0 opacity-0 transition-opacity group-hover:opacity-100">

@@ -1,5 +1,8 @@
 //! 系统托盘:图标/菜单、迷你项目列表弹窗的创建与定位。
 
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::Duration;
+
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
@@ -18,6 +21,12 @@ const POPUP_WIDTH: f64 = 360.0;
 const POPUP_HEIGHT: f64 = 480.0;
 /// 弹窗与托盘图标/屏幕边缘的间距(px)
 const POPUP_MARGIN: f64 = 12.0;
+/// 单击响应延迟:双击事件总是先于第二击的 DoubleClick 到达两次 Click,
+/// 延迟等待以区分单击/双击,避免双击时弹窗闪现
+const CLICK_DELAY: Duration = Duration::from_millis(300);
+
+/// 单击代际计数:每次单击/双击 +1,延迟任务仅在自己仍是最后一代时才执行
+static CLICK_GENERATION: AtomicU64 = AtomicU64::new(0);
 
 /// 从 ~/.repomeow/settings.json 读取字符串设置项(与前端 tauri-plugin-store 同一文件)。
 /// 读取失败返回 None,调用方自行回退默认值。
@@ -62,11 +71,25 @@ pub(crate) fn setup(app: &App) -> tauri::Result<()> {
                     button_state: MouseButtonState::Up,
                     position,
                     ..
-                } => toggle_popup(app, position),
+                } => {
+                    // 延迟触发:若随后到来双击则该代作废,弹窗不会闪现
+                    let generation = CLICK_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+                    let app = app.clone();
+                    std::thread::spawn(move || {
+                        std::thread::sleep(CLICK_DELAY);
+                        if CLICK_GENERATION.load(Ordering::SeqCst) == generation {
+                            toggle_popup(&app, position);
+                        }
+                    });
+                }
                 TrayIconEvent::DoubleClick {
                     button: MouseButton::Left,
                     ..
-                } => show_main_window(app, None),
+                } => {
+                    // 作废待处理的单击任务,直接打开主窗口
+                    CLICK_GENERATION.fetch_add(1, Ordering::SeqCst);
+                    show_main_window(app, None);
+                }
                 _ => {}
             }
         });
@@ -156,4 +179,6 @@ fn show_popup(app: &AppHandle, anchor: PhysicalPosition<f64>) {
     let _ = window.set_position(PhysicalPosition::new(x as i32, y as i32));
     let _ = window.show();
     let _ = window.set_focus();
+    // 通知弹窗刷新项目列表(主窗口的数据变更不会同步到弹窗的独立 Pinia 实例)
+    let _ = window.emit("tray-popup://refresh", ());
 }
