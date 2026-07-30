@@ -27,6 +27,18 @@ const CLICK_DELAY: Duration = Duration::from_millis(300);
 
 /// 单击代际计数:每次单击/双击 +1,延迟任务仅在自己仍是最后一代时才执行
 static CLICK_GENERATION: AtomicU64 = AtomicU64::new(0);
+/// 最近一次双击的时间戳(ms,UNIX epoch):双击后系统还会补发一次 Click(Up),
+/// 用它来丢弃这次尾随单击,避免双击时弹窗被重新打开
+static LAST_DOUBLE_CLICK_MS: AtomicU64 = AtomicU64::new(0);
+/// 双击后忽略尾随单击的时间窗口
+const DOUBLE_CLICK_SUPPRESS: Duration = Duration::from_millis(500);
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 /// 从 ~/.repomeow/settings.json 读取字符串设置项(与前端 tauri-plugin-store 同一文件)。
 /// 读取失败返回 None,调用方自行回退默认值。
@@ -72,6 +84,11 @@ pub(crate) fn setup(app: &App) -> tauri::Result<()> {
                     position,
                     ..
                 } => {
+                    // 双击尾巴上的 Click(Up):直接忽略,不再排入延迟任务
+                    let since_double = now_millis().saturating_sub(LAST_DOUBLE_CLICK_MS.load(Ordering::SeqCst));
+                    if since_double < DOUBLE_CLICK_SUPPRESS.as_millis() as u64 {
+                        return;
+                    }
                     // 延迟触发:若随后到来双击则该代作废,弹窗不会闪现
                     let generation = CLICK_GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
                     let app = app.clone();
@@ -86,8 +103,9 @@ pub(crate) fn setup(app: &App) -> tauri::Result<()> {
                     button: MouseButton::Left,
                     ..
                 } => {
-                    // 作废待处理的单击任务,直接打开主窗口
+                    // 作废待处理的单击任务并记录双击时间(抑制随后的尾随 Click),直接打开主窗口
                     CLICK_GENERATION.fetch_add(1, Ordering::SeqCst);
+                    LAST_DOUBLE_CLICK_MS.store(now_millis(), Ordering::SeqCst);
                     show_main_window(app, None);
                 }
                 _ => {}

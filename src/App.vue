@@ -32,6 +32,10 @@ onMounted(() => {
     }
   });
   store.fetchProjects({ withGit: !isTrayPopup });
+  // 另一窗口(托盘弹窗/主窗口)切换收藏后同步刷新;保留已有 git 状态避免闪烁
+  onListen("projects://favorite-changed", () => {
+    store.fetchProjects({ withGit: false });
+  });
   if (isTrayPopup) return;
   store.startGitAutoRefresh();
   tagsStore.fetchTags();

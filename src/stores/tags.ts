@@ -1,6 +1,7 @@
 import { ref } from "vue";
 import { defineStore } from "pinia";
 import { cmd } from "@/lib/tauri";
+import { useProjectsStore } from "@/stores/projects";
 import type { Tag } from "@/types";
 
 export const useTagsStore = defineStore("tags", () => {
@@ -8,6 +9,12 @@ export const useTagsStore = defineStore("tags", () => {
 
   async function fetchTags() {
     tags.value = await cmd<Tag[]>("list_tags");
+  }
+
+  // 标签增删改会影响项目内嵌的 tags(name/color/关联),需同步刷新项目列表;
+  // withGit: false 只更新列表数据,保留已有 git 状态,避免触发 git 拉取
+  async function refreshProjects() {
+    await useProjectsStore().fetchProjects({ withGit: false });
   }
 
   async function createTag(name: string, color: string) {
@@ -19,12 +26,14 @@ export const useTagsStore = defineStore("tags", () => {
   async function updateTag(id: number, name: string, color: string) {
     const tag = await cmd<Tag>("update_tag", { id, name, color });
     await fetchTags();
+    await refreshProjects();
     return tag;
   }
 
   async function deleteTag(id: number) {
     await cmd("delete_tag", { id });
     await fetchTags();
+    await refreshProjects();
   }
 
   async function setProjectTags(projectId: number, tagIds: number[]) {

@@ -85,6 +85,7 @@ const cloneDescription = ref("");
 
 // 账号仓库模式
 const accounts = ref<GitAccount[]>([]);
+const accountsLoading = ref(false);
 const accountsLoaded = ref(false);
 const selectedAccountId = ref<number | null>(null);
 const repos = ref<RemoteRepo[]>([]);
@@ -129,8 +130,8 @@ const filteredRepos = computed(() => {
 
 /** 首次进入账号模式时加载账号列表与本地项目 remote 地址(「已添加」匹配用) */
 async function ensureAccountsLoaded() {
-  if (accountsLoaded.value) return;
-  accountsLoaded.value = true;
+  if (accountsLoaded.value || accountsLoading.value) return;
+  accountsLoading.value = true;
   try {
     const [accs, remoteUrls] = await Promise.all([listGitAccounts(), listProjectRemoteUrls()]);
     // 设置页开启 GitHub CLI 集成时才探测 gh;探测失败静默降级(下拉不显示该项)
@@ -142,6 +143,9 @@ async function ensureAccountsLoaded() {
     }
   } catch (e) {
     toast.error(String(e));
+  } finally {
+    accountsLoading.value = false;
+    accountsLoaded.value = true;
   }
 }
 

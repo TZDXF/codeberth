@@ -1,5 +1,5 @@
 use rusqlite::{params, params_from_iter, Connection, OptionalExtension, ToSql};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::db::Db;
 use crate::error::{AppError, AppResult};
@@ -522,9 +522,22 @@ pub fn unarchive_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
 }
 
 #[tauri::command]
-pub fn set_project_favorite(db: State<'_, Db>, id: i64, favorite: bool) -> AppResult<()> {
-    let conn = db.0.lock().unwrap();
-    set_favorite(&conn, id, favorite)
+pub fn set_project_favorite(
+    app: AppHandle,
+    db: State<'_, Db>,
+    id: i64,
+    favorite: bool,
+) -> AppResult<()> {
+    {
+        let conn = db.0.lock().unwrap();
+        set_favorite(&conn, id, favorite)?;
+    }
+    // 托盘弹窗与主窗口是独立 Pinia 实例,广播收藏变更让另一窗口同步刷新
+    let _ = app.emit(
+        "projects://favorite-changed",
+        serde_json::json!({ "id": id, "favorite": favorite }),
+    );
+    Ok(())
 }
 
 #[tauri::command]
