@@ -93,6 +93,7 @@ pub fn run() {
             commands::project::archive_project,
             commands::project::list_archived_projects,
             commands::project::unarchive_project,
+            commands::project::set_project_favorite,
             commands::project::delete_project,
             commands::git::get_git_status,
             commands::git::list_git_remotes,

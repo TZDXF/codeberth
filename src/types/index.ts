@@ -98,6 +98,8 @@ export interface Project {
   /** 登记的目录当前是否仍存在(被移动/删除/盘符离线时为 false) */
   path_exists: boolean;
   archived_at: number | null;
+  /** 收藏时间(null = 未收藏;列表中收藏项目置顶,组内按收藏时间倒序) */
+  favorited_at: number | null;
   created_at: number;
   updated_at: number;
 }

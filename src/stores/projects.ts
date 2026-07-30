@@ -187,6 +187,15 @@ export const useProjectsStore = defineStore("projects", () => {
     projects.value = projects.value.filter((p) => p.id !== id);
   }
 
+  /** 设置/取消收藏:成功后就地更新 favorited_at,列表排序由 computed 响应 */
+  async function setFavorite(id: number, favorite: boolean) {
+    await cmd("set_project_favorite", { id, favorite });
+    const p = projects.value.find((x) => x.id === id);
+    if (p) {
+      p.favorited_at = favorite ? Math.floor(Date.now() / 1000) : null;
+    }
+  }
+
   /** 拉取已归档项目列表(设置页归档管理用) */
   async function fetchArchivedProjects() {
     archivedProjects.value = await cmd<Project[]>("list_archived_projects");
@@ -280,6 +289,7 @@ export const useProjectsStore = defineStore("projects", () => {
     updateProjectPath,
     moveProjectDir,
     archiveProject,
+    setFavorite,
     fetchArchivedProjects,
     unarchiveProject,
     deleteProject,

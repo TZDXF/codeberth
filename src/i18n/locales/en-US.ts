@@ -157,6 +157,10 @@ export default {
     },
     actions: {
       more: "More actions",
+      favorite: "Add to favorites",
+      unfavorite: "Remove from favorites",
+      favoriteSuccess: 'Added "{name}" to favorites.',
+      unfavoriteSuccess: 'Removed "{name}" from favorites.',
       moveDir: "Move directory...",
       relocate: "Relocate directory",
       archive: "Archive project",
@@ -588,6 +592,9 @@ export default {
       title: "Accounts",
       description:
         "Link GitHub / Gitee / GitLab accounts to browse their repositories and clone them in one click",
+      enableGhCli: "GitHub CLI (gh)",
+      enableGhCliHint:
+        "When enabled, an authenticated gh shows up as an account in the Add Project → Account Repos dropdown",
       empty: "No linked accounts yet",
       add: "Add account",
       addTitle: "Link account",

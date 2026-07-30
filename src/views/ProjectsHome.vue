@@ -31,6 +31,7 @@ import ProjectTable from "@/components/project/ProjectTable.vue";
 import DailyReportDialog from "@/components/report/DailyReportDialog.vue";
 import TagCheckList from "@/components/tags/TagCheckList.vue";
 import TagManager from "@/components/tags/TagManager.vue";
+import { compareFavorited } from "@/lib/favorites";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore, type ProjectsSortKey, type ProjectsViewMode } from "@/stores/settings";
 import { useTagsStore } from "@/stores/tags";
@@ -74,16 +75,21 @@ const selectedTags = computed(() =>
 
 const sortedProjects = computed(() => {
   const list = [...store.projects];
+  // 收藏项目无条件置顶(组内按收藏时间倒序),其余按当前排序键排列
   switch (sortKey.value) {
     case "updated":
       // 以 git 最新提交时间衡量「最近更新」;非 git 仓库或状态未加载时回退到信息更新时间
       return list.sort(
-        (a, b) => (b.git?.last_commit_at ?? b.updated_at) - (a.git?.last_commit_at ?? a.updated_at),
+        (a, b) =>
+          compareFavorited(a, b) ||
+          (b.git?.last_commit_at ?? b.updated_at) - (a.git?.last_commit_at ?? a.updated_at),
       );
     case "created":
-      return list.sort((a, b) => b.created_at - a.created_at);
+      return list.sort((a, b) => compareFavorited(a, b) || b.created_at - a.created_at);
     default:
-      return list.sort((a, b) => a.name.localeCompare(b.name, "zh-Hans-CN"));
+      return list.sort(
+        (a, b) => compareFavorited(a, b) || a.name.localeCompare(b.name, "zh-Hans-CN"),
+      );
   }
 });
 </script>

@@ -41,6 +41,8 @@ export const useSettingsStore = defineStore("settings", () => {
   const autoCheckUpdate = ref(true);
   /** 关闭主窗口行为(默认最小化到托盘) */
   const closeAction = ref<CloseAction>("tray");
+  /** 启用 GitHub CLI(gh)作为「账号仓库」的虚拟账号来源(默认关闭,opt-in) */
+  const enableGhCli = ref(false);
 
   let fileStore: Store | null = null;
   let initialized = false;
@@ -111,6 +113,7 @@ export const useSettingsStore = defineStore("settings", () => {
         projectsSortKey: "name",
         autoCheckUpdate: "true",
         closeAction: "tray",
+        enableGhCli: "false",
       },
     });
     const savedTheme = await fileStore.get<ThemeMode>("theme");
@@ -180,6 +183,11 @@ export const useSettingsStore = defineStore("settings", () => {
     const savedCloseAction = await fileStore.get<CloseAction>("closeAction");
     if (savedCloseAction === "tray" || savedCloseAction === "exit") {
       closeAction.value = savedCloseAction;
+    }
+    // GitHub CLI 集成开关:存为字符串 "true"/"false",非法值回退 false
+    const savedEnableGhCli = await fileStore.get<string>("enableGhCli");
+    if (savedEnableGhCli === "true" || savedEnableGhCli === "false") {
+      enableGhCli.value = savedEnableGhCli === "true";
     }
     applyTheme();
     applyMdTheme();
@@ -265,6 +273,11 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("closeAction", value);
   }
 
+  async function setEnableGhCli(value: boolean) {
+    enableGhCli.value = value;
+    await persist("enableGhCli", String(value));
+  }
+
   return {
     theme,
     themeSkin,
@@ -279,6 +292,7 @@ export const useSettingsStore = defineStore("settings", () => {
     projectsSortKey,
     autoCheckUpdate,
     closeAction,
+    enableGhCli,
     init,
     setTheme,
     setThemeSkin,
@@ -293,5 +307,6 @@ export const useSettingsStore = defineStore("settings", () => {
     setProjectsSortKey,
     setAutoCheckUpdate,
     setCloseAction,
+    setEnableGhCli,
   };
 });

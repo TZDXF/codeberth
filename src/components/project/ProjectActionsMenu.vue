@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
-import { Archive, FolderInput, FolderSync, MoreHorizontal } from "@lucide/vue";
+import { Archive, FolderInput, FolderSync, MoreHorizontal, Star, StarOff } from "@lucide/vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import MoveProjectDialog from "@/components/project/MoveProjectDialog.vue";
 import RelocateProjectDialog from "@/components/project/RelocateProjectDialog.vue";
@@ -57,6 +57,20 @@ async function archive() {
     toast.error(String(e));
   }
 }
+
+async function toggleFavorite() {
+  const favorite = !props.project.favorited_at;
+  try {
+    await store.setFavorite(props.project.id, favorite);
+    toast.success(
+      t(favorite ? "projects.actions.favoriteSuccess" : "projects.actions.unfavoriteSuccess", {
+        name: props.project.name,
+      }),
+    );
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
 </script>
 
 <template>
@@ -83,6 +97,11 @@ async function archive() {
         {{ t(opt.descKey) }}
       </DropdownMenuItem>
       <DropdownMenuSeparator />
+      <DropdownMenuItem class="gap-2 text-xs" @click="toggleFavorite">
+        <StarOff v-if="project.favorited_at" class="h-3.5 w-3.5" />
+        <Star v-else class="h-3.5 w-3.5" />
+        {{ t(project.favorited_at ? "projects.actions.unfavorite" : "projects.actions.favorite") }}
+      </DropdownMenuItem>
       <DropdownMenuItem v-if="project.path_exists" class="gap-2 text-xs" @click="moveOpen = true">
         <FolderInput class="h-3.5 w-3.5" />
         {{ t("projects.actions.moveDir") }}

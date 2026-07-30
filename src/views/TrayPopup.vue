@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import OpenWithMenu from "@/components/open/OpenWithMenu.vue";
+import FavoriteToggle from "@/components/project/FavoriteToggle.vue";
+import { compareFavorited } from "@/lib/favorites";
 import { cmd, onListen } from "@/lib/tauri";
 import { useProjectsStore } from "@/stores/projects";
 import type { Project } from "@/types";
@@ -28,7 +30,8 @@ const filtered = computed(() => {
           p.tags.some((tag) => tag.name.toLowerCase().includes(q)),
       )
     : store.projects;
-  return [...list].sort((a, b) => b.updated_at - a.updated_at);
+  // 收藏项目置顶(组内按收藏时间倒序),其余按最近更新倒序
+  return [...list].sort((a, b) => compareFavorited(a, b) || b.updated_at - a.updated_at);
 });
 
 /** 点击项目行:显示主窗口并跳转到该项目详情页(弹窗随后因失焦自动收起) */
@@ -116,8 +119,11 @@ onUnmounted(() => {
               {{ project.description }}
             </p>
           </div>
-          <div class="shrink-0 opacity-0 transition-opacity group-hover:opacity-100">
-            <OpenWithMenu :project="project" compact />
+          <div class="flex shrink-0 items-center">
+            <FavoriteToggle :project="project" />
+            <div class="opacity-0 transition-opacity group-hover:opacity-100">
+              <OpenWithMenu :project="project" compact />
+            </div>
           </div>
         </button>
         <p v-if="!filtered.length" class="py-10 text-center text-sm text-muted-foreground">

@@ -15,11 +15,13 @@ struct ProjectRow {
     name: String,
     description: String,
     archived_at: Option<i64>,
+    favorited_at: Option<i64>,
     created_at: i64,
     updated_at: i64,
 }
 
-const PROJECT_COLS: &str = "id, path, name, description, archived_at, created_at, updated_at";
+const PROJECT_COLS: &str =
+    "id, path, name, description, archived_at, favorited_at, created_at, updated_at";
 
 fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRow> {
     Ok(ProjectRow {
@@ -28,8 +30,9 @@ fn map_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<ProjectRow> {
         name: r.get(2)?,
         description: r.get(3)?,
         archived_at: r.get(4)?,
-        created_at: r.get(5)?,
-        updated_at: r.get(6)?,
+        favorited_at: r.get(5)?,
+        created_at: r.get(6)?,
+        updated_at: r.get(7)?,
     })
 }
 
@@ -62,6 +65,7 @@ fn project_from_row(row: ProjectRow, tags: Vec<Tag>) -> Project {
         git: None,
         path_exists,
         archived_at: row.archived_at,
+        favorited_at: row.favorited_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
     }
@@ -411,6 +415,19 @@ pub fn unarchive(conn: &Connection, id: i64) -> AppResult<()> {
     Ok(())
 }
 
+/// 设置/取消收藏:收藏项目在各列表中置顶(组内按收藏时间倒序)
+pub fn set_favorite(conn: &Connection, id: i64, favorite: bool) -> AppResult<()> {
+    let favorited_at = if favorite { Some(now()) } else { None };
+    let changed = conn.execute(
+        "UPDATE projects SET favorited_at = ?1 WHERE id = ?2",
+        params![favorited_at, id],
+    )?;
+    if changed == 0 {
+        return Err(AppError::project_not_found(id));
+    }
+    Ok(())
+}
+
 /// 彻底删除项目(关联的标签指派、自定义命令随外键级联清理;不动磁盘文件)
 pub fn remove(conn: &Connection, id: i64) -> AppResult<()> {
     let changed = conn.execute("DELETE FROM projects WHERE id = ?1", params![id])?;
@@ -505,6 +522,12 @@ pub fn unarchive_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
 }
 
 #[tauri::command]
+pub fn set_project_favorite(db: State<'_, Db>, id: i64, favorite: bool) -> AppResult<()> {
+    let conn = db.0.lock().unwrap();
+    set_favorite(&conn, id, favorite)
+}
+
+#[tauri::command]
 pub fn delete_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
     let conn = db.0.lock().unwrap();
     remove(&conn, id)
@@ -546,6 +569,24 @@ mod tests {
 
         assert!(
             matches!(archive(&conn, 9999), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
+        );
+    }
+
+    #[test]
+    fn set_favorite_toggles_favorited_at() {
+        let conn = test_conn();
+        let dir = std::env::temp_dir().to_string_lossy().to_string();
+        let p = add(&conn, &dir, "demo", "").unwrap();
+        assert!(p.favorited_at.is_none());
+
+        set_favorite(&conn, p.id, true).unwrap();
+        assert!(get(&conn, p.id).unwrap().favorited_at.is_some());
+
+        set_favorite(&conn, p.id, false).unwrap();
+        assert!(get(&conn, p.id).unwrap().favorited_at.is_none());
+
+        assert!(
+            matches!(set_favorite(&conn, 9999, true), Err(ref e) if e.is_code(crate::error::ErrorCode::ProjectNotFound))
         );
     }
 

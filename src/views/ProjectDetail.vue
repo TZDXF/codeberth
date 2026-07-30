@@ -3,7 +3,7 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { ArrowLeft, BookOpen, FileText, FolderSync, Pencil, TriangleAlert } from "@lucide/vue";
+import { ArrowLeft, BookOpen, FileText, FolderSync, Pencil, Star, TriangleAlert } from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import GitStatusBar from "@/components/git/GitStatusBar.vue";
 import GitActions from "@/components/git/GitActions.vue";
@@ -58,6 +58,22 @@ const readmeOpen = ref(false);
 
 // --- AI 日报弹窗 ---
 const reportOpen = ref(false);
+
+// --- 收藏切换(收藏项目在列表中置顶) ---
+async function toggleFavorite() {
+  if (!project.value) return;
+  const favorite = !project.value.favorited_at;
+  try {
+    await store.setFavorite(project.value.id, favorite);
+    toast.success(
+      t(favorite ? "projects.actions.favoriteSuccess" : "projects.actions.unfavoriteSuccess", {
+        name: project.value.name,
+      }),
+    );
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
 
 // --- 名称内联编辑 ---
 const editingName = ref(false);
@@ -146,6 +162,18 @@ async function saveDesc() {
           </h1>
         </div>
         <div class="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="icon"
+            class="h-9 w-9"
+            :title="t(project.favorited_at ? 'projects.actions.unfavorite' : 'projects.actions.favorite')"
+            @click="toggleFavorite"
+          >
+            <Star
+              class="h-4 w-4"
+              :class="project.favorited_at ? 'fill-yellow-400 text-yellow-400' : ''"
+            />
+          </Button>
           <Button variant="outline" size="sm" :title="t('report.title')" @click="reportOpen = true">
             <FileText class="h-4 w-4" />
             {{ t("ai.entry") }}

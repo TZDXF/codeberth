@@ -3,6 +3,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
+import FavoriteToggle from "@/components/project/FavoriteToggle.vue";
 import ProjectActionsMenu from "@/components/project/ProjectActionsMenu.vue";
 import type { Project } from "@/types";
 
@@ -25,7 +26,7 @@ function open(id: number) {
         <th class="px-3 py-2 font-medium">{{ t("projects.table.branch") }}</th>
         <th class="px-3 py-2 font-medium">{{ t("projects.table.workspace") }}</th>
         <th class="px-3 py-2 font-medium">{{ t("projects.table.tags") }}</th>
-        <th class="w-14 px-3 py-2 text-right font-medium">{{ t("projects.table.actions") }}</th>
+        <th class="w-20 px-3 py-2 text-right font-medium">{{ t("projects.table.actions") }}</th>
       </tr>
     </thead>
     <tbody>
@@ -105,6 +106,7 @@ function open(id: number) {
         </td>
         <td class="px-3 py-1.5" @click.stop>
           <div class="flex items-center justify-end">
+            <FavoriteToggle :project="p" />
             <ProjectActionsMenu :project="p" />
           </div>
         </td>

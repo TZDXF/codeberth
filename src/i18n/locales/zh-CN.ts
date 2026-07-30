@@ -149,6 +149,10 @@ export default {
     },
     actions: {
       more: "更多操作",
+      favorite: "收藏项目",
+      unfavorite: "取消收藏",
+      favoriteSuccess: "已收藏项目「{name}」",
+      unfavoriteSuccess: "已取消收藏「{name}」",
       moveDir: "移动目录...",
       relocate: "重新指定目录",
       archive: "归档项目",
@@ -568,6 +572,8 @@ export default {
     accounts: {
       title: "账号绑定",
       description: "绑定 GitHub / Gitee / GitLab 账号,用于浏览账号下的仓库并一键克隆添加",
+      enableGhCli: "GitHub CLI (gh)",
+      enableGhCliHint: "启用后,已登录的 gh 会作为账号出现在「添加项目 → 账号仓库」的账号下拉中",
       empty: "还没有绑定任何账号",
       add: "添加账号",
       addTitle: "绑定账号",

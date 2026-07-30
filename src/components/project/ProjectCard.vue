@@ -3,6 +3,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { GitBranch } from "@lucide/vue";
 import { Badge } from "@/components/ui/badge";
+import FavoriteToggle from "@/components/project/FavoriteToggle.vue";
 import ProjectActionsMenu from "@/components/project/ProjectActionsMenu.vue";
 import type { Project } from "@/types";
 
@@ -33,8 +34,13 @@ function open() {
           {{ t("projects.status.pathMissing") }}
         </Badge>
       </span>
-      <div class="flex shrink-0 items-center opacity-0 transition-opacity group-hover:opacity-100">
-        <ProjectActionsMenu :project="project" />
+      <div class="flex shrink-0 items-center">
+        <FavoriteToggle :project="project" />
+        <div
+          class="flex items-center opacity-0 transition-opacity group-hover:opacity-100"
+        >
+          <ProjectActionsMenu :project="project" />
+        </div>
       </div>
     </div>
     <p v-if="project.description" class="mt-0.5 truncate text-xs" :title="project.description">

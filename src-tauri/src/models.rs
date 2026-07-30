@@ -93,6 +93,8 @@ pub struct Project {
     /// 运行时计算:登记的目录当前是否仍存在(被移动/删除/盘符离线时为 false)
     pub path_exists: bool,
     pub archived_at: Option<i64>,
+    /// 收藏时间(NULL = 未收藏;列表中收藏项目置顶,组内按收藏时间倒序)
+    pub favorited_at: Option<i64>,
     pub created_at: i64,
     pub updated_at: i64,
 }
