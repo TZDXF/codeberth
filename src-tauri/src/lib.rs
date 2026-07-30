@@ -141,6 +141,8 @@ pub fn run() {
             commands::docker::compose_export,
             commands::hidden::list_hidden_items,
             commands::hidden::set_hidden_item,
+            commands::pin::list_pinned_commands,
+            commands::pin::set_pinned_command,
             commands::report::save_report_history,
             commands::report::list_report_history,
             commands::report::get_report_history,

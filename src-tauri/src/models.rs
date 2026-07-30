@@ -176,6 +176,24 @@ pub struct HiddenItem {
     pub target_key: String,
 }
 
+/// 一条被标记为「常用」的命令,在托盘弹窗项目列表中可直接执行
+/// kind: "packageScript" / "composeFile" / "composeService" / "customCommand"
+/// target_key: packageScript = "<dir>\n<name>";composeFile = 文件相对路径;
+///             composeService = "<file>\n<service>";customCommand = 命令 id
+/// command: npm/自定义为完整命令;compose 类为基础前缀 `docker compose -f "..."`,动作在执行时拼接
+#[derive(Debug, Clone, Serialize)]
+pub struct PinnedCommand {
+    pub id: i64,
+    pub project_id: i64,
+    pub kind: String,
+    pub target_key: String,
+    pub label: String,
+    pub command: String,
+    /// 可选工作目录:相对项目根(monorepo 子包),执行时拼接 project.path,迁移目录后仍可用
+    pub cwd: Option<String>,
+    pub created_at: i64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum EditorKind {

@@ -4,6 +4,7 @@ use crate::error::AppResult;
 
 const MIGRATION_001: &str = include_str!("../../migrations/001_init.sql");
 const MIGRATION_002: &str = include_str!("../../migrations/002_favorite.sql");
+const MIGRATION_003: &str = include_str!("../../migrations/003_pinned_commands.sql");
 
 /// 按 PRAGMA user_version 顺序应用迁移,保证幂等
 pub fn run(conn: &Connection) -> AppResult<()> {
@@ -15,6 +16,10 @@ pub fn run(conn: &Connection) -> AppResult<()> {
     if version < 2 {
         conn.execute_batch(MIGRATION_002)?;
         conn.pragma_update(None, "user_version", 2)?;
+    }
+    if version < 3 {
+        conn.execute_batch(MIGRATION_003)?;
+        conn.pragma_update(None, "user_version", 3)?;
     }
     Ok(())
 }

@@ -10,10 +10,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import ScriptItem from "@/components/scripts/ScriptItem.vue";
 import { useCollapsibleOpen } from "@/composables/useCollapsibleOpen";
 import { cmd, runInTerminal } from "@/lib/tauri";
+import { usePinsStore } from "@/stores/pins";
 import type { HiddenItem, HiddenKind, PackageScript, PackageScriptsGroup, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
+const pinsStore = usePinsStore();
 
 const { isOpen, setOpen } = useCollapsibleOpen("scripts");
 
@@ -62,6 +64,7 @@ watch(
   async () => {
     loaded.value = false;
     showHidden.value = false;
+    pinsStore.ensureLoaded();
     try {
       const [gs, items] = await Promise.all([
         cmd<PackageScriptsGroup[]>("list_package_scripts", { path: props.project.path }),
@@ -127,6 +130,28 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
   try {
     await runInTerminal(props.project, `npm run ${script.name}`, cwd);
     toast.success(t("scripts.package.started", { name: script.name }));
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+
+/** 切换单条脚本的「常用命令」标记(托盘弹窗中可快速执行) */
+async function togglePin(group: PackageScriptsGroup, script: PackageScript) {
+  const key = scriptKey(group.dir, script.name);
+  const pinned = pinsStore.isPinned(props.project.id, "packageScript", key);
+  try {
+    await pinsStore.setPinned(
+      props.project.id,
+      {
+        kind: "packageScript",
+        targetKey: key,
+        label: script.name,
+        command: `npm run ${script.name}`,
+        // 存相对目录而非绝对路径:项目迁移目录(Relocate)后标记仍可用,执行时再拼接 project.path
+        cwd: group.dir === "." ? undefined : group.dir,
+      },
+      !pinned,
+    );
   } catch (e) {
     toast.error(String(e));
   }
@@ -217,8 +242,17 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
                 :command="x.script.command"
                 hidable
                 :dimmed="x.hidden"
+                pinnable
+                :pinned="
+                  pinsStore.isPinned(
+                    project.id,
+                    'packageScript',
+                    scriptKey(d.group.dir, x.script.name),
+                  )
+                "
                 @run="run(d.group, x.script)"
                 @toggle-hide="toggleScriptHidden(d.group.dir, x.script.name, x.hidden)"
+                @toggle-pin="togglePin(d.group, x.script)"
               />
             </CollapsibleContent>
           </Collapsible>

@@ -65,6 +65,11 @@ export default {
     searchPlaceholder: "Search projects...",
     empty: "No matching projects",
   },
+  pins: {
+    mark: "Pin as frequent command (quick run from tray popup)",
+    unmark: "Unpin frequent command",
+    started: 'Started "{name}" in terminal',
+  },
   update: {
     title: "New version v{version} available",
     currentVersion: "Current version: v{version}",
@@ -457,6 +462,7 @@ export default {
     buildUp: "Build & start",
     restart: "Restart",
     stop: "Stop",
+    down: "Stop & remove",
     more: "More actions",
     exportContainer: "Export container",
     exportImage: "Export image",

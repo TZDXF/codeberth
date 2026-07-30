@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/sonner";
 import TitleBar from "@/components/TitleBar.vue";
 import BatchProgressFloat from "@/components/report/BatchProgressFloat.vue";
 import { onListen } from "@/lib/tauri";
+import { usePinsStore } from "@/stores/pins";
 import { useProjectsStore } from "@/stores/projects";
 import { useSettingsStore } from "@/stores/settings";
 import { useTagsStore } from "@/stores/tags";
@@ -15,6 +16,7 @@ import type { GitUpdatedPayload, ReportGeneratedPayload } from "@/types";
 
 const router = useRouter();
 const store = useProjectsStore();
+const pinsStore = usePinsStore();
 const tagsStore = useTagsStore();
 const settingsStore = useSettingsStore();
 const updateStore = useUpdateStore();
@@ -32,9 +34,14 @@ onMounted(() => {
     }
   });
   store.fetchProjects({ withGit: !isTrayPopup });
+  pinsStore.fetchPins();
   // 另一窗口(托盘弹窗/主窗口)切换收藏后同步刷新;保留已有 git 状态避免闪烁
   onListen("projects://favorite-changed", () => {
     store.fetchProjects({ withGit: false });
+  });
+  // 另一窗口变更「常用命令」标记后同步刷新
+  onListen("projects://pins-changed", () => {
+    pinsStore.fetchPins();
   });
   if (isTrayPopup) return;
   store.startGitAutoRefresh();

@@ -1,5 +1,5 @@
 use rusqlite::{params, Connection, OptionalExtension};
-use tauri::State;
+use tauri::{AppHandle, Emitter, State};
 
 use crate::commands::open::spawn_terminal;
 use crate::commands::walk;
@@ -159,6 +159,11 @@ pub fn update_command(
     if changed == 0 {
         return Err(AppError::NotFound(format!("custom command {id}")));
     }
+    // 同步可能存在的「常用命令」标记快照(target_key = 命令 id),避免编辑后快照失效
+    conn.execute(
+        "UPDATE pinned_commands SET label = ?1, command = ?2 WHERE kind = 'customCommand' AND target_key = ?3",
+        params![name.trim(), command.trim(), id.to_string()],
+    )?;
     get_command(conn, id)
 }
 
@@ -167,6 +172,11 @@ pub fn delete_command(conn: &Connection, id: i64) -> AppResult<()> {
     if changed == 0 {
         return Err(AppError::NotFound(format!("custom command {id}")));
     }
+    // 连带删除该命令的「常用命令」标记
+    conn.execute(
+        "DELETE FROM pinned_commands WHERE kind = 'customCommand' AND target_key = ?1",
+        params![id.to_string()],
+    )?;
     Ok(())
 }
 
@@ -198,6 +208,7 @@ pub fn create_custom_command(
 
 #[tauri::command]
 pub fn update_custom_command(
+    app: AppHandle,
     db: State<'_, Db>,
     id: i64,
     name: String,
@@ -205,14 +216,24 @@ pub fn update_custom_command(
     description: String,
     icon: String,
 ) -> AppResult<CustomCommand> {
-    let conn = db.0.lock().unwrap();
-    update_command(&conn, id, &name, &command, &description, &icon)
+    let result = {
+        let conn = db.0.lock().unwrap();
+        update_command(&conn, id, &name, &command, &description, &icon)?
+    };
+    // 编辑可能同步了「常用命令」标记快照,广播让另一窗口刷新
+    let _ = app.emit("projects://pins-changed", serde_json::json!({}));
+    Ok(result)
 }
 
 #[tauri::command]
-pub fn delete_custom_command(db: State<'_, Db>, id: i64) -> AppResult<()> {
-    let conn = db.0.lock().unwrap();
-    delete_command(&conn, id)
+pub fn delete_custom_command(app: AppHandle, db: State<'_, Db>, id: i64) -> AppResult<()> {
+    {
+        let conn = db.0.lock().unwrap();
+        delete_command(&conn, id)?;
+    }
+    // 删除会连带移除「常用命令」标记,广播让另一窗口刷新
+    let _ = app.emit("projects://pins-changed", serde_json::json!({}));
+    Ok(())
 }
 
 /// 在系统终端执行命令(新窗口,跑完不关)。

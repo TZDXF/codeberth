@@ -18,10 +18,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import ScriptItem from "@/components/scripts/ScriptItem.vue";
 import { COMMAND_ICONS } from "@/lib/command-icons";
 import { cmd, runInTerminal } from "@/lib/tauri";
+import { usePinsStore } from "@/stores/pins";
 import type { CustomCommand, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
+const pinsStore = usePinsStore();
 
 const commands = ref<CustomCommand[]>([]);
 
@@ -44,6 +46,7 @@ async function load() {
 }
 
 watch(() => props.project.id, load, { immediate: true });
+pinsStore.ensureLoaded();
 
 function openCreate() {
   editingId.value = null;
@@ -108,6 +111,21 @@ async function run(c: CustomCommand) {
     toast.error(String(e));
   }
 }
+
+/** 切换自定义命令的「常用命令」标记(target_key 为命令 id,后端会在编辑/删除时同步) */
+async function togglePin(c: CustomCommand) {
+  const key = String(c.id);
+  const pinned = pinsStore.isPinned(props.project.id, "customCommand", key);
+  try {
+    await pinsStore.setPinned(
+      props.project.id,
+      { kind: "customCommand", targetKey: key, label: c.name, command: c.command },
+      !pinned,
+    );
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
 </script>
 
 <template>
@@ -138,9 +156,12 @@ async function run(c: CustomCommand) {
             :description="c.description"
             :icon="c.icon"
             editable
+            pinnable
+            :pinned="pinsStore.isPinned(project.id, 'customCommand', String(c.id))"
             @run="run(c)"
             @edit="openEdit(c)"
             @delete="remove(c)"
+            @toggle-pin="togglePin(c)"
           />
         </div>
       </ScrollArea>

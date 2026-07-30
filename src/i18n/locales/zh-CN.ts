@@ -60,6 +60,11 @@ export default {
     searchPlaceholder: "搜索项目...",
     empty: "没有匹配的项目",
   },
+  pins: {
+    mark: "标记为常用命令(托盘弹窗中可快速执行)",
+    unmark: "取消常用标记",
+    started: "已在终端启动「{name}」",
+  },
   update: {
     title: "发现新版本 v{version}",
     currentVersion: "当前版本:v{version}",
@@ -443,6 +448,7 @@ export default {
     buildUp: "构建并启动",
     restart: "重启",
     stop: "停止",
+    down: "停止并移除",
     more: "更多操作",
     exportContainer: "导出容器",
     exportImage: "导出镜像",

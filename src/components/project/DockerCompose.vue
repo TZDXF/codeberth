@@ -16,6 +16,7 @@ import {
   Play,
   RotateCw,
   Square,
+  Star,
 } from "@lucide/vue";
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/button";
@@ -31,10 +32,12 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleOpen } from "@/composables/useCollapsibleOpen";
 import { cmd, runInTerminal } from "@/lib/tauri";
+import { usePinsStore } from "@/stores/pins";
 import type { ComposeFile, ComposeServiceState, HiddenItem, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
+const pinsStore = usePinsStore();
 
 const { isOpen, setOpen } = useCollapsibleOpen("compose");
 
@@ -87,6 +90,7 @@ watch(
         isOpen(`${props.project.id}:${f.path}`, files.value.length === 1),
       ]),
     );
+    pinsStore.ensureLoaded();
     loadStatuses();
   },
   { immediate: true },
@@ -165,6 +169,50 @@ function stateTitle(f: ComposeFile, name: string): string {
 async function openPort(port: number) {
   try {
     await openUrl(`http://localhost:${port}`);
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+
+/** compose 标记存的 command 为基础前缀,执行动作在托盘弹窗中点击时拼接 */
+function composeBaseCommand(file: ComposeFile): string {
+  return `docker compose -f "${file.path}"`;
+}
+
+/** 切换 compose 文件的「常用命令」标记 */
+async function toggleFilePin(file: ComposeFile) {
+  const pinned = pinsStore.isPinned(props.project.id, "composeFile", file.path);
+  try {
+    await pinsStore.setPinned(
+      props.project.id,
+      {
+        kind: "composeFile",
+        targetKey: file.path,
+        label: file.path,
+        command: composeBaseCommand(file),
+      },
+      !pinned,
+    );
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+
+/** 切换单个服务的「常用命令」标记 */
+async function toggleServicePin(file: ComposeFile, service: string) {
+  const key = `${file.path}\n${service}`;
+  const pinned = pinsStore.isPinned(props.project.id, "composeService", key);
+  try {
+    await pinsStore.setPinned(
+      props.project.id,
+      {
+        kind: "composeService",
+        targetKey: key,
+        label: service,
+        command: composeBaseCommand(file),
+      },
+      !pinned,
+    );
   } catch (e) {
     toast.error(String(e));
   }
@@ -294,6 +342,29 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
                 variant="ghost"
                 size="icon"
                 class="h-7 w-7 shrink-0"
+                :class="
+                  pinsStore.isPinned(project.id, 'composeFile', d.file.path)
+                    ? 'text-yellow-500'
+                    : 'hidden group-hover:inline-flex'
+                "
+                :title="
+                  pinsStore.isPinned(project.id, 'composeFile', d.file.path)
+                    ? t('pins.unmark')
+                    : t('pins.mark')
+                "
+                @click="toggleFilePin(d.file)"
+              >
+                <Star
+                  class="h-3.5 w-3.5"
+                  :class="{
+                    'fill-yellow-400': pinsStore.isPinned(project.id, 'composeFile', d.file.path),
+                  }"
+                />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                class="h-7 w-7 shrink-0"
                 :class="d.hidden ? 'text-muted-foreground' : 'hidden group-hover:inline-flex'"
                 :title="d.hidden ? t('common.unhide') : t('docker.hideFile')"
                 @click="toggleFileHidden(d.file.path, d.hidden)"
@@ -379,6 +450,33 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
                   {{ p.published }}:{{ p.target }}
                 </button>
                 <span class="min-w-0 flex-1" />
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  class="h-7 w-7 shrink-0"
+                  :class="
+                    pinsStore.isPinned(project.id, 'composeService', stateKey(d.file, s.name))
+                      ? 'text-yellow-500'
+                      : 'hidden group-hover:inline-flex'
+                  "
+                  :title="
+                    pinsStore.isPinned(project.id, 'composeService', stateKey(d.file, s.name))
+                      ? t('pins.unmark')
+                      : t('pins.mark')
+                  "
+                  @click="toggleServicePin(d.file, s.name)"
+                >
+                  <Star
+                    class="h-3.5 w-3.5"
+                    :class="{
+                      'fill-yellow-400': pinsStore.isPinned(
+                        project.id,
+                        'composeService',
+                        stateKey(d.file, s.name),
+                      ),
+                    }"
+                  />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"
