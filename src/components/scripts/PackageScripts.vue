@@ -145,8 +145,8 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
           <Button
             variant="ghost"
             size="icon"
-            class="ml-auto h-6 w-6 shrink-0 text-muted-foreground transition-opacity"
-            :class="{ 'opacity-0 group-hover/card:opacity-100': !showHidden }"
+            class="ml-auto h-6 w-6 shrink-0 text-muted-foreground"
+            :class="{ 'hidden group-hover/card:inline-flex': !showHidden }"
             :title="showHidden ? t('common.hideShown') : t('common.showHidden')"
             @click="showHidden = !showHidden"
           >
@@ -170,7 +170,7 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
             <!-- 多分组时可点击折叠,行尾悬停可隐藏整个 package.json;单分组不显示分组头 -->
             <div
               v-if="groups.length > 1"
-              class="group flex items-center gap-1 rounded-md px-2 py-1.5 hover:bg-accent"
+              class="group flex min-h-10 items-center gap-1 rounded-md px-2 py-1.5 hover:bg-accent"
               :class="{ 'opacity-50': d.groupHidden }"
             >
               <CollapsibleTrigger
@@ -199,10 +199,8 @@ async function run(group: PackageScriptsGroup, script: PackageScript) {
               <Button
                 variant="ghost"
                 size="icon"
-                class="h-7 w-7 shrink-0 transition-opacity"
-                :class="
-                  d.groupHidden ? 'text-muted-foreground' : 'opacity-0 group-hover:opacity-100'
-                "
+                class="h-7 w-7 shrink-0"
+                :class="d.groupHidden ? 'text-muted-foreground' : 'hidden group-hover:inline-flex'"
                 :title="d.groupHidden ? t('common.unhide') : t('scripts.package.hideFile')"
                 @click="toggleGroupHidden(d.group.dir, d.groupHidden)"
               >

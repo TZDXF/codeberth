@@ -242,8 +242,8 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
           <Button
             variant="ghost"
             size="icon"
-            class="ml-auto h-6 w-6 shrink-0 text-muted-foreground transition-opacity"
-            :class="{ 'opacity-0 group-hover/card:opacity-100': !showHidden }"
+            class="ml-auto h-6 w-6 shrink-0 text-muted-foreground"
+            :class="{ 'hidden group-hover/card:inline-flex': !showHidden }"
             :title="showHidden ? t('common.hideShown') : t('common.showHidden')"
             @click="showHidden = !showHidden"
           >
@@ -292,8 +292,8 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
               <Button
                 variant="ghost"
                 size="icon"
-                class="h-7 w-7 shrink-0 transition-opacity"
-                :class="d.hidden ? 'text-muted-foreground' : 'opacity-0 group-hover:opacity-100'"
+                class="h-7 w-7 shrink-0"
+                :class="d.hidden ? 'text-muted-foreground' : 'hidden group-hover:inline-flex'"
                 :title="d.hidden ? t('common.unhide') : t('docker.hideFile')"
                 @click="toggleFileHidden(d.file.path, d.hidden)"
               >
@@ -358,7 +358,7 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
               <div
                 v-for="s in d.file.services"
                 :key="s.name"
-                class="group flex items-center gap-2 rounded-md px-2 py-1.5 pl-7 hover:bg-accent"
+                class="group flex min-h-10 items-center gap-2 rounded-md px-2 py-1.5 pl-7 hover:bg-accent"
               >
                 <span
                   class="h-2 w-2 shrink-0 rounded-full"
@@ -381,7 +381,7 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
                 <Button
                   variant="ghost"
                   size="icon"
-                  class="h-7 w-7 shrink-0 text-emerald-600 opacity-0 transition-opacity group-hover:opacity-100"
+                  class="h-7 w-7 shrink-0 text-emerald-600 hidden group-hover:inline-flex"
                   :title="t('docker.up')"
                   @click="run(d.file, 'up -d', s.name)"
                 >
@@ -390,7 +390,7 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
                 <Button
                   variant="ghost"
                   size="icon"
-                  class="h-7 w-7 shrink-0 text-red-600 opacity-0 transition-opacity group-hover:opacity-100"
+                  class="h-7 w-7 shrink-0 text-red-600 hidden group-hover:inline-flex"
                   :title="t('docker.stop')"
                   @click="run(d.file, 'stop', s.name)"
                 >
@@ -401,7 +401,7 @@ async function exportAll(file: ComposeFile, kind: "container" | "image") {
                     <Button
                       variant="ghost"
                       size="icon"
-                      class="h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                      class="h-7 w-7 shrink-0 text-muted-foreground hidden group-hover:inline-flex"
                       :title="t('docker.more')"
                     >
                       <MoreHorizontal class="h-3.5 w-3.5" />

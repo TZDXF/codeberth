@@ -495,6 +495,8 @@ export default {
     },
     item: {
       runTitle: "在终端运行: {command}",
+      copy: "复制命令",
+      copied: "已复制到剪贴板",
       edit: "编辑",
       delete: "删除",
     },

@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { Eye, EyeOff, Pencil, Play, Trash2 } from "@lucide/vue";
+import { Eye, EyeOff, Copy, Pencil, Play, Trash2 } from "@lucide/vue";
+import { toast } from "vue-sonner";
 import { Button } from "@/components/ui/button";
 import { commandIcon } from "@/lib/command-icons";
 
@@ -26,6 +27,15 @@ const emit = defineEmits<{
   delete: [];
   toggleHide: [];
 }>();
+
+async function copyCommand() {
+  try {
+    await navigator.clipboard.writeText(props.command);
+    toast.success(t("scripts.item.copied"));
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
 </script>
 
 <template>
@@ -53,8 +63,8 @@ const emit = defineEmits<{
       v-if="hidable"
       variant="ghost"
       size="icon"
-      class="h-7 w-7 shrink-0 transition-opacity"
-      :class="dimmed ? 'text-muted-foreground' : 'opacity-0 group-hover:opacity-100'"
+      class="h-7 w-7 shrink-0"
+      :class="dimmed ? 'text-muted-foreground' : 'hidden group-hover:inline-flex'"
       :title="dimmed ? t('common.unhide') : t('common.hide')"
       @click="emit('toggleHide')"
     >
@@ -65,7 +75,16 @@ const emit = defineEmits<{
       <Button
         variant="ghost"
         size="icon"
-        class="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        class="h-7 w-7 shrink-0 hidden group-hover:inline-flex"
+        :title="t('scripts.item.copy')"
+        @click="copyCommand"
+      >
+        <Copy class="h-3.5 w-3.5" />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        class="h-7 w-7 shrink-0 hidden group-hover:inline-flex"
         :title="t('scripts.item.edit')"
         @click="emit('edit')"
       >
@@ -74,7 +93,7 @@ const emit = defineEmits<{
       <Button
         variant="ghost"
         size="icon"
-        class="h-7 w-7 shrink-0 opacity-0 transition-opacity group-hover:opacity-100"
+        class="h-7 w-7 shrink-0 hidden group-hover:inline-flex"
         :title="t('scripts.item.delete')"
         @click="emit('delete')"
       >

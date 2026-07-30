@@ -509,6 +509,8 @@ export default {
     },
     item: {
       runTitle: "Run in terminal: {command}",
+      copy: "Copy command",
+      copied: "Copied to clipboard",
       edit: "Edit",
       delete: "Delete",
     },
