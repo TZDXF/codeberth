@@ -407,6 +407,24 @@ fn list_branches_blocking(path: &str) -> AppResult<GitBranches> {
     })
 }
 
+/// 在项目目录初始化 git 仓库(默认分支 main),返回最新状态。
+/// `git init -b` 需要 git 2.28+,旧版本回退到不带 -b 的 init(分支名由用户配置决定)
+#[tauri::command]
+pub async fn git_init(path: String) -> AppResult<GitStatus> {
+    run_blocking(move || {
+        if let Err(e) = run_git(&path, &["init", "-b", "main"]) {
+            let msg = e.to_string();
+            if msg.contains("unknown switch") || msg.contains("unrecognized option") {
+                run_git(&path, &["init"])?;
+            } else {
+                return Err(e);
+            }
+        }
+        status(&path)
+    })
+    .await
+}
+
 /// 切换分支;create 为 true 时创建并切换(`git checkout -b`)。
 /// remote 为 true 时 branch 形如 "origin/feature":本地已有同名分支则直接切换,
 /// 否则创建跟踪分支(`git checkout -b feature --track origin/feature`)

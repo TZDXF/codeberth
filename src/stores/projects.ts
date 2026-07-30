@@ -229,6 +229,11 @@ export const useProjectsStore = defineStore("projects", () => {
     return cmd<GitBranches>("list_git_branches", { path: project.path });
   }
 
+  /** 在项目目录初始化 git 仓库(默认分支 main) */
+  async function initRepository(project: Project) {
+    project.git = await cmd<GitStatus>("git_init", { path: project.path });
+  }
+
   /**
    * 切换分支。create: 创建并切换;remote: branch 形如 "origin/feature",
    * 本地无同名分支时自动创建跟踪分支
@@ -299,6 +304,7 @@ export const useProjectsStore = defineStore("projects", () => {
     stopGitAutoRefresh,
     updateGitRemote,
     listBranches,
+    initRepository,
     checkoutBranch,
     commitChanges,
     pullRepository,

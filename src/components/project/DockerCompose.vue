@@ -6,17 +6,28 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   ChevronRight,
   Container,
+  Download,
   Eye,
   EyeOff,
   FileCode,
   Hammer,
+  ImageDown,
+  MoreHorizontal,
   Play,
   RotateCw,
   Square,
 } from "@lucide/vue";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleOpen } from "@/composables/useCollapsibleOpen";
 import { cmd, runInTerminal } from "@/lib/tauri";
@@ -162,7 +173,7 @@ async function openPort(port: number) {
 /** 在项目终端执行 docker compose 命令;service 为空表示作用于该文件的所有服务 */
 async function run(
   file: ComposeFile,
-  action: "up -d" | "up -d --build" | "restart" | "down" | "stop",
+  action: "up -d" | "up -d --build" | "build" | "restart" | "down" | "stop",
   service?: string,
 ) {
   const args = `-f "${file.path}" ${service ? `${action} ${service}` : action}`;
@@ -171,6 +182,49 @@ async function run(
     toast.success(t("docker.started", { args }));
     // 命令在新终端窗口中异步执行,延迟刷新一次状态(拉取镜像时可能仍偏早,可手动刷新)
     setTimeout(loadStatuses, 4000);
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+
+/** 导出服务的容器文件系统 / 镜像为 tar 包(save 对话框选路径,后端直接执行) */
+async function exportService(file: ComposeFile, service: string, kind: "container" | "image") {
+  try {
+    const dest = await save({
+      title: t(kind === "container" ? "docker.exportContainer" : "docker.exportImage"),
+      defaultPath: `${service}-${kind}.tar`,
+      filters: [{ name: "Tar", extensions: ["tar"] }],
+    });
+    if (!dest) return;
+    await cmd("compose_export", {
+      path: props.project.path,
+      file: file.path,
+      service,
+      kind,
+      dest,
+    });
+    toast.success(t("docker.exported", { path: dest }));
+  } catch (e) {
+    toast.error(String(e));
+  }
+}
+
+/** 导出 compose 文件全部服务:选一个目录,逐服务生成 `<service>-<kind>.tar` */
+async function exportAll(file: ComposeFile, kind: "container" | "image") {
+  try {
+    const dest = await open({
+      directory: true,
+      title: t(kind === "container" ? "docker.exportContainer" : "docker.exportImage"),
+    });
+    if (!dest) return;
+    await cmd("compose_export", {
+      path: props.project.path,
+      file: file.path,
+      service: "",
+      kind,
+      dest,
+    });
+    toast.success(t("docker.exported", { path: dest }));
   } catch (e) {
     toast.error(String(e));
   }
@@ -258,30 +312,47 @@ async function run(
               <Button
                 variant="ghost"
                 size="icon"
-                class="h-7 w-7 shrink-0 text-sky-600"
-                :title="t('docker.rebuild')"
-                @click="run(d.file, 'up -d --build')"
-              >
-                <Hammer class="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                class="h-7 w-7 shrink-0 text-amber-600"
-                :title="t('docker.restart')"
-                @click="run(d.file, 'restart')"
-              >
-                <RotateCw class="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
                 class="h-7 w-7 shrink-0 text-red-600"
                 :title="t('docker.stop')"
                 @click="run(d.file, 'down')"
               >
                 <Square class="h-3.5 w-3.5" />
               </Button>
+              <DropdownMenu>
+                <DropdownMenuTrigger as-child>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="h-7 w-7 shrink-0 text-muted-foreground"
+                    :title="t('docker.more')"
+                  >
+                    <MoreHorizontal class="h-3.5 w-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" class="w-40">
+                  <DropdownMenuItem class="gap-2 text-xs" @click="run(d.file, 'build')">
+                    <Hammer class="h-3.5 w-3.5 text-sky-600" />
+                    {{ t("docker.build") }}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem class="gap-2 text-xs" @click="run(d.file, 'up -d --build')">
+                    <Hammer class="h-3.5 w-3.5 text-emerald-600" />
+                    {{ t("docker.buildUp") }}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem class="gap-2 text-xs" @click="run(d.file, 'restart')">
+                    <RotateCw class="h-3.5 w-3.5 text-amber-600" />
+                    {{ t("docker.restart") }}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem class="gap-2 text-xs" @click="exportAll(d.file, 'container')">
+                    <Download class="h-3.5 w-3.5" />
+                    {{ t("docker.exportContainer") }}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem class="gap-2 text-xs" @click="exportAll(d.file, 'image')">
+                    <ImageDown class="h-3.5 w-3.5" />
+                    {{ t("docker.exportImage") }}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <CollapsibleContent>
               <div
@@ -319,30 +390,56 @@ async function run(
                 <Button
                   variant="ghost"
                   size="icon"
-                  class="h-7 w-7 shrink-0 text-sky-600 opacity-0 transition-opacity group-hover:opacity-100"
-                  :title="t('docker.rebuild')"
-                  @click="run(d.file, 'up -d --build', s.name)"
-                >
-                  <Hammer class="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  class="h-7 w-7 shrink-0 text-amber-600 opacity-0 transition-opacity group-hover:opacity-100"
-                  :title="t('docker.restart')"
-                  @click="run(d.file, 'restart', s.name)"
-                >
-                  <RotateCw class="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
                   class="h-7 w-7 shrink-0 text-red-600 opacity-0 transition-opacity group-hover:opacity-100"
                   :title="t('docker.stop')"
                   @click="run(d.file, 'stop', s.name)"
                 >
                   <Square class="h-3.5 w-3.5" />
                 </Button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      class="h-7 w-7 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100"
+                      :title="t('docker.more')"
+                    >
+                      <MoreHorizontal class="h-3.5 w-3.5" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" class="w-40">
+                    <DropdownMenuItem class="gap-2 text-xs" @click="run(d.file, 'build', s.name)">
+                      <Hammer class="h-3.5 w-3.5 text-sky-600" />
+                      {{ t("docker.build") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      class="gap-2 text-xs"
+                      @click="run(d.file, 'up -d --build', s.name)"
+                    >
+                      <Hammer class="h-3.5 w-3.5 text-emerald-600" />
+                      {{ t("docker.buildUp") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem class="gap-2 text-xs" @click="run(d.file, 'restart', s.name)">
+                      <RotateCw class="h-3.5 w-3.5 text-amber-600" />
+                      {{ t("docker.restart") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      class="gap-2 text-xs"
+                      @click="exportService(d.file, s.name, 'container')"
+                    >
+                      <Download class="h-3.5 w-3.5" />
+                      {{ t("docker.exportContainer") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      class="gap-2 text-xs"
+                      @click="exportService(d.file, s.name, 'image')"
+                    >
+                      <ImageDown class="h-3.5 w-3.5" />
+                      {{ t("docker.exportImage") }}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </div>
             </CollapsibleContent>
           </Collapsible>

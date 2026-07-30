@@ -197,7 +197,10 @@ export default {
     },
   },
   git: {
-    notARepo: "非 Git 仓库",
+    init: {
+      action: "初始化仓库",
+      success: "已初始化 Git 仓库",
+    },
     openRemote: "打开远程仓库:{name}",
     unknownBranch: "未知分支",
     ahead: "领先远端",
@@ -436,9 +439,14 @@ export default {
   docker: {
     title: "Docker Compose",
     up: "启动",
-    rebuild: "构建",
+    build: "构建",
+    buildUp: "构建并启动",
     restart: "重启",
     stop: "停止",
+    more: "更多操作",
+    exportContainer: "导出容器",
+    exportImage: "导出镜像",
+    exported: "已导出到 {path}",
     started: "已在终端启动 docker compose {args}",
     hideFile: "隐藏该 compose 文件",
     running: "运行中",

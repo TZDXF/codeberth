@@ -77,6 +77,179 @@ pub async fn compose_ps(path: String, file: String) -> AppResult<Vec<ComposeServ
         .map_err(|e| AppError::External(format!("任务执行失败: {e}")))?
 }
 
+fn run_docker(dir: &Path, args: &[&str]) -> AppResult<std::process::Output> {
+    docker_command()
+        .args(args)
+        .current_dir(dir)
+        .output()
+        .map_err(|e| AppError::External(format!("docker 执行失败: {e}")))
+}
+
+/// 校验 docker 子命令成功,失败时把 stderr 包成错误
+fn ensure_ok(action: &str, out: std::process::Output) -> AppResult<std::process::Output> {
+    if out.status.success() {
+        Ok(out)
+    } else {
+        Err(AppError::External(format!(
+            "{action}失败: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        )))
+    }
+}
+
+/// 服务的容器 id;容器未创建时返回 None
+fn container_id(dir: &Path, file: &str, service: &str) -> AppResult<Option<String>> {
+    let ps = ensure_ok(
+        "查询容器",
+        run_docker(dir, &["compose", "-f", file, "ps", "-q", service])?,
+    )?;
+    let id = String::from_utf8_lossy(&ps.stdout).trim().to_string();
+    Ok((!id.is_empty()).then_some(id))
+}
+
+/// compose 配置中各服务的镜像名,按配置顺序返回 (service, image)。
+/// 不需要容器存在;build 型服务由 compose 计算出默认镜像名
+fn service_images(dir: &Path, file: &str) -> AppResult<Vec<(String, String)>> {
+    let cfg = ensure_ok(
+        "读取 compose 配置",
+        run_docker(dir, &["compose", "-f", file, "config", "--format", "json"])?,
+    )?;
+    let v: serde_json::Value = serde_json::from_slice(&cfg.stdout)
+        .map_err(|e| AppError::External(format!("解析 compose 配置失败: {e}")))?;
+    let services = v
+        .get("services")
+        .and_then(|s| s.as_object())
+        .cloned()
+        .unwrap_or_default();
+    Ok(services
+        .into_iter()
+        .filter_map(|(name, svc)| {
+            let image = svc.get("image")?.as_str()?.trim().to_string();
+            (!image.is_empty()).then_some((name, image))
+        })
+        .collect())
+}
+
+/// docker save 镜像到 dest;本地无此镜像时给出可操作的中文提示
+fn save_image(dir: &Path, image: &str, dest: &Path) -> AppResult<()> {
+    let out = run_docker(dir, &["save", "-o", &dest.to_string_lossy(), image])?;
+    if out.status.success() {
+        return Ok(());
+    }
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    if stderr.contains("No such image") {
+        return Err(AppError::Invalid(format!(
+            "镜像 {image} 本地不存在,请先构建或拉取"
+        )));
+    }
+    Err(AppError::External(format!("导出失败: {}", stderr.trim())))
+}
+
+/// 导出单个服务:container → docker export(需容器已创建);image → docker save(只需本地有镜像)
+fn export_one(dir: &Path, file: &str, service: &str, kind: &str, dest: &Path) -> AppResult<()> {
+    match kind {
+        "container" => {
+            let id = container_id(dir, file, service)?
+                .ok_or_else(|| AppError::Invalid(format!("服务 {service} 尚未创建容器,请先启动")))?;
+            let out = run_docker(dir, &["export", "-o", &dest.to_string_lossy(), &id])?;
+            ensure_ok("导出", out)?;
+            Ok(())
+        }
+        "image" => {
+            let image = service_images(dir, file)?
+                .into_iter()
+                .find(|(name, _)| name == service)
+                .map(|(_, image)| image)
+                .ok_or_else(|| {
+                    AppError::Invalid(format!("compose 配置中未找到服务 {service} 的镜像"))
+                })?;
+            save_image(dir, &image, dest)
+        }
+        _ => Err(AppError::Invalid(format!("未知导出类型: {kind}"))),
+    }
+}
+
+/// 导出 compose 文件全部服务到目录(dest 为目录):逐服务导出 `<service>-<kind>.tar`。
+/// container:需容器已创建,未创建的跳过;image:只需本地有镜像,按名去重避免重复 save,
+/// 本地缺失的镜像跳过。一个都没导出时才报错
+fn export_all(dir: &Path, file: &str, kind: &str, dest_dir: &str) -> AppResult<()> {
+    let dest_dir = Path::new(dest_dir);
+    if !dest_dir.is_dir() {
+        return Err(AppError::Invalid(format!("目录不存在: {}", dest_dir.display())));
+    }
+    if kind == "image" {
+        let mut exported = 0usize;
+        let mut saved = std::collections::HashSet::new();
+        for (service, image) in service_images(dir, file)? {
+            if !saved.insert(image.clone()) {
+                continue;
+            }
+            let dest = dest_dir.join(format!("{service}-image.tar"));
+            // 本地未拉取/构建的镜像跳过,不打断整体导出
+            if save_image(dir, &image, &dest).is_ok() {
+                exported += 1;
+            }
+        }
+        if exported == 0 {
+            return Err(AppError::Invalid("本地没有可导出的镜像,请先构建或拉取".into()));
+        }
+        return Ok(());
+    }
+    if kind != "container" {
+        return Err(AppError::Invalid(format!("未知导出类型: {kind}")));
+    }
+    let cfg = ensure_ok(
+        "读取服务列表",
+        run_docker(dir, &["compose", "-f", file, "config", "--services"])?,
+    )?;
+    let services: Vec<String> = String::from_utf8_lossy(&cfg.stdout)
+        .lines()
+        .map(|l| l.trim().to_string())
+        .filter(|l| !l.is_empty())
+        .collect();
+    let mut exported = 0usize;
+    for service in &services {
+        // 未创建容器的服务跳过,不打断整体导出
+        let Some(id) = container_id(dir, file, service)? else {
+            continue;
+        };
+        let dest = dest_dir.join(format!("{service}-container.tar"));
+        let out = run_docker(dir, &["export", "-o", &dest.to_string_lossy(), &id])?;
+        ensure_ok("导出", out)?;
+        exported += 1;
+    }
+    if exported == 0 {
+        return Err(AppError::Invalid("没有已创建的容器可导出,请先启动服务".into()));
+    }
+    Ok(())
+}
+
+/// 导出 compose 服务的容器文件系统 / 镜像为 tar 包
+/// kind: "container" → docker export;"image" → docker save。
+/// service 为空时导出该文件的全部服务,此时 dest 为目标目录
+#[tauri::command]
+pub async fn compose_export(
+    path: String,
+    file: String,
+    service: String,
+    kind: String,
+    dest: String,
+) -> AppResult<()> {
+    tokio::task::spawn_blocking(move || {
+        let dir = Path::new(&path);
+        if !dir.is_dir() {
+            return Err(AppError::Invalid(format!("目录不存在: {path}")));
+        }
+        if service.is_empty() {
+            export_all(dir, &file, &kind, &dest)
+        } else {
+            export_one(dir, &file, &service, &kind, Path::new(&dest))
+        }
+    })
+    .await
+    .map_err(|e| AppError::External(format!("任务执行失败: {e}")))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

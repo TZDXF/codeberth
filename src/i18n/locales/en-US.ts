@@ -207,7 +207,10 @@ export default {
     },
   },
   git: {
-    notARepo: "Not a Git repository",
+    init: {
+      action: "Initialize repository",
+      success: "Git repository initialized",
+    },
     openRemote: "Open remote repository: {name}",
     unknownBranch: "Unknown branch",
     ahead: "Ahead of remote",
@@ -450,9 +453,14 @@ export default {
   docker: {
     title: "Docker Compose",
     up: "Start",
-    rebuild: "Build",
+    build: "Build",
+    buildUp: "Build & start",
     restart: "Restart",
     stop: "Stop",
+    more: "More actions",
+    exportContainer: "Export container",
+    exportImage: "Export image",
+    exported: "Exported to {path}",
     started: "Started docker compose {args} in terminal",
     hideFile: "Hide this compose file",
     running: "Running",
