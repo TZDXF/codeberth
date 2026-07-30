@@ -73,6 +73,14 @@ export function listAccountRepos(accountId: number): Promise<RemoteRepo[]> {
   return cmd<RemoteRepo[]>("list_account_repos", { accountId });
 }
 
+/**
+ * 探测 GitHub CLI(gh)虚拟账号:已安装且已登录时返回(id 固定为 0),
+ * 否则返回 null;由「账号仓库」下拉并入,不落库、不出现在设置页账号列表
+ */
+export function getGhCliAccount(): Promise<GitAccount | null> {
+  return cmd<GitAccount | null>("get_gh_cli_account");
+}
+
 /** 所有未归档项目的 origin 地址,用于「已添加」匹配 */
 export function listProjectRemoteUrls(): Promise<string[]> {
   return cmd<string[]>("list_project_remote_urls");

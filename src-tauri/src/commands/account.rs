@@ -162,6 +162,87 @@ pub(crate) fn build_authed_url(provider: &str, username: &str, token: &str, url:
     }
 }
 
+// ── GitHub CLI(gh)虚拟账号 ─────────────────────────────────
+// 不落库、不出现在设置页账号列表;前端在「账号仓库」下拉中并入,
+// 仓库列表与克隆都复用 github REST/token 链路,token 取自 `gh auth token`。
+
+/// 虚拟账号 id(DB 自增 id 从 1 开始,0 不会与真实账号冲突)
+pub const GH_CLI_ACCOUNT_ID: i64 = 0;
+
+fn gh_command() -> std::process::Command {
+    let mut cmd = std::process::Command::new("gh");
+    // GUI 应用无法应答交互式提示
+    cmd.env("GH_PROMPT_DISABLED", "1");
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    cmd
+}
+
+fn run_gh(args: &[&str]) -> AppResult<String> {
+    let out = gh_command()
+        .args(args)
+        .output()
+        .map_err(|e| AppError::External(format!("启动 gh 失败(未安装?): {e}")))?;
+    if !out.status.success() {
+        return Err(AppError::External(
+            "未检测到已登录的 GitHub CLI(gh),请先执行 gh auth login".into(),
+        ));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// 探测 gh CLI:已安装且已登录则返回 (username, token)
+fn gh_cli_credentials() -> AppResult<(String, String)> {
+    let username = run_gh(&["api", "user", "--jq", ".login"])?;
+    let token = run_gh(&["auth", "token"])?;
+    if username.is_empty() || token.is_empty() {
+        return Err(AppError::External(
+            "GitHub CLI(gh)返回的凭据不完整".into(),
+        ));
+    }
+    Ok((username, token))
+}
+
+/// 用 gh 凭据合成一行 github 账号,供 REST 拉取链路复用
+fn gh_cli_account_row() -> AppResult<AccountRow> {
+    let (username, token) = gh_cli_credentials()?;
+    Ok(AccountRow {
+        id: GH_CLI_ACCOUNT_ID,
+        provider: "github".to_string(),
+        label: "GitHub CLI".to_string(),
+        base_url: "https://github.com".to_string(),
+        username,
+        token,
+        created_at: 0,
+        updated_at: 0,
+    })
+}
+
+/// 探测 gh CLI 是否可用(已安装且已登录),可用时返回虚拟账号供前端并入账号下拉;
+/// 不可用返回 Ok(None),由前端静默降级(下拉不显示该项)
+#[tauri::command]
+pub async fn get_gh_cli_account() -> AppResult<Option<GitAccount>> {
+    tokio::task::spawn_blocking(|| match gh_cli_account_row() {
+        Ok(row) => Ok(Some(row_to_account(&row))),
+        Err(_) => Ok(None),
+    })
+    .await
+    .map_err(|e| AppError::External(format!("探测 GitHub CLI 失败: {e}")))?
+}
+
+/// 供 git_clone 使用:取 gh CLI 的 (provider, username, token)
+pub(crate) async fn gh_cli_git_credentials() -> AppResult<(String, String, String)> {
+    tokio::task::spawn_blocking(|| {
+        let (username, token) = gh_cli_credentials()?;
+        Ok(("github".to_string(), username, token))
+    })
+    .await
+    .map_err(|e| AppError::External(format!("获取 GitHub CLI 凭据失败: {e}")))?
+}
+
 fn http_client() -> reqwest::Client {
     reqwest::Client::builder()
         .user_agent("repomeow")
@@ -554,6 +635,13 @@ async fn fetch_all_repos(row: &AccountRow) -> AppResult<Vec<RemoteRepo>> {
 /// 一次拉取账号下全部仓库(前端只做客户端搜索过滤)
 #[tauri::command]
 pub async fn list_account_repos(db: State<'_, Db>, account_id: i64) -> AppResult<Vec<RemoteRepo>> {
+    // GitHub CLI 虚拟账号:不查库,token 取自 gh(进程调用放 blocking 线程)
+    if account_id == GH_CLI_ACCOUNT_ID {
+        let row = tokio::task::spawn_blocking(gh_cli_account_row)
+            .await
+            .map_err(|e| AppError::External(format!("获取 GitHub CLI 凭据失败: {e}")))??;
+        return fetch_all_repos(&row).await;
+    }
     let row = {
         let conn = db.0.lock().unwrap();
         get_account_row(&conn, account_id)?

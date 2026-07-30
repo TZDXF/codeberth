@@ -114,6 +114,7 @@ pub fn run() {
             commands::account::update_git_account,
             commands::account::remove_git_account,
             commands::account::list_account_repos,
+            commands::account::get_gh_cli_account,
             commands::open::open_with,
             commands::open::detect_editors,
             commands::window::show_main_window,

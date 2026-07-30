@@ -866,6 +866,11 @@ pub async fn git_clone(
     }
     // 账号凭据拼进 clone URL(仅 http(s) 地址生效,ssh 地址原样使用)
     let clone_url = match account_id {
+        // GitHub CLI 虚拟账号:不查库,token 取自 gh(必须先于查库分支)
+        Some(id) if id == account::GH_CLI_ACCOUNT_ID => {
+            let (provider, username, token) = account::gh_cli_git_credentials().await?;
+            account::build_authed_url(&provider, &username, &token, &url)
+        }
         Some(id) => {
             let (provider, username, token) = {
                 let conn = db.0.lock().unwrap();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { toast } from "vue-sonner";
 import { GitBranch, Loader2, Pencil, Plus, Trash2 } from "@lucide/vue";
@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import {
   addGitAccount,
   listGitAccounts,
@@ -22,11 +23,18 @@ import {
   type GitAccount,
   type Provider,
 } from "@/lib/accounts";
+import { useSettingsStore } from "@/stores/settings";
 
 const { t } = useI18n();
+const settingsStore = useSettingsStore();
 
 const accounts = ref<GitAccount[]>([]);
 const loading = ref(false);
+
+const enableGhCli = computed({
+  get: () => settingsStore.enableGhCli,
+  set: (v: boolean) => settingsStore.setEnableGhCli(v),
+});
 
 const PROVIDERS: { value: Provider; label: string }[] = [
   { value: "github", label: "GitHub" },
@@ -125,6 +133,16 @@ async function remove(account: GitAccount) {
   <section>
     <h2 class="text-base font-semibold">{{ t("settings.accounts.title") }}</h2>
     <p class="mt-1 text-sm text-muted-foreground">{{ t("settings.accounts.description") }}</p>
+
+    <div class="mt-4 flex items-center justify-between rounded-lg border px-3 py-2.5">
+      <div class="flex flex-col gap-0.5">
+        <span class="text-sm font-medium">{{ t("settings.accounts.enableGhCli") }}</span>
+        <span class="text-xs text-muted-foreground">
+          {{ t("settings.accounts.enableGhCliHint") }}
+        </span>
+      </div>
+      <Switch v-model="enableGhCli" />
+    </div>
 
     <div class="mt-4 flex flex-col gap-2">
       <div

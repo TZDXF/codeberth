@@ -3,7 +3,15 @@ import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import { toast } from "vue-sonner";
-import { ArrowLeft, BookOpen, FileText, FolderSync, Pencil, Star, TriangleAlert } from "@lucide/vue";
+import {
+  ArrowLeft,
+  BookOpen,
+  FileText,
+  FolderSync,
+  Pencil,
+  Star,
+  TriangleAlert,
+} from "@lucide/vue";
 import { Button } from "@/components/ui/button";
 import GitStatusBar from "@/components/git/GitStatusBar.vue";
 import GitActions from "@/components/git/GitActions.vue";
@@ -166,7 +174,9 @@ async function saveDesc() {
             variant="outline"
             size="icon"
             class="h-9 w-9"
-            :title="t(project.favorited_at ? 'projects.actions.unfavorite' : 'projects.actions.favorite')"
+            :title="
+              t(project.favorited_at ? 'projects.actions.unfavorite' : 'projects.actions.favorite')
+            "
             @click="toggleFavorite"
           >
             <Star

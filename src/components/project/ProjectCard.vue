@@ -36,9 +36,7 @@ function open() {
       </span>
       <div class="flex shrink-0 items-center">
         <FavoriteToggle :project="project" />
-        <div
-          class="flex items-center opacity-0 transition-opacity group-hover:opacity-100"
-        >
+        <div class="flex items-center opacity-0 transition-opacity group-hover:opacity-100">
           <ProjectActionsMenu :project="project" />
         </div>
       </div>

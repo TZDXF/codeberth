@@ -26,6 +26,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
+  getGhCliAccount,
   listAccountRepos,
   listGitAccounts,
   listProjectRemoteUrls,
@@ -34,9 +35,11 @@ import {
   type RemoteRepo,
 } from "@/lib/accounts";
 import { useProjectsStore } from "@/stores/projects";
+import { useSettingsStore } from "@/stores/settings";
 
 const { t } = useI18n();
 const store = useProjectsStore();
+const settingsStore = useSettingsStore();
 const router = useRouter();
 
 // 上一次添加项目用的存放位置,存 localStorage,作为下次的默认值
@@ -130,10 +133,12 @@ async function ensureAccountsLoaded() {
   accountsLoaded.value = true;
   try {
     const [accs, remoteUrls] = await Promise.all([listGitAccounts(), listProjectRemoteUrls()]);
-    accounts.value = accs;
+    // 设置页开启 GitHub CLI 集成时才探测 gh;探测失败静默降级(下拉不显示该项)
+    const ghAccount = settingsStore.enableGhCli ? await getGhCliAccount().catch(() => null) : null;
+    accounts.value = ghAccount ? [...accs, ghAccount] : accs;
     addedRemotes.value = new Set(remoteUrls.map(normalizeRemoteUrl));
-    if (accs.length > 0 && selectedAccountId.value == null) {
-      selectedAccountId.value = accs[0].id;
+    if (accounts.value.length > 0 && selectedAccountId.value == null) {
+      selectedAccountId.value = accounts.value[0].id;
     }
   } catch (e) {
     toast.error(String(e));
