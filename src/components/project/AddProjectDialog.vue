@@ -430,8 +430,15 @@ function switchMode(m: "local" | "clone" | "account") {
       </form>
 
       <div v-else-if="mode === 'account'" class="flex min-w-0 flex-col gap-3">
+        <div
+          v-if="accountsLoading"
+          class="flex items-center justify-center gap-2 rounded-md border border-dashed px-3 py-6 text-sm text-muted-foreground"
+        >
+          <Loader2 class="h-4 w-4 animate-spin" />
+          {{ t("projects.add.accountLoading") }}
+        </div>
         <p
-          v-if="accountsLoaded && accounts.length === 0"
+          v-else-if="accountsLoaded && accounts.length === 0"
           class="rounded-md border border-dashed px-3 py-6 text-center text-sm text-muted-foreground"
         >
           {{ t("projects.add.accountEmpty") }}

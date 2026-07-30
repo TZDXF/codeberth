@@ -137,6 +137,7 @@ export default {
       modeAccount: "账号仓库",
       accountDescription: "浏览已绑定账号下的仓库,选中后克隆并添加为项目",
       accountLabel: "账号",
+      accountLoading: "正在加载账号...",
       accountEmpty: "还没有绑定账号,请先到「设置 → 账号绑定」添加 GitHub / Gitee / GitLab 账号",
       repoSearchPlaceholder: "搜索组织、仓库名或描述...",
       repoOwnerAll: "全部组织",

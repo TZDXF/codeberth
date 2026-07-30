@@ -144,6 +144,7 @@ export default {
       accountDescription:
         "Browse repositories of a linked account, then clone and add one as a project",
       accountLabel: "Account",
+      accountLoading: "Loading accounts...",
       accountEmpty:
         "No linked accounts yet. Go to Settings → Accounts to add a GitHub / Gitee / GitLab account first.",
       repoSearchPlaceholder: "Search by org, name or description...",
