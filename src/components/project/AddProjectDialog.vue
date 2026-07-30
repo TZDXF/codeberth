@@ -149,17 +149,23 @@ async function ensureAccountsLoaded() {
   }
 }
 
+// 仓库加载代际计数:切换账号时递增,过期请求的结果直接丢弃(相当于取消)
+let reposLoadSeq = 0;
+
 /** 一次加载账号下全部仓库(后端循环分页拉全,前端只做客户端搜索过滤) */
 async function loadRepos() {
   const id = selectedAccountId.value;
-  if (id == null || reposLoading.value) return;
+  if (id == null) return;
+  const seq = ++reposLoadSeq;
   reposLoading.value = true;
   try {
-    repos.value = await listAccountRepos(id);
+    const list = await listAccountRepos(id);
+    // 期间已切换到其他账号:结果过期,丢弃
+    if (seq === reposLoadSeq) repos.value = list;
   } catch (e) {
-    toast.error(String(e));
+    if (seq === reposLoadSeq) toast.error(String(e));
   } finally {
-    reposLoading.value = false;
+    if (seq === reposLoadSeq) reposLoading.value = false;
   }
 }
 
