@@ -56,6 +56,10 @@ export default {
     checkUpdate: "检查更新",
     updateAvailable: "发现新版本 v{version}",
   },
+  trayPopup: {
+    searchPlaceholder: "搜索项目...",
+    empty: "没有匹配的项目",
+  },
   update: {
     title: "发现新版本 v{version}",
     currentVersion: "当前版本:v{version}",
@@ -531,6 +535,14 @@ export default {
     update: {
       autoCheck: "启动时自动检查更新",
       autoCheckHint: "应用启动后自动检查是否有新版本,发现更新时提示",
+    },
+    tray: {
+      title: "系统托盘",
+      description: "点击窗口关闭按钮时的行为;托盘图标单击打开项目速览,双击显示主窗口",
+      closeToTray: "最小化到托盘",
+      closeToTrayHint: "关闭窗口后应用继续驻留系统托盘,可从托盘菜单退出",
+      closeToExit: "直接退出",
+      closeToExitHint: "关闭窗口即退出应用",
     },
     about: {
       title: "关于",

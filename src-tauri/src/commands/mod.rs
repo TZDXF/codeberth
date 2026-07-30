@@ -10,3 +10,4 @@ pub mod report;
 pub mod script;
 pub mod tag;
 pub mod walk;
+pub mod window;

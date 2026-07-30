@@ -3,6 +3,7 @@ mod db;
 mod error;
 mod models;
 mod scheduler;
+mod tray;
 mod workday;
 
 use std::sync::Arc;
@@ -43,6 +44,9 @@ pub fn run() {
             let notify = Arc::new(Notify::new());
             app.manage(commands::report::ScheduleNotify(notify));
 
+            // 系统托盘(图标 + 迷你项目列表弹窗)
+            tray::setup(app)?;
+
             // 启动日报定时调度器(后台 tokio 任务,仅 App 运行时生效)
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -50,6 +54,34 @@ pub fn run() {
             });
 
             Ok(())
+        })
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                if window.label() == tray::TRAY_POPUP_LABEL {
+                    // 迷你弹窗永不真正关闭,只隐藏
+                    api.prevent_close();
+                    let _ = window.hide();
+                } else if window.label() == tray::MAIN_WINDOW_LABEL {
+                    // 关闭主窗口:按设置项决定最小化到托盘还是直接退出(默认托盘)
+                    let action = tray::read_setting_string(window.app_handle(), "closeAction")
+                        .unwrap_or_else(|| "tray".to_string());
+                    if action == "exit" {
+                        // 迷你弹窗(隐藏)也属于窗口,会阻止"全部窗口关闭即退出"的默认行为,
+                        // 因此直接退出整个应用
+                        window.app_handle().exit(0);
+                    } else {
+                        api.prevent_close();
+                        let _ = window.hide();
+                    }
+                }
+            }
+            tauri::WindowEvent::Focused(false) => {
+                // 迷你弹窗失焦自动收起(类似 JetBrains Toolbox)
+                if window.label() == tray::TRAY_POPUP_LABEL {
+                    let _ = window.hide();
+                }
+            }
+            _ => {}
         })
         .invoke_handler(tauri::generate_handler![
             commands::project::add_project,
@@ -83,6 +115,8 @@ pub fn run() {
             commands::account::list_account_repos,
             commands::open::open_with,
             commands::open::detect_editors,
+            commands::window::show_main_window,
+            commands::window::hide_tray_popup,
             commands::prompt::get_ai_prompts,
             commands::prompt::set_ai_prompts,
             commands::prompt::open_prompts_dir,

@@ -4,6 +4,7 @@ import ThemeSettings from "@/components/settings/ThemeSettings.vue";
 import MdThemeSettings from "@/components/settings/MdThemeSettings.vue";
 import LanguageSettings from "@/components/settings/LanguageSettings.vue";
 import OpenWithSettings from "@/components/settings/OpenWithSettings.vue";
+import TraySettings from "@/components/settings/TraySettings.vue";
 </script>
 
 <template>
@@ -13,6 +14,8 @@ import OpenWithSettings from "@/components/settings/OpenWithSettings.vue";
     <MdThemeSettings />
     <Separator />
     <OpenWithSettings />
+    <Separator />
+    <TraySettings />
     <Separator />
     <LanguageSettings />
   </div>

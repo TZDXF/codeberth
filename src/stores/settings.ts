@@ -12,6 +12,8 @@ export type MdTheme = "default" | "github" | "notion" | "serif";
 export type Language = SupportedLocale;
 export type ProjectsViewMode = "grid" | "table";
 export type ProjectsSortKey = "name" | "updated" | "created";
+/** 关闭主窗口行为:tray = 最小化到系统托盘,exit = 直接退出 */
+export type CloseAction = "tray" | "exit";
 
 // 应用数据统一存放于用户主目录下的 .repomeow 目录(与 Rust 端 APP_DATA_DIR_NAME 保持一致)
 const APP_DATA_DIR_NAME = ".repomeow";
@@ -37,6 +39,8 @@ export const useSettingsStore = defineStore("settings", () => {
   const projectsSortKey = ref<ProjectsSortKey>("name");
   /** 启动时自动检查更新 */
   const autoCheckUpdate = ref(true);
+  /** 关闭主窗口行为(默认最小化到托盘) */
+  const closeAction = ref<CloseAction>("tray");
 
   let fileStore: Store | null = null;
   let initialized = false;
@@ -106,6 +110,7 @@ export const useSettingsStore = defineStore("settings", () => {
         projectsViewMode: "grid",
         projectsSortKey: "name",
         autoCheckUpdate: "true",
+        closeAction: "tray",
       },
     });
     const savedTheme = await fileStore.get<ThemeMode>("theme");
@@ -170,6 +175,11 @@ export const useSettingsStore = defineStore("settings", () => {
     const savedAutoCheckUpdate = await fileStore.get<string>("autoCheckUpdate");
     if (savedAutoCheckUpdate === "true" || savedAutoCheckUpdate === "false") {
       autoCheckUpdate.value = savedAutoCheckUpdate === "true";
+    }
+    // 关闭行为:白名单校验,非法值回退 tray(该键同时被 Rust 侧 on_window_event 读取)
+    const savedCloseAction = await fileStore.get<CloseAction>("closeAction");
+    if (savedCloseAction === "tray" || savedCloseAction === "exit") {
+      closeAction.value = savedCloseAction;
     }
     applyTheme();
     applyMdTheme();
@@ -249,6 +259,12 @@ export const useSettingsStore = defineStore("settings", () => {
     await persist("autoCheckUpdate", String(value));
   }
 
+  async function setCloseAction(value: CloseAction) {
+    if (value !== "tray" && value !== "exit") return;
+    closeAction.value = value;
+    await persist("closeAction", value);
+  }
+
   return {
     theme,
     themeSkin,
@@ -262,6 +278,7 @@ export const useSettingsStore = defineStore("settings", () => {
     projectsViewMode,
     projectsSortKey,
     autoCheckUpdate,
+    closeAction,
     init,
     setTheme,
     setThemeSkin,
@@ -275,5 +292,6 @@ export const useSettingsStore = defineStore("settings", () => {
     setProjectsViewMode,
     setProjectsSortKey,
     setAutoCheckUpdate,
+    setCloseAction,
   };
 });

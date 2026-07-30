@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted } from "vue";
+import { useRouter } from "vue-router";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { toast } from "vue-sonner";
 import { Toaster } from "@/components/ui/sonner";
 import TitleBar from "@/components/TitleBar.vue";
@@ -11,20 +13,26 @@ import { useTagsStore } from "@/stores/tags";
 import { useUpdateStore } from "@/stores/update";
 import type { GitUpdatedPayload, ReportGeneratedPayload } from "@/types";
 
+const router = useRouter();
 const store = useProjectsStore();
 const tagsStore = useTagsStore();
 const settingsStore = useSettingsStore();
 const updateStore = useUpdateStore();
 
+// 托盘迷你弹窗窗口:仅加载主题/语言与项目列表,跳过标题栏、更新检查等主窗口专属逻辑
+const isTrayPopup = getCurrentWindow().label === "tray-popup";
+
 onMounted(() => {
   settingsStore.init().then(() => {
+    if (isTrayPopup) return;
     updateStore.init();
     // 启动后静默检查更新(dev 环境跳过,避免无签名产物时无意义报错)
     if (settingsStore.autoCheckUpdate && !import.meta.env.DEV) {
       updateStore.checkForUpdate(false);
     }
   });
-  store.fetchProjects();
+  store.fetchProjects({ withGit: !isTrayPopup });
+  if (isTrayPopup) return;
   store.startGitAutoRefresh();
   tagsStore.fetchTags();
   onListen<GitUpdatedPayload>("git://updated", (payload) => {
@@ -41,20 +49,26 @@ onMounted(() => {
       },
     });
   });
+  // 托盘弹窗/菜单请求跳转到项目详情页
+  onListen<{ projectId: number }>("main://navigate", (payload) => {
+    router.push(`/projects/${payload.projectId}`);
+  });
 });
 
 onUnmounted(() => {
-  store.stopGitAutoRefresh();
+  if (!isTrayPopup) {
+    store.stopGitAutoRefresh();
+  }
 });
 </script>
 
 <template>
   <main class="flex h-screen flex-col overflow-hidden bg-background text-foreground">
-    <TitleBar />
+    <TitleBar v-if="!isTrayPopup" />
     <div class="min-h-0 flex-1">
       <router-view />
     </div>
   </main>
   <Toaster position="bottom-right" />
-  <BatchProgressFloat />
+  <BatchProgressFloat v-if="!isTrayPopup" />
 </template>

@@ -61,6 +61,10 @@ export default {
     checkUpdate: "Check for updates",
     updateAvailable: "New version v{version} available",
   },
+  trayPopup: {
+    searchPlaceholder: "Search projects...",
+    empty: "No matching projects",
+  },
   update: {
     title: "New version v{version} available",
     currentVersion: "Current version: v{version}",
@@ -547,6 +551,16 @@ export default {
       autoCheck: "Check for updates on startup",
       autoCheckHint:
         "Automatically check for new versions after launch and notify when one is found",
+    },
+    tray: {
+      title: "System Tray",
+      description:
+        "What happens when the window close button is clicked. Single-click the tray icon for a quick project list, double-click to show the main window",
+      closeToTray: "Minimize to tray",
+      closeToTrayHint:
+        "The app keeps running in the system tray after the window is closed; quit from the tray menu",
+      closeToExit: "Quit",
+      closeToExitHint: "Closing the window quits the app",
     },
     about: {
       title: "About",
