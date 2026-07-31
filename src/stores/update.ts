@@ -80,6 +80,7 @@ export const useUpdateStore = defineStore("update", () => {
   async function downloadAndInstall() {
     const target = update.value;
     if (!target || status.value === "downloading") return;
+    const t = i18n.global.t;
     status.value = "downloading";
     downloaded.value = 0;
     total.value = 0;
@@ -92,9 +93,22 @@ export const useUpdateStore = defineStore("update", () => {
         }
       });
       status.value = "installed";
+      // 后台下载(对话框已关闭)时 toast 通知完成,带「立即重启」入口;
+      // 对话框打开时由对话框自身展示重启按钮,不重复提示
+      if (!dialogOpen.value) {
+        toast.success(t("update.installedHint"), {
+          action: {
+            label: t("update.restartNow"),
+            onClick: () => relaunchApp(),
+          },
+        });
+      }
     } catch (e) {
       status.value = "error";
       error.value = e instanceof Error ? e.message : String(e);
+      if (!dialogOpen.value) {
+        toast.error(t("update.installFailed", { error: error.value }));
+      }
     }
   }
 

@@ -60,6 +60,7 @@ export default {
     close: "Close",
     checkUpdate: "Check for updates",
     updateAvailable: "New version v{version} available",
+    downloading: "Downloading update {progress}%",
   },
   trayPopup: {
     searchPlaceholder: "Search projects...",
@@ -82,6 +83,7 @@ export default {
     viewDetail: "View",
     noNotes: "No release notes provided.",
     updateNow: "Update now",
+    backgroundDownload: "Download in background",
     downloading: "Downloading update... {progress}%",
     installedHint: "Update installed. Restart the app to apply it.",
     installFailed: "Failed to install the update: {error}",

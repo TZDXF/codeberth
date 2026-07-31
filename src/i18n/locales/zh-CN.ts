@@ -55,6 +55,7 @@ export default {
     close: "关闭",
     checkUpdate: "检查更新",
     updateAvailable: "发现新版本 v{version}",
+    downloading: "正在下载更新 {progress}%",
   },
   trayPopup: {
     searchPlaceholder: "搜索项目...",
@@ -77,6 +78,7 @@ export default {
     viewDetail: "查看",
     noNotes: "暂无更新说明",
     updateNow: "立即更新",
+    backgroundDownload: "后台下载",
     downloading: "下载更新中... {progress}%",
     installedHint: "更新已安装,重启应用后生效。",
     installFailed: "更新安装失败:{error}",

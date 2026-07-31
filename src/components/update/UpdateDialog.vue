@@ -17,9 +17,10 @@ const store = useUpdateStore();
 
 const open = computed({
   get: () => store.dialogOpen,
+  // 下载安装中也可关闭对话框:下载在 store 中继续(后台下载),
+  // 进度经标题栏进度环展示,随时可重新打开查看
   set: (v: boolean) => {
-    // 下载安装中不允许关闭,避免用户误以为更新被中断
-    if (store.status !== "downloading") store.dialogOpen = v;
+    store.dialogOpen = v;
   },
 });
 
@@ -64,22 +65,17 @@ const releaseNotes = computed(() => store.update?.body?.trim() || t("update.noNo
           <Button variant="outline" @click="open = false">{{ t("update.later") }}</Button>
           <Button @click="store.relaunchApp()">{{ t("update.restartNow") }}</Button>
         </template>
+        <template v-else-if="store.status === 'downloading'">
+          <Button variant="outline" @click="open = false">
+            {{ t("update.backgroundDownload") }}
+          </Button>
+        </template>
         <template v-else>
-          <Button
-            variant="outline"
-            :disabled="store.status === 'downloading'"
-            @click="open = false"
-          >
+          <Button variant="outline" @click="open = false">
             {{ t("common.cancel") }}
           </Button>
-          <Button
-            v-if="store.status === 'available' || store.status === 'error'"
-            @click="store.downloadAndInstall()"
-          >
+          <Button @click="store.downloadAndInstall()">
             {{ t("update.updateNow") }}
-          </Button>
-          <Button v-else disabled>
-            {{ t("update.downloading", { progress: store.progress }) }}
           </Button>
         </template>
       </DialogFooter>

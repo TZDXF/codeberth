@@ -3,7 +3,7 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import { ArrowUpCircle, Copy, Minus, RefreshCw, Square, X } from "@lucide/vue";
+import { ArrowUpCircle, Copy, Minus, Square, X } from "@lucide/vue";
 import UpdateDialog from "@/components/update/UpdateDialog.vue";
 import { useUpdateStore } from "@/stores/update";
 
@@ -12,6 +12,10 @@ const appWindow = getCurrentWindow();
 const isMaximized = ref(false);
 const updateStore = useUpdateStore();
 let unlistenResize: UnlistenFn | undefined;
+
+/** 更新下载进度环几何(viewBox 36,半径 15.5) */
+const RING_R = 15.5;
+const RING_C = 2 * Math.PI * RING_R;
 
 onMounted(async () => {
   isMaximized.value = await appWindow.isMaximized();
@@ -60,10 +64,32 @@ function onDragRegionDblClick(event: MouseEvent) {
       <button
         v-if="updateStore.update"
         class="relative flex w-11 items-center justify-center text-primary transition-colors hover:bg-accent"
-        :title="t('titleBar.updateAvailable', { version: updateStore.update.version })"
+        :title="
+          updateStore.status === 'downloading'
+            ? t('titleBar.downloading', { progress: updateStore.progress })
+            : t('titleBar.updateAvailable', { version: updateStore.update.version })
+        "
         @click="onUpdateClick"
       >
-        <RefreshCw v-if="updateStore.status === 'downloading'" class="h-4 w-4 animate-spin" />
+        <!-- 下载中:环形进度条(后台下载时在此展示进度,点击可重新打开对话框) -->
+        <svg
+          v-if="updateStore.status === 'downloading'"
+          viewBox="0 0 36 36"
+          class="h-4 w-4 -rotate-90"
+        >
+          <circle cx="18" cy="18" :r="RING_R" fill="none" class="stroke-muted" stroke-width="4" />
+          <circle
+            cx="18"
+            cy="18"
+            :r="RING_R"
+            fill="none"
+            stroke-width="4"
+            stroke-linecap="round"
+            class="stroke-primary transition-[stroke-dashoffset] duration-200"
+            :stroke-dasharray="RING_C"
+            :stroke-dashoffset="RING_C * (1 - updateStore.progress / 100)"
+          />
+        </svg>
         <ArrowUpCircle v-else class="h-4 w-4" />
         <span
           v-if="updateStore.hasUpdate"
