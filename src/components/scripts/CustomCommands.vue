@@ -13,8 +13,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import CommandEditor from "@/components/scripts/CommandEditor.vue";
 import ScriptItem from "@/components/scripts/ScriptItem.vue";
 import { COMMAND_ICONS } from "@/lib/command-icons";
 import { cmd, runInTerminal } from "@/lib/tauri";
@@ -169,7 +169,8 @@ async function togglePin(c: CustomCommand) {
   </Card>
 
   <Dialog v-model:open="dialogOpen">
-    <DialogContent>
+    <!-- 基类 sm:max-w-sm 在 ≥sm 层叠会盖掉普通 max-w-*,宽度必须用 sm: 变体覆盖(同 DailyReportDialog) -->
+    <DialogContent class="sm:max-w-[min(34rem,calc(100%-2rem))]">
       <DialogHeader>
         <DialogTitle>{{
           editingId == null ? t("scripts.custom.dialogNew") : t("scripts.custom.dialogEdit")
@@ -182,10 +183,9 @@ async function togglePin(c: CustomCommand) {
         </div>
         <div class="flex flex-col gap-1.5">
           <label class="text-sm font-medium">{{ t("scripts.custom.commandLabel") }}</label>
-          <Textarea
+          <CommandEditor
             v-model="formCommand"
             :placeholder="t('scripts.custom.commandPlaceholder')"
-            class="max-h-48 overflow-y-auto font-mono"
           />
         </div>
         <div class="flex flex-col gap-1.5">
