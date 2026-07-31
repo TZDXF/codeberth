@@ -33,6 +33,12 @@ export interface GitBranches {
   remote: string[];
 }
 
+/** 批量 git 状态查询结果中的一项(按 path 与项目列表对应) */
+export interface GitStatusItem {
+  path: string;
+  status: GitStatus;
+}
+
 /** 一个 git remote 及其地址 */
 export interface GitRemote {
   name: string;

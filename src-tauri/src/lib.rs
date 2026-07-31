@@ -53,6 +53,12 @@ pub fn run() {
                 scheduler::run(handle).await;
             });
 
+            // 后台 git 状态刷新循环(替代前端轮询:批量状态推送 + fetch 治理)
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                commands::git::status_refresher_loop(handle).await;
+            });
+
             Ok(())
         })
         .on_window_event(|window, event| match event {
@@ -97,6 +103,7 @@ pub fn run() {
             commands::project::set_project_favorite,
             commands::project::delete_project,
             commands::git::get_git_status,
+            commands::git::refresh_all_git_status,
             commands::git::list_git_remotes,
             commands::git::fetch_git_remote_async,
             commands::git::list_git_branches,

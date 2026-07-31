@@ -35,14 +35,14 @@ const project = computed(() => {
   return Number.isFinite(id) ? store.projects.find((p) => p.id === id) : undefined;
 });
 
-// 选中项目进入详情页时刷新本地工作区状态,并触发一次远端 fetch
+// 选中项目进入详情页时刷新本地工作区状态
+// (远端 fetch 由后端刷新循环调度,带退避治理,前端不再逐项目触发)
 // 目录已失效的项目跳过,git 命令必然失败且没有展示意义
 watch(
   () => project.value?.id,
   () => {
     if (project.value?.path_exists) {
       store.refreshGitStatus(project.value);
-      store.triggerRemoteFetch(project.value);
     }
   },
   { immediate: true },

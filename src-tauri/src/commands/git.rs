@@ -1,11 +1,12 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::Path;
 use std::process::{Command, Output};
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use serde::Serialize;
-use tauri::{Emitter, State, Window};
+use tauri::{AppHandle, Emitter, Manager, State, Window};
 use tokio::sync::Semaphore;
 
 use crate::commands::account;
@@ -18,6 +19,65 @@ use crate::models::{
 
 /// 后台 fetch 并发上限(超出排队)
 static FETCH_PERMITS: OnceLock<Semaphore> = OnceLock::new();
+/// 单次 fetch 的总超时(覆盖 ssh:// 等非 http 协议;http 协议另有低速/连接超时配置)
+const FETCH_TIMEOUT: Duration = Duration::from_secs(90);
+/// fetch 失败后的基础退避间隔,随连续失败次数指数增长,封顶 15 分钟
+const FETCH_RETRY_BASE: Duration = Duration::from_secs(30);
+const FETCH_RETRY_MAX: Duration = Duration::from_secs(15 * 60);
+
+/// fetch 治理状态:进行中去重 + 失败退避
+struct FetchTracker {
+    /// 正在 fetch 的路径(进行中不重复发起)
+    in_progress: HashSet<String>,
+    /// 路径 → (下次允许 fetch 的时刻, 连续失败次数)
+    retry_after: HashMap<String, (Instant, u32)>,
+}
+
+static FETCH_TRACKER: OnceLock<Mutex<FetchTracker>> = OnceLock::new();
+
+fn fetch_tracker() -> &'static Mutex<FetchTracker> {
+    FETCH_TRACKER.get_or_init(|| {
+        Mutex::new(FetchTracker {
+            in_progress: HashSet::new(),
+            retry_after: HashMap::new(),
+        })
+    })
+}
+
+/// 该路径当前是否允许发起 fetch(不在进行中、不在退避期)
+fn fetch_due(path: &str) -> bool {
+    let tracker = fetch_tracker().lock().unwrap();
+    if tracker.in_progress.contains(path) {
+        return false;
+    }
+    match tracker.retry_after.get(path) {
+        Some((at, _)) => *at <= Instant::now(),
+        None => true,
+    }
+}
+
+/// fetch 结束回调:成功清除退避记录;失败按连续失败次数指数退避,
+/// 弱网/断网时后台循环不会每 30s 重复撞网络
+fn fetch_finished(path: &str, ok: bool) {
+    let mut tracker = fetch_tracker().lock().unwrap();
+    tracker.in_progress.remove(path);
+    if ok {
+        tracker.retry_after.remove(path);
+    } else {
+        let fails = tracker
+            .retry_after
+            .get(path)
+            .map(|(_, f)| *f)
+            .unwrap_or(0)
+            + 1;
+        let backoff = FETCH_RETRY_BASE
+            .saturating_mul(2u32.saturating_pow(fails.saturating_sub(1)))
+            .min(FETCH_RETRY_MAX);
+        tracker
+            .retry_after
+            .insert(path.to_string(), (Instant::now() + backoff, fails));
+    }
+}
 
 /// 进行中的克隆任务(job_id -> 子进程),供 cancel_git_clone 查找并 kill
 static CLONE_JOBS: OnceLock<tokio::sync::Mutex<HashMap<String, tokio::process::Child>>> =
@@ -231,12 +291,82 @@ fn last_commit_at(path: &str) -> Option<i64> {
     String::from_utf8_lossy(&output.stdout).trim().parse().ok()
 }
 
-/// fetch 远端(无 remote 时跳过),返回最新状态
+// ── 本地状态缓存 ─────────────────────────────────────────────────────────
+
+/// 本地 git 状态缓存 TTL:详情页/批量刷新等高频调用直接命中,
+/// 后台刷新循环每 30s 全量重查一次,15s 内命中即视为足够新
+const STATUS_TTL: Duration = Duration::from_secs(15);
+
+struct CachedStatus {
+    status: GitStatus,
+    at: Instant,
+}
+
+/// 路径 → 最近一次本地状态(写操作后主动回填,保持一致性)
+static STATUS_CACHE: OnceLock<Mutex<HashMap<String, CachedStatus>>> = OnceLock::new();
+
+fn status_cache() -> &'static Mutex<HashMap<String, CachedStatus>> {
+    STATUS_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 缓存化状态查询:命中且未过期直接返回,否则执行 status() 并回填。
+/// force 为 true 时绕过缓存强制重查(用户主动刷新/git 写操作后)
+fn status_cached(path: &str, force: bool) -> AppResult<GitStatus> {
+    if !force {
+        if let Some(entry) = status_cache().lock().unwrap().get(path) {
+            if entry.at.elapsed() < STATUS_TTL {
+                return Ok(entry.status.clone());
+            }
+        }
+    }
+    let st = status(path)?;
+    status_cache().lock().unwrap().insert(
+        path.to_string(),
+        CachedStatus {
+            status: st.clone(),
+            at: Instant::now(),
+        },
+    );
+    Ok(st)
+}
+
+/// 写操作完成后回填缓存(返回的新状态即最新,不等待 TTL 过期)
+fn cache_status(path: &str, st: &GitStatus) {
+    status_cache().lock().unwrap().insert(
+        path.to_string(),
+        CachedStatus {
+            status: st.clone(),
+            at: Instant::now(),
+        },
+    );
+}
+
+/// 路径变更(重定向/移动/删除)后清除旧路径缓存
+pub fn invalidate_status(path: &str) {
+    status_cache().lock().unwrap().remove(path);
+}
+
+/// fetch 远端(无 remote 时跳过),返回最新状态。
+/// http 协议带连接/低速超时配置:弱网/断网时 git fetch 默认无限期挂起
+/// (TCP 重传可达数分钟),这里由 git 自身在慢速连接时主动中止。
+/// 后台 fetch 走 fetch_with_timeout(带进程 kill 兜底),此同步版保留给测试
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn fetch_and_status(path: &str) -> AppResult<GitStatus> {
     let remotes = git_command(path).arg("remote").output()?;
     if remotes.status.success() && !String::from_utf8_lossy(&remotes.stdout).trim().is_empty() {
         // 失败(如离线)不阻断,退回本地已知状态
-        let _ = git_command(path).args(["fetch", "--quiet"]).output();
+        let _ = git_command(path)
+            .args([
+                "-c",
+                "http.connectTimeout=10",
+                "-c",
+                "http.lowSpeedLimit=1000",
+                "-c",
+                "http.lowSpeedTime=30",
+                "fetch",
+                "--quiet",
+            ])
+            .output();
     }
     status(path)
 }
@@ -287,14 +417,108 @@ fn parse_porcelain(path: &str, text: &str) -> GitStatus {
 }
 
 #[tauri::command]
-pub async fn get_git_status(path: String) -> AppResult<GitStatus> {
-    run_blocking(move || status(&path)).await
+pub async fn get_git_status(path: String, force: Option<bool>) -> AppResult<GitStatus> {
+    let force = force.unwrap_or(false);
+    run_blocking(move || status_cached(&path, force)).await
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct GitRemote {
     pub name: String,
     pub url: String,
+}
+
+// ── 批量查询与后台刷新循环 ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GitStatusItem {
+    pub path: String,
+    pub status: GitStatus,
+}
+
+/// 批量状态查询的并发上限(git 子进程数量)
+const STATUS_CONCURRENCY: usize = 8;
+
+/// 批量查询多个路径的 git 状态(带缓存),结果按路径排序返回;
+/// 单个路径查询失败时跳过,不阻断其他项目
+pub async fn refresh_statuses_batch(paths: &[String], force: bool) -> Vec<GitStatusItem> {
+    let semaphore = Arc::new(Semaphore::new(STATUS_CONCURRENCY));
+    let mut set = tokio::task::JoinSet::new();
+    for path in paths {
+        let path = path.clone();
+        let semaphore = semaphore.clone();
+        set.spawn(async move {
+            let _permit = semaphore.acquire().await;
+            // spawn_blocking 闭包独立持有 path 副本,避免与外层 async move 冲突
+            let st = tokio::task::spawn_blocking({
+                let path = path.clone();
+                move || status_cached(&path, force)
+            })
+            .await;
+            (path, st)
+        });
+    }
+    let mut items = Vec::new();
+    while let Some(joined) = set.join_next().await {
+        if let Ok((path, Ok(Ok(st)))) = joined {
+            items.push(GitStatusItem { path, status: st });
+        }
+    }
+    items.sort_by(|a, b| a.path.cmp(&b.path));
+    items
+}
+
+/// 批量获取多个项目的 git 状态(带缓存):一次 IPC 返回全部,替代逐项目轮询。
+/// force 为 true 时绕过缓存强制重查(启动/用户主动刷新)
+#[tauri::command]
+pub async fn refresh_all_git_status(
+    paths: Vec<String>,
+    force: bool,
+) -> AppResult<Vec<GitStatusItem>> {
+    Ok(refresh_statuses_batch(&paths, force).await)
+}
+
+/// 状态刷新周期(与原前端轮询间隔一致)
+const STATUS_REFRESH_INTERVAL: Duration = Duration::from_secs(30);
+/// 启动后首轮刷新的延迟:先让首屏渲染完成,避免启动瞬间与列表请求抢资源
+const STATUS_REFRESH_FIRST_DELAY: Duration = Duration::from_secs(3);
+
+/// 读取所有未归档项目的 (id, path)
+fn list_active_project_paths(app: &AppHandle) -> Vec<(i64, String)> {
+    let Some(db) = app.try_state::<Db>() else {
+        return Vec::new();
+    };
+    let conn = db.0.lock().unwrap();
+    let mut stmt = match conn.prepare("SELECT id, path FROM projects WHERE archived_at IS NULL") {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    stmt.query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+        .map(|rows| rows.filter_map(Result::ok).collect())
+        .unwrap_or_default()
+}
+
+/// 后台 git 状态刷新循环(替代前端 setInterval 轮询):
+/// 启动 3s 后执行首轮(先让首屏渲染完成,避免启动瞬间与列表请求抢资源),
+/// 之后每 30s 批量查询所有未归档项目状态(带缓存)并事件推送全量,
+/// 随后调度一轮后台 fetch(进行中去重 + 失败退避 + 超时 kill)。
+/// 网络失败只在这里发生一次,不再由前端逐项目轮询放大
+pub async fn status_refresher_loop(app: AppHandle) {
+    tokio::time::sleep(STATUS_REFRESH_FIRST_DELAY).await;
+    loop {
+        let projects = list_active_project_paths(&app);
+        if !projects.is_empty() {
+            let paths: Vec<String> = projects.iter().map(|(_, p)| p.clone()).collect();
+            let items = refresh_statuses_batch(&paths, false).await;
+            if !items.is_empty() {
+                let _ = app.emit("git://status-updated", items);
+            }
+            for (id, path) in &projects {
+                fetch_schedule(&app, *id, path.clone());
+            }
+        }
+        tokio::time::sleep(STATUS_REFRESH_INTERVAL).await;
+    }
 }
 
 /// 列出所有 remote 及其地址(非仓库或无 remote 返回空列表)
@@ -326,24 +550,110 @@ fn list_remotes_blocking(path: &str) -> AppResult<Vec<GitRemote>> {
     Ok(out)
 }
 
-/// 后台 fetch:不返回数据,完成后 emit "git://updated"
-#[tauri::command]
-pub fn fetch_git_remote_async(window: Window, project_id: i64, path: String) {
+/// 带超时的后台 fetch:
+/// - http(s) 协议由 git 连接/低速超时配置兜底(慢速连接 30s 无进展即中止)
+/// - ssh 等其他协议由外层 timeout 兜底,超时 kill 进程树
+/// 无 remote 的仓库直接视为成功(无需退避)
+async fn fetch_with_timeout(path: &str) -> bool {
+    let has_remote = git_command(path)
+        .arg("remote")
+        .output()
+        .map(|o| o.status.success() && !String::from_utf8_lossy(&o.stdout).trim().is_empty())
+        .unwrap_or(false);
+    if !has_remote {
+        return true;
+    }
+    let mut cmd = tokio::process::Command::new("git");
+    cmd.arg("-C")
+        .arg(path)
+        .args([
+            "-c",
+            "http.connectTimeout=10",
+            "-c",
+            "http.lowSpeedLimit=1000",
+            "-c",
+            "http.lowSpeedTime=30",
+            "fetch",
+            "--quiet",
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        // tokio::process::Command 在 Windows 上原生提供 creation_flags,无需 import
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let Ok(mut child) = cmd.spawn() else {
+        return false;
+    };
+    match tokio::time::timeout(FETCH_TIMEOUT, child.wait()).await {
+        Ok(Ok(status)) => status.success(),
+        Ok(Err(_)) => false,
+        Err(_) => {
+            // 超时:强制结束进程树(fetch 会派生 remote helper 孙进程)
+            kill_process_tree(child);
+            false
+        }
+    }
+}
+
+/// 强制结束 git 进程树(Windows 用 taskkill /T /F 覆盖孙进程)
+fn kill_process_tree(mut child: tokio::process::Child) {
+    #[cfg(windows)]
+    if let Some(pid) = child.id() {
+        let mut cmd = std::process::Command::new("taskkill");
+        cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+        let _ = cmd.output();
+    }
+    // 非 Windows 主路径;Windows 上作为 taskkill 的兜底(重复 kill 无害)
+    let _ = child.start_kill();
+    let _ = child.wait();
+}
+
+/// 调度一次后台 fetch(进行中/退避期跳过)。
+/// fetch 成功后强制重查本地状态回填缓存,并把远端领先数经 "git://updated"
+/// 广播给所有窗口(原实现只发触发窗口,广播后多窗口状态天然一致)
+fn fetch_schedule(app: &AppHandle, project_id: i64, path: String) {
+    if !fetch_due(&path) {
+        return;
+    }
+    fetch_tracker()
+        .lock()
+        .unwrap()
+        .in_progress
+        .insert(path.clone());
+    let app = app.clone();
     tauri::async_runtime::spawn(async move {
         let semaphore = FETCH_PERMITS.get_or_init(|| Semaphore::new(3));
         let _permit = semaphore.acquire().await;
-        let result = tokio::task::spawn_blocking(move || fetch_and_status(&path)).await;
-        if let Ok(Ok(st)) = result {
-            if st.is_repo {
-                let payload = GitUpdatedPayload {
-                    project_id,
-                    remote_ahead: st.behind,
-                    last_fetch_at: chrono::Utc::now().timestamp(),
-                };
-                let _ = window.emit("git://updated", payload);
+        let ok = fetch_with_timeout(&path).await;
+        if ok {
+            let st = tokio::task::spawn_blocking({
+                let path = path.clone();
+                move || status_cached(&path, true)
+            })
+            .await;
+            if let Ok(Ok(st)) = st {
+                if st.is_repo {
+                    let payload = GitUpdatedPayload {
+                        project_id,
+                        remote_ahead: st.behind,
+                        last_fetch_at: chrono::Utc::now().timestamp(),
+                    };
+                    let _ = app.emit("git://updated", payload);
+                }
             }
         }
+        fetch_finished(&path, ok);
     });
+}
+
+/// 后台 fetch:不返回数据,完成后 emit "git://updated"
+#[tauri::command]
+pub fn fetch_git_remote_async(window: Window, project_id: i64, path: String) {
+    fetch_schedule(window.app_handle(), project_id, path);
 }
 
 /// 当前处于合并冲突状态的文件(相对仓库根的路径)
@@ -420,7 +730,9 @@ pub async fn git_init(path: String) -> AppResult<GitStatus> {
                 return Err(e);
             }
         }
-        status(&path)
+        let st = status(&path)?;
+        cache_status(&path, &st);
+        Ok(st)
     })
     .await
 }
@@ -455,7 +767,9 @@ fn checkout_blocking(path: &str, branch: &str, create: bool, remote: bool) -> Ap
     } else {
         run_git(path, &["checkout", branch])?;
     }
-    status(path)
+    let st = status(path)?;
+    cache_status(path, &st);
+    Ok(st)
 }
 
 /// 提交更改,返回最新状态。
@@ -535,7 +849,9 @@ fn commit_blocking(path: &str, message: &str, include_untracked: bool) -> AppRes
         run_git(path, &["add", "-u"])?;
     }
     run_git(path, &["commit", "-m", message])?;
-    status(path)
+    let st = status(path)?;
+    cache_status(path, &st);
+    Ok(st)
 }
 
 /// 拉取远端。产生合并冲突时不算失败:返回冲突文件列表,由前端引导用户解决
@@ -557,8 +873,10 @@ fn pull_blocking(path: &str) -> AppResult<GitPullResult> {
             friendly_git_error(&detail)
         });
     }
+    let st = status(path)?;
+    cache_status(path, &st);
     Ok(GitPullResult {
-        status: status(path)?,
+        status: st,
         conflicts,
     })
 }
@@ -581,7 +899,9 @@ fn push_blocking(path: &str) -> AppResult<GitStatus> {
             run_git(path, &["push", "-u", "origin", "HEAD"])?;
         }
     }
-    status(path)
+    let st = status(path)?;
+    cache_status(path, &st);
+    Ok(st)
 }
 
 /// 送入 AI 的 diff 长度上限(超出截断,避免 token 爆炸)

@@ -1,7 +1,14 @@
 import { computed, ref } from "vue";
 import { defineStore } from "pinia";
 import { cmd } from "@/lib/tauri";
-import type { GitBranches, GitPullResult, GitStatus, GitUpdatedPayload, Project } from "@/types";
+import type {
+  GitBranches,
+  GitPullResult,
+  GitStatus,
+  GitStatusItem,
+  GitUpdatedPayload,
+  Project,
+} from "@/types";
 
 export const useProjectsStore = defineStore("projects", () => {
   const projects = ref<Project[]>([]);
@@ -25,8 +32,8 @@ export const useProjectsStore = defineStore("projects", () => {
       });
       if (withGit) {
         projects.value = list;
-        // Git 状态后台补齐,不阻塞列表渲染
-        refreshAllGitStatus().then(triggerAllRemoteFetches);
+        // Git 状态后台补齐,不阻塞列表渲染(一次批量 IPC,后端带缓存)
+        refreshAllGitStatus();
       } else {
         const prevGit = new Map(projects.value.map((p) => [p.id, p.git]));
         list.forEach((p) => {
@@ -69,7 +76,9 @@ export const useProjectsStore = defineStore("projects", () => {
   }
 
   async function refreshGitStatus(project: Project) {
-    const run = () => cmd<GitStatus>("get_git_status", { path: project.path });
+    // force: 主动调用即视为需要最新状态(git 写操作/详情页刷新),
+    // 后端绕过缓存重查并回填
+    const run = () => cmd<GitStatus>("get_git_status", { path: project.path, force: true });
     try {
       project.git = await run();
     } catch {
@@ -77,53 +86,34 @@ export const useProjectsStore = defineStore("projects", () => {
       try {
         project.git = await run();
       } catch {
-        /* 保留旧值,等待下一轮定时刷新 */
+        /* 保留旧值,等待下一轮后台刷新 */
       }
     }
   }
 
-  function refreshAllGitStatus() {
-    return Promise.all(projects.value.map((p) => refreshGitStatus(p)));
-  }
-
-  /** 触发单个项目的后台远端 fetch(后端限流,结果走 git://updated 事件) */
-  function triggerRemoteFetch(project: Project) {
-    if (project.git?.is_repo) {
-      cmd("fetch_git_remote_async", { projectId: project.id, path: project.path }).catch(() => {});
+  /**
+   * 批量刷新所有项目的 git 状态:一次 IPC 返回全部(后端带缓存)。
+   * force 为 true 时绕过缓存强制重查(启动/用户主动刷新)
+   */
+  async function refreshAllGitStatus(force = false) {
+    const paths = projects.value.map((p) => p.path);
+    if (!paths.length) return;
+    try {
+      const items = await cmd<GitStatusItem[]>("refresh_all_git_status", { paths, force });
+      applyGitStatusItems(items);
+    } catch {
+      // 失败静默:由后端事件推送/窗口聚焦兜底补充
     }
   }
 
-  function triggerAllRemoteFetches() {
-    projects.value.forEach(triggerRemoteFetch);
-  }
-
-  /** git 状态定时刷新间隔(本地 status + 后台远端 fetch) */
-  const GIT_REFRESH_INTERVAL_MS = 30_000;
-  let gitRefreshTimer: ReturnType<typeof setInterval> | null = null;
-  let gitRefreshing = false;
-
-  /** 启动 git 状态定时刷新(App 挂载时调用,重复调用会重置计时) */
-  function startGitAutoRefresh() {
-    stopGitAutoRefresh();
-    gitRefreshTimer = setInterval(async () => {
-      // 上一轮未结束时跳过,避免慢仓库上刷新堆叠
-      if (gitRefreshing || !projects.value.length) return;
-      gitRefreshing = true;
-      try {
-        await refreshAllGitStatus();
-        triggerAllRemoteFetches();
-      } finally {
-        gitRefreshing = false;
-      }
-    }, GIT_REFRESH_INTERVAL_MS);
-  }
-
-  /** 停止 git 状态定时刷新(App 卸载时调用) */
-  function stopGitAutoRefresh() {
-    if (gitRefreshTimer) {
-      clearInterval(gitRefreshTimer);
-      gitRefreshTimer = null;
-    }
+  /** 按路径批量写入 git 状态(后端事件推送与批量命令共用) */
+  function applyGitStatusItems(items: GitStatusItem[]) {
+    if (!items.length) return;
+    const byPath = new Map(items.map((i) => [i.path, i.status]));
+    projects.value.forEach((p) => {
+      const st = byPath.get(p.path);
+      if (st) p.git = st;
+    });
   }
 
   async function addProject(path: string, name: string, description?: string) {
@@ -166,7 +156,6 @@ export const useProjectsStore = defineStore("projects", () => {
     if (idx >= 0) projects.value[idx] = project;
     if (project.path_exists) {
       await refreshGitStatus(project);
-      triggerRemoteFetch(project);
     }
     return project;
   }
@@ -177,7 +166,6 @@ export const useProjectsStore = defineStore("projects", () => {
     const idx = projects.value.findIndex((p) => p.id === id);
     if (idx >= 0) projects.value[idx] = project;
     await refreshGitStatus(project);
-    triggerRemoteFetch(project);
     return project;
   }
 
@@ -299,9 +287,8 @@ export const useProjectsStore = defineStore("projects", () => {
     unarchiveProject,
     deleteProject,
     refreshGitStatus,
-    triggerRemoteFetch,
-    startGitAutoRefresh,
-    stopGitAutoRefresh,
+    refreshAllGitStatus,
+    applyGitStatusItems,
     updateGitRemote,
     listBranches,
     initRepository,

@@ -481,7 +481,13 @@ pub fn update_project(
 #[tauri::command]
 pub fn update_project_path(db: State<'_, Db>, id: i64, path: String) -> AppResult<Project> {
     let conn = db.0.lock().unwrap();
-    update_path(&conn, id, &path)
+    let old_path = get(&conn, id)?.path;
+    let project = update_path(&conn, id, &path)?;
+    if old_path != path {
+        // 旧路径不再指向该项目,清理其 git 状态缓存(新路径由前端主动刷新回填)
+        crate::commands::git::invalidate_status(&old_path);
+    }
+    Ok(project)
 }
 
 // 异步命令:跨盘移动退回复制后大目录耗时较长,避免阻塞主线程。
@@ -498,6 +504,8 @@ pub async fn move_project_dir(
         prepare_move(&conn, id, &target_parent, &dir_name)?
     };
     move_folder(&plan.src, &plan.target)?;
+    // 磁盘移动成功后,旧路径的 git 状态缓存已失效
+    crate::commands::git::invalidate_status(&plan.src.to_string_lossy());
     let conn = db.0.lock().unwrap();
     apply_move(&conn, id, &plan)?;
     get(&conn, id)
@@ -543,7 +551,10 @@ pub fn set_project_favorite(
 #[tauri::command]
 pub fn delete_project(db: State<'_, Db>, id: i64) -> AppResult<()> {
     let conn = db.0.lock().unwrap();
-    remove(&conn, id)
+    let project = get(&conn, id)?;
+    remove(&conn, id)?;
+    crate::commands::git::invalidate_status(&project.path);
+    Ok(())
 }
 
 #[cfg(test)]
