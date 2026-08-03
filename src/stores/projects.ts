@@ -75,6 +75,24 @@ export const useProjectsStore = defineStore("projects", () => {
     return fresh;
   }
 
+  /**
+   * 兜底注入:托盘弹窗跳详情时,主窗口 store 可能因搜索/标签筛选被裁剪,
+   * 导致 ProjectDetail 按 id 找不到而误报「项目不存在或已被删除」。
+   * 这里强制按 id 单点拉取并写入列表(替换保留 git,新增直接 push)。
+   * 后端真实找不到时向上抛错,调用方决定是否降级跳转到 not-found 页。
+   */
+  async function ensureProjectLoaded(id: number) {
+    const fresh = await cmd<Project>("get_project", { id });
+    const idx = projects.value.findIndex((p) => p.id === id);
+    if (idx >= 0) {
+      fresh.git = projects.value[idx].git ?? fresh.git;
+      projects.value[idx] = fresh;
+    } else {
+      projects.value.push(fresh);
+    }
+    return fresh;
+  }
+
   async function refreshGitStatus(project: Project) {
     // force: 主动调用即视为需要最新状态(git 写操作/详情页刷新),
     // 后端绕过缓存重查并回填
@@ -275,6 +293,7 @@ export const useProjectsStore = defineStore("projects", () => {
     toggleTagFilter,
     clearTagFilters,
     refreshProject,
+    ensureProjectLoaded,
     addProject,
     cloneProject,
     cancelClone,
