@@ -7,7 +7,7 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::NaiveDate;
+use chrono::{Datelike, NaiveDate};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -412,6 +412,10 @@ pub fn get_calendar_meta(
 }
 
 /// 日历聚合实现:按月用一次 GROUP BY 查询各 `date_to` 的报告计数。
+///
+/// 区间对齐到 reka-ui `CalendarRoot` 实际渲染的月视图网格(周一开始、自适应周数,
+/// 最多 6 行 × 7 列 = 42 格),而非仅当月自然范围——这样上月末尾与下月开头的填充日
+/// 也能拿到报告计数,前端 `getReportCount` 即可在那些格子上显示标注。
 pub fn get_calendar_meta_impl(
     conn: &Connection,
     year: i32,
@@ -420,18 +424,15 @@ pub fn get_calendar_meta_impl(
     tag_ids: &[i64],
     report_type: &Option<String>,
 ) -> AppResult<HashMap<String, i64>> {
-    let start = NaiveDate::from_ymd_opt(year, month, 1)
+    let month_start = NaiveDate::from_ymd_opt(year, month, 1)
         .ok_or_else(|| AppError::External("无效的年月".into()))?;
-    let end_exclusive = if month == 12 {
-        NaiveDate::from_ymd_opt(year + 1, 1, 1)
-    } else {
-        NaiveDate::from_ymd_opt(year, month + 1, 1)
-    }
-    .ok_or_else(|| AppError::External("无效的年月".into()))?;
-    let date_from = start.format("%Y-%m-%d").to_string();
-    let date_to_inclusive = (end_exclusive - chrono::Duration::days(1))
-        .format("%Y-%m-%d")
-        .to_string();
+    // 网格首格 = 当月 1 日向前对齐到所在周的周一(num_days_from_monday() ∈ 0..6)
+    let grid_start = month_start
+        - chrono::Duration::days(month_start.weekday().num_days_from_monday() as i64);
+    // 网格末格 = 首格 + 41 天(周一 + 41 天 = 周日,覆盖 6 行)
+    let grid_end = grid_start + chrono::Duration::days(41);
+    let date_from = grid_start.format("%Y-%m-%d").to_string();
+    let date_to_inclusive = grid_end.format("%Y-%m-%d").to_string();
 
     let mut conditions = vec!["h.date_to BETWEEN ?1 AND ?2".to_string()];
     let mut params_vec: Vec<Box<dyn rusqlite::types::ToSql>> =
@@ -1345,6 +1346,34 @@ mod tests {
         assert_eq!(only_p2.get("2026-07-01").copied(), Some(1));
         let both = get_calendar_meta_impl(&conn, 2026, 7, &[p1, p2], &[], &None).unwrap();
         assert_eq!(both.get("2026-07-01").copied(), Some(2));
+    }
+
+    #[test]
+    fn calendar_meta_includes_neighbour_month_padding() {
+        // 锁住"前后月填充日也能拿到报告计数"的行为:
+        // reka-ui CalendarRoot 把上月末尾与下月开头作为填充日一起渲染,
+        // 后端查询区间必须覆盖整张网格,否则填充格的标注丢失。
+        let conn = test_conn();
+        let p = insert_project(&conn, "p");
+        // 2026-07-01 是周三,网格首格 = 2026-06-29(周一)
+        insert_report(&conn, &[p], "2026-06-29", "2026-06-29", "daily", 1);
+        // 下个月首周内的日期(2026-08-04 周二)
+        insert_report(&conn, &[p], "2026-08-04", "2026-08-04", "daily", 1);
+        // 当月内对照点
+        insert_report(&conn, &[p], "2026-07-15", "2026-07-15", "daily", 1);
+        // 远离网格的日期(2026-08-10 已超过 grid_end = 2026-08-09)
+        insert_report(&conn, &[p], "2026-08-10", "2026-08-10", "daily", 1);
+
+        let dates = get_calendar_meta_impl(&conn, 2026, 7, &[], &[], &None).unwrap();
+
+        // 前月填充日
+        assert_eq!(dates.get("2026-06-29").copied(), Some(1));
+        // 当月内对照点
+        assert_eq!(dates.get("2026-07-15").copied(), Some(1));
+        // 下月填充日
+        assert_eq!(dates.get("2026-08-04").copied(), Some(1));
+        // 超出网格末尾的日期不应出现
+        assert!(!dates.contains_key("2026-08-10"));
     }
 
     #[test]
