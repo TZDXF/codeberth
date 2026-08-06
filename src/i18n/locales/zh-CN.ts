@@ -567,6 +567,11 @@ export default {
       closeToExit: "直接退出",
       closeToExitHint: "关闭窗口即退出应用",
     },
+    autostart: {
+      launchAtLogin: "开机自动启动",
+      launchAtLoginHint: "登录系统后自动启动应用,静默驻留系统托盘,不弹出主窗口",
+      toggleFailed: "切换开机自启失败:{error}",
+    },
     about: {
       title: "关于",
       description: "本地开发项目管理中心",
