@@ -99,8 +99,32 @@ pub(crate) fn setup(app: &App) -> tauri::Result<()> {
                     button: MouseButton::Left,
                     button_state: MouseButtonState::Up,
                     position,
+                    rect,
                     ..
                 } => {
+                    // 锚点取托盘图标矩形(而非鼠标指针位置);个别平台/状态下 rect 可能为空,回退到点击点
+                    // rect 在 tauri 内是 Position/Size 枚举(可能为逻辑坐标),统一转物理坐标后再用
+                    let scale = app
+                        .primary_monitor()
+                        .ok()
+                        .flatten()
+                        .map(|m| m.scale_factor())
+                        .unwrap_or(1.0);
+                    let icon_pos: PhysicalPosition<f64> = rect.position.to_physical(scale);
+                    let icon_size: tauri::PhysicalSize<f64> = rect.size.to_physical(scale);
+                    let anchor = if icon_size.width > 0.0 && icon_size.height > 0.0 {
+                        IconRect {
+                            center_x: icon_pos.x + icon_size.width / 2.0,
+                            top: icon_pos.y,
+                            bottom: icon_pos.y + icon_size.height,
+                        }
+                    } else {
+                        IconRect {
+                            center_x: position.x,
+                            top: position.y,
+                            bottom: position.y,
+                        }
+                    };
                     // 双击尾巴上的 Click(Up):直接忽略,不再排入延迟任务
                     let since_double = now_millis().saturating_sub(LAST_DOUBLE_CLICK_MS.load(Ordering::SeqCst));
                     if since_double < DOUBLE_CLICK_SUPPRESS.as_millis() as u64 {
@@ -112,7 +136,7 @@ pub(crate) fn setup(app: &App) -> tauri::Result<()> {
                     std::thread::spawn(move || {
                         std::thread::sleep(CLICK_DELAY);
                         if CLICK_GENERATION.load(Ordering::SeqCst) == generation {
-                            toggle_popup(&app, position);
+                            toggle_popup(&app, anchor);
                         }
                     });
                 }
@@ -155,7 +179,18 @@ pub(crate) fn hide_popup(app: &AppHandle) {
     }
 }
 
-fn toggle_popup(app: &AppHandle, anchor: PhysicalPosition<f64>) {
+/// 托盘图标矩形(物理坐标),作为弹窗定位锚点
+#[derive(Clone, Copy)]
+struct IconRect {
+    /// 图标水平中心
+    center_x: f64,
+    /// 图标上边缘
+    top: f64,
+    /// 图标下边缘
+    bottom: f64,
+}
+
+fn toggle_popup(app: &AppHandle, anchor: IconRect) {
     if let Some(window) = app.get_webview_window(TRAY_POPUP_LABEL) {
         if window.is_visible().unwrap_or(false) {
             let _ = window.hide();
@@ -166,7 +201,7 @@ fn toggle_popup(app: &AppHandle, anchor: PhysicalPosition<f64>) {
 }
 
 /// 在托盘图标附近显示迷你弹窗(首次调用时懒创建窗口)。
-fn show_popup(app: &AppHandle, anchor: PhysicalPosition<f64>) {
+fn show_popup(app: &AppHandle, anchor: IconRect) {
     let window = match app.get_webview_window(TRAY_POPUP_LABEL) {
         Some(window) => window,
         None => {
@@ -211,18 +246,19 @@ fn show_popup(app: &AppHandle, anchor: PhysicalPosition<f64>) {
         }
     };
 
-    // 默认:水平居中于托盘点击点,位于其上方
-    let mut x = anchor.x - POPUP_WIDTH / 2.0;
-    let mut y = anchor.y - POPUP_HEIGHT - POPUP_MARGIN;
-    if let Ok(Some(monitor)) = app.monitor_from_point(anchor.x, anchor.y) {
+    // 默认:水平居中于托盘图标,位于其上方
+    let mut x = anchor.center_x - POPUP_WIDTH / 2.0;
+    let mut y = anchor.top - POPUP_HEIGHT - POPUP_MARGIN;
+    if let Ok(Some(monitor)) = app.monitor_from_point(anchor.center_x, anchor.top) {
         let work = monitor.work_area();
         let (wx, wy) = (work.position.x as f64, work.position.y as f64);
         let (ww, wh) = (work.size.width as f64, work.size.height as f64);
-        // 托盘位于工作区下半部分(任务栏在底部)时弹窗放上方,否则放下方
-        y = if anchor.y > wy + wh / 2.0 {
-            anchor.y - POPUP_HEIGHT - POPUP_MARGIN
+        // 托盘位于工作区下半部分(任务栏在底部)时弹窗贴图标上方,否则贴图标下方
+        let icon_mid_y = (anchor.top + anchor.bottom) / 2.0;
+        y = if icon_mid_y > wy + wh / 2.0 {
+            anchor.top - POPUP_HEIGHT - POPUP_MARGIN
         } else {
-            anchor.y + POPUP_MARGIN
+            anchor.bottom + POPUP_MARGIN
         };
         x = x.clamp(wx + 8.0, wx + ww - POPUP_WIDTH - 8.0);
         y = y.clamp(wy + 8.0, wy + wh - POPUP_HEIGHT - 8.0);

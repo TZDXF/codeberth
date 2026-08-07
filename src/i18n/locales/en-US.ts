@@ -585,6 +585,12 @@ export default {
       closeToExit: "Quit",
       closeToExitHint: "Closing the window quits the app",
     },
+    autostart: {
+      launchAtLogin: "Launch at login",
+      launchAtLoginHint:
+        "Start the app silently after signing in: it stays in the system tray without opening the main window",
+      toggleFailed: "Failed to toggle launch at login: {error}",
+    },
     about: {
       title: "About",
       description: "A local dev project manager",

@@ -5,6 +5,7 @@ import MdThemeSettings from "@/components/settings/MdThemeSettings.vue";
 import LanguageSettings from "@/components/settings/LanguageSettings.vue";
 import OpenWithSettings from "@/components/settings/OpenWithSettings.vue";
 import TraySettings from "@/components/settings/TraySettings.vue";
+import AutostartSettings from "@/components/settings/AutostartSettings.vue";
 </script>
 
 <template>
@@ -18,5 +19,7 @@ import TraySettings from "@/components/settings/TraySettings.vue";
     <TraySettings />
     <Separator />
     <LanguageSettings />
+    <Separator />
+    <AutostartSettings />
   </div>
 </template>

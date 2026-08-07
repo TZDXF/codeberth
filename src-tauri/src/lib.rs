@@ -33,6 +33,9 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        // 开机自启(Windows 注册表 Run 项 / macOS LaunchAgent,由设置页开关控制);
+        // 自启时附带 --autostart 参数,用于静默启动(只驻留托盘、不弹主窗口)
+        .plugin(tauri_plugin_autostart::Builder::new().args(["--autostart"]).build())
         .setup(|app| {
             // 数据库文件: ~/.repomeow/projects.db
             // (Windows: C:\Users\<user>\.repomeow\projects.db)
@@ -46,6 +49,16 @@ pub fn run() {
 
             // 系统托盘(图标 + 迷你项目列表弹窗)
             tray::setup(app)?;
+
+            // 主窗口配置为初始不可见(visible: false):正常启动时在这里统一显示;
+            // 开机自启(带 --autostart 参数)保持隐藏,静默驻留托盘
+            let silent_start = std::env::args().any(|arg| arg == "--autostart");
+            if !silent_start {
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
 
             // 启动日报定时调度器(后台 tokio 任务,仅 App 运行时生效)
             let handle = app.handle().clone();
