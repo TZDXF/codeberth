@@ -165,6 +165,13 @@ pub fn run() {
             commands::report::save_report_schedules,
             commands::report::run_report_schedule_now,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            // 事件循环退出前(正常关闭 / 退出到托盘 / 系统关机销毁窗口):
+            // 杀掉所有仍在运行的 git 子进程,避免 fetch/clone 子进程成为孤儿
+            if let tauri::RunEvent::Exit = event {
+                commands::git::cleanup_on_exit();
+            }
+        });
 }

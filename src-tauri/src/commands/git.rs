@@ -87,6 +87,68 @@ fn clone_jobs() -> &'static tokio::sync::Mutex<HashMap<String, tokio::process::C
     CLONE_JOBS.get_or_init(|| tokio::sync::Mutex::new(HashMap::new()))
 }
 
+/// 所有运行中的 git 子进程 PID(fetch + clone 统一登记),
+/// 供应用退出钩子 cleanup_on_exit 在拿不到句柄时按 PID 杀进程树
+static GIT_PIDS: OnceLock<Mutex<HashSet<u32>>> = OnceLock::new();
+
+fn git_pids() -> &'static Mutex<HashSet<u32>> {
+    GIT_PIDS.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+/// RAII 守卫:构造时登记 PID,drop 时注销。保证无论函数从成功/失败/超时/
+/// 取消哪条路径返回都自动移除,不会残留已退出的 PID(或残留也无害——
+/// cleanup_on_exit 对不存在的 PID taskkill 只会返回错误,不影响其他 PID)
+struct TrackedPid(Option<u32>);
+
+impl TrackedPid {
+    fn new(pid: Option<u32>) -> Self {
+        if let Some(p) = pid {
+            git_pids().lock().unwrap().insert(p);
+        }
+        Self(pid)
+    }
+}
+
+impl Drop for TrackedPid {
+    fn drop(&mut self) {
+        if let Some(p) = self.0.take() {
+            git_pids().lock().unwrap().remove(&p);
+        }
+    }
+}
+
+/// 应用退出收尾:杀掉所有仍在运行的 git 子进程(fetch/clone 及其
+/// remote-helper 孙进程整棵进程树)。由 lib.rs 的 RunEvent::Exit 钩子调用。
+///
+/// 走 PID 层而非句柄层:fetch child 句柄困在 spawn 出的 task 内部,
+/// clone child 在 async Mutex(CLONE_JOBS)里,退出钩子很难可靠触及;
+/// 而 PID 是 spawn 后立即拷出的独立副本,始终可达。
+pub fn cleanup_on_exit() {
+    // 1) PID 层:taskkill 杀整棵进程树(覆盖孙进程)
+    let pids: Vec<u32> = git_pids().lock().unwrap().drain().collect();
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        for pid in pids {
+            let mut cmd = Command::new("taskkill");
+            cmd.args(["/PID", &pid.to_string(), "/T", "/F"]);
+            cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+            let _ = cmd.output();
+        }
+    }
+    // 2) 兜底:回收 clone 句柄(CLONE_JOBS 是 async Mutex,try_lock 重试几次)
+    for _ in 0..20 {
+        if let Ok(mut jobs) = clone_jobs().try_lock() {
+            for (_, mut child) in jobs.drain() {
+                let _ = child.start_kill();
+                let _ = child.wait();
+            }
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct GitUpdatedPayload {
     pub project_id: i64,
@@ -577,7 +639,8 @@ async fn fetch_with_timeout(path: &str) -> bool {
             "--quiet",
         ])
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null());
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
     #[cfg(windows)]
     {
         // tokio::process::Command 在 Windows 上原生提供 creation_flags,无需 import
@@ -586,6 +649,8 @@ async fn fetch_with_timeout(path: &str) -> bool {
     let Ok(mut child) = cmd.spawn() else {
         return false;
     };
+    // 登记 PID 供应用退出钩子按 PID 清理(句柄在当前 task 内部,退出钩子够不到)
+    let _tracked = TrackedPid::new(child.id());
     match tokio::time::timeout(FETCH_TIMEOUT, child.wait()).await {
         Ok(Ok(status)) => status.success(),
         Ok(Err(_)) => false,
@@ -1242,7 +1307,8 @@ pub async fn git_clone(
     command
         .args(["clone", "--", &clone_url, &target_path])
         .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::piped());
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true);
     #[cfg(windows)]
     {
         command.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
@@ -1250,6 +1316,9 @@ pub async fn git_clone(
     let mut child = command
         .spawn()
         .map_err(|e| AppError::External(format!("启动 git clone 失败: {e}")))?;
+    // 登记 PID 供应用退出钩子按 PID 清理(child 随后 move 进 CLONE_JOBS,
+    // 但 pid 已拷出为独立副本,不受句柄所有权转移影响)
+    let _tracked = TrackedPid::new(child.id());
 
     // stderr 由独立任务持续消费,避免管道写满阻塞子进程;
     // 只保留末尾 8KB(进度行很长,且只需末尾的失败原因)
