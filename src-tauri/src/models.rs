@@ -166,6 +166,14 @@ pub struct ComposeServiceState {
     pub status: String,
 }
 
+/// 详情页资产扫描结果(scan_project_assets):单次目录遍历同时产出,
+/// 避免 package scripts 与 compose 文件分别全量扫描
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectAssets {
+    pub package_scripts: Vec<PackageScriptsGroup>,
+    pub compose_files: Vec<ComposeFile>,
+}
+
 /// 项目维度被隐藏的 UI 项
 /// kind: "packageFile"(整个 package.json 分组)/ "packageScript"(分组内单条命令)/ "composeFile"
 /// target_key: packageFile = 分组 dir;packageScript = "<dir>\n<name>";composeFile = 文件相对路径

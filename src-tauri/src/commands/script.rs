@@ -31,9 +31,19 @@ fn parse_package_json(content: &str) -> Option<(Option<String>, Vec<PackageScrip
 
 /// 递归发现项目内所有 package.json(尊重 git 排除规则),按包分组返回 scripts。
 /// 支持 monorepo;node_modules 恒被跳过。
+/// 前端走合并扫描 scan_project_assets,此入口保留给测试
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn package_scripts(path: &str) -> AppResult<Vec<PackageScriptsGroup>> {
     let dir = std::path::Path::new(path);
-    let mut groups: Vec<PackageScriptsGroup> = walk::project_files(dir)
+    Ok(package_scripts_from_files(dir, &walk::project_files(dir)))
+}
+
+/// 在已遍历的文件清单上提取 package scripts(供合并扫描复用,避免重复 walk)
+pub(crate) fn package_scripts_from_files(
+    dir: &std::path::Path,
+    files: &[std::path::PathBuf],
+) -> Vec<PackageScriptsGroup> {
+    let mut groups: Vec<PackageScriptsGroup> = files
         .iter()
         .filter(|rel| rel.file_name().and_then(|n| n.to_str()) == Some("package.json"))
         .filter_map(|rel| {
@@ -49,7 +59,7 @@ pub fn package_scripts(path: &str) -> AppResult<Vec<PackageScriptsGroup>> {
         .collect();
     // 根目录包优先,其余按目录字典序
     groups.sort_by(|a, b| (a.dir != ".", &a.dir).cmp(&(b.dir != ".", &b.dir)));
-    Ok(groups)
+    groups
 }
 
 fn map_command_row(r: &rusqlite::Row<'_>) -> rusqlite::Result<CustomCommand> {
@@ -181,11 +191,6 @@ pub fn delete_command(conn: &Connection, id: i64) -> AppResult<()> {
 }
 
 // ---- Tauri 命令包装 ----
-
-#[tauri::command]
-pub fn list_package_scripts(path: String) -> AppResult<Vec<PackageScriptsGroup>> {
-    package_scripts(&path)
-}
 
 #[tauri::command]
 pub fn list_custom_commands(db: State<'_, Db>, project_id: i64) -> AppResult<Vec<CustomCommand>> {

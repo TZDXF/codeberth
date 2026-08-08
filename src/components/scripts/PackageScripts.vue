@@ -11,15 +11,18 @@ import ScriptItem from "@/components/scripts/ScriptItem.vue";
 import { useCollapsibleOpen } from "@/composables/useCollapsibleOpen";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import { usePinsStore } from "@/stores/pins";
+import { useProjectAssetsStore } from "@/stores/project-assets";
 import type { HiddenItem, HiddenKind, PackageScript, PackageScriptsGroup, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 const pinsStore = usePinsStore();
+const assetsStore = useProjectAssetsStore();
 
 const { isOpen, setOpen } = useCollapsibleOpen("scripts");
 
-const groups = ref<PackageScriptsGroup[]>([]);
+/** 扫描结果来自共享 store(与 DockerCompose 卡片合并为一次后端扫描) */
+const groups = computed(() => assetsStore.assetsOf(props.project.id)?.package_scripts ?? []);
 const loaded = ref(false);
 /** 各分组展开状态,key 为分组目录 */
 const openStates = ref<Record<string, boolean>>({});
@@ -66,11 +69,11 @@ watch(
     showHidden.value = false;
     pinsStore.ensureLoaded();
     try {
-      const [gs, items] = await Promise.all([
-        cmd<PackageScriptsGroup[]>("list_package_scripts", { path: props.project.path }),
+      // refresh 内部去重:与 DockerCompose 同时挂载只触发一次 scan_project_assets
+      const [, items] = await Promise.all([
+        assetsStore.refresh(props.project),
         cmd<HiddenItem[]>("list_hidden_items", { projectId: props.project.id }),
       ]);
-      groups.value = gs;
       hiddenGroups.value = new Set(
         items.filter((i) => i.kind === "packageFile").map((i) => i.targetKey),
       );
@@ -78,7 +81,6 @@ watch(
         items.filter((i) => i.kind === "packageScript").map((i) => i.targetKey),
       );
     } catch {
-      groups.value = [];
       hiddenGroups.value = new Set();
       hiddenScripts.value = new Set();
     } finally {

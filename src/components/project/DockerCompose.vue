@@ -33,15 +33,18 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { useCollapsibleOpen } from "@/composables/useCollapsibleOpen";
 import { cmd, runInTerminal } from "@/lib/tauri";
 import { usePinsStore } from "@/stores/pins";
+import { useProjectAssetsStore } from "@/stores/project-assets";
 import type { ComposeFile, ComposeServiceState, HiddenItem, Project } from "@/types";
 
 const { t } = useI18n();
 const props = defineProps<{ project: Project }>();
 const pinsStore = usePinsStore();
+const assetsStore = useProjectAssetsStore();
 
 const { isOpen, setOpen } = useCollapsibleOpen("compose");
 
-const files = ref<ComposeFile[]>([]);
+/** 扫描结果来自共享 store(与 PackageScripts 卡片合并为一次后端扫描) */
+const files = computed(() => assetsStore.assetsOf(props.project.id)?.compose_files ?? []);
 const loaded = ref(false);
 /** 各 compose 文件展开状态,key 为文件路径 */
 const openStates = ref<Record<string, boolean>>({});
@@ -84,16 +87,15 @@ watch(
     loaded.value = false;
     showHidden.value = false;
     try {
-      const [fs, items] = await Promise.all([
-        cmd<ComposeFile[]>("scan_compose_files", { path: props.project.path }),
+      // refresh 内部去重:与 PackageScripts 同时挂载只触发一次 scan_project_assets
+      const [, items] = await Promise.all([
+        assetsStore.refresh(props.project),
         cmd<HiddenItem[]>("list_hidden_items", { projectId: props.project.id }),
       ]);
-      files.value = fs;
       hiddenFiles.value = new Set(
         items.filter((i) => i.kind === "composeFile").map((i) => i.targetKey),
       );
     } catch {
-      files.value = [];
       hiddenFiles.value = new Set();
     } finally {
       loaded.value = true;

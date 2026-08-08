@@ -1,4 +1,7 @@
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use ignore::WalkBuilder;
 
@@ -31,6 +34,52 @@ pub fn project_files(root: &Path) -> Vec<PathBuf> {
 /// 相对路径转 '/' 分隔字符串(Windows 下 '\' 归一化)
 pub fn to_slash(path: &Path) -> String {
     path.to_string_lossy().replace('\\', "/")
+}
+
+// ── walk 结果 TTL 缓存 ──────────────────────────────────────────────────
+
+/// 缓存 TTL:与 git 状态刷新节奏(30s)对齐,反复进出详情页不重复遍历目录;
+/// 无文件变更监听,容忍 TTL 内新增 package.json / compose 文件晚一点被发现
+const WALK_CACHE_TTL: Duration = Duration::from_secs(30);
+
+/// 缓存条目上限:单个大项目的文件清单可达数十 MB,超限直接清空重建,
+/// 避免多项目缓存堆积占用内存
+const WALK_CACHE_MAX_ENTRIES: usize = 8;
+
+struct CachedWalk {
+    files: Arc<Vec<PathBuf>>,
+    at: Instant,
+}
+
+static WALK_CACHE: OnceLock<Mutex<HashMap<PathBuf, CachedWalk>>> = OnceLock::new();
+
+/// 带 TTL 缓存的 project_files:命中且未过期直接共享同一份结果(Arc,不复制)。
+/// 详情页资产扫描等高频只读场景使用;需要保证新鲜的调用方(如测试)用 project_files。
+pub fn project_files_cached(root: &Path) -> Arc<Vec<PathBuf>> {
+    let cache = WALK_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    {
+        let map = cache.lock().unwrap();
+        if let Some(entry) = map.get(root) {
+            if entry.at.elapsed() < WALK_CACHE_TTL {
+                return entry.files.clone();
+            }
+        }
+    }
+    let files = Arc::new(project_files(root));
+    let mut map = cache.lock().unwrap();
+    // 插入前顺带清掉已过期条目;仍超限则整体清空(实现简单,重建成本低)
+    map.retain(|_, e| e.at.elapsed() < WALK_CACHE_TTL);
+    if map.len() >= WALK_CACHE_MAX_ENTRIES {
+        map.clear();
+    }
+    map.insert(
+        root.to_path_buf(),
+        CachedWalk {
+            files: files.clone(),
+            at: Instant::now(),
+        },
+    );
+    files
 }
 
 #[cfg(test)]

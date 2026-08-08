@@ -169,6 +169,12 @@ export interface ComposeServiceState {
   status: string;
 }
 
+/** scan_project_assets 一次返回的项目资产扫描结果(后端单次目录遍历同时产出) */
+export interface ProjectAssets {
+  package_scripts: PackageScriptsGroup[];
+  compose_files: ComposeFile[];
+}
+
 export type EditorKind =
   | "explorer"
   | "vscode"

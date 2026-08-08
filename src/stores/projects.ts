@@ -93,10 +93,16 @@ export const useProjectsStore = defineStore("projects", () => {
     return fresh;
   }
 
-  async function refreshGitStatus(project: Project) {
-    // force: 主动调用即视为需要最新状态(git 写操作/详情页刷新),
-    // 后端绕过缓存重查并回填
-    const run = () => cmd<GitStatus>("get_git_status", { path: project.path, force: true });
+  /**
+   * 刷新单个项目的 git 状态。
+   * 默认走后端 15s 缓存:详情页进入等高频场景直接命中,避免每次进大仓库都重跑
+   * git status;缓存过期由后端 30s 后台刷新循环兜底保鲜,结果经 git://status-updated 推送。
+   * git 写操作本身会返回最新状态并回填缓存,不经过此函数。
+   * force: true 用于路径变更(重定向/移动目录)后必须拿到最新状态的场景。
+   */
+  async function refreshGitStatus(project: Project, options: { force?: boolean } = {}) {
+    const force = options.force ?? false;
+    const run = () => cmd<GitStatus>("get_git_status", { path: project.path, force });
     try {
       project.git = await run();
     } catch {
@@ -173,7 +179,8 @@ export const useProjectsStore = defineStore("projects", () => {
     const idx = projects.value.findIndex((p) => p.id === id);
     if (idx >= 0) projects.value[idx] = project;
     if (project.path_exists) {
-      await refreshGitStatus(project);
+      // 路径刚变更,绕过缓存强制重查新路径状态
+      await refreshGitStatus(project, { force: true });
     }
     return project;
   }
@@ -183,7 +190,7 @@ export const useProjectsStore = defineStore("projects", () => {
     const project = await cmd<Project>("move_project_dir", { id, targetParent, dirName });
     const idx = projects.value.findIndex((p) => p.id === id);
     if (idx >= 0) projects.value[idx] = project;
-    await refreshGitStatus(project);
+    await refreshGitStatus(project, { force: true });
     return project;
   }
 

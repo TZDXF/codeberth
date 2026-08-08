@@ -21,7 +21,7 @@ const README_MAX_BYTES: u64 = 512 * 1024;
 /// compose 文件大小上限 256KB,超过的直接跳过(正常 compose 文件远小于此)
 const COMPOSE_MAX_BYTES: u64 = 256 * 1024;
 
-fn ensure_dir(path: &str) -> AppResult<()> {
+pub(crate) fn ensure_dir(path: &str) -> AppResult<()> {
     if !Path::new(path).is_dir() {
         return Err(AppError::invalid_path(path));
     }
@@ -215,12 +215,21 @@ fn is_yaml_file(path: &Path) -> bool {
         .is_some_and(|e| e.eq_ignore_ascii_case("yml") || e.eq_ignore_ascii_case("yaml"))
 }
 
-/// 递归扫描项目内的 Docker Compose 文件(尊重 git 排除规则,按内容识别)
-#[tauri::command]
+/// 递归扫描项目内的 Docker Compose 文件(尊重 git 排除规则,按内容识别)。
+/// 前端走合并扫描 scan_project_assets,此入口保留给测试
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn scan_compose_files(path: String) -> AppResult<Vec<ComposeFile>> {
     ensure_dir(&path)?;
     let dir = Path::new(&path);
-    let mut files: Vec<ComposeFile> = walk::project_files(dir)
+    Ok(compose_files_from_files(dir, &walk::project_files(dir)))
+}
+
+/// 在已遍历的文件清单上提取 compose 文件(供合并扫描复用,避免重复 walk)
+pub(crate) fn compose_files_from_files(
+    dir: &Path,
+    walked: &[std::path::PathBuf],
+) -> Vec<ComposeFile> {
+    let mut files: Vec<ComposeFile> = walked
         .iter()
         .filter(|rel| is_yaml_file(rel))
         .filter(|rel| {
@@ -241,7 +250,7 @@ pub fn scan_compose_files(path: String) -> AppResult<Vec<ComposeFile>> {
         .collect();
     // 根目录文件优先,同级按路径字典序
     files.sort_by(|a, b| (a.path.contains('/'), &a.path).cmp(&(b.path.contains('/'), &b.path)));
-    Ok(files)
+    files
 }
 
 #[cfg(test)]
